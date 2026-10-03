@@ -67,6 +67,13 @@ Entry for the **Nebius x NVIDIA Global AI Hackathon, Personal AI Track**. Submit
 │   │   └── web_search.py       # Tavily wrapper
 │   ├── agent/
 │   │   └── loop.py             # plan → act → observe loop with tool calls
+│   ├── policy/
+│   │   ├── broker.py           # the ONLY path from agent to tools: checks grants, asks confirmation, audits
+│   │   └── grants.py           # per-user, per-skill permissions (read/write scopes, domains, tools)
+│   ├── sandbox/
+│   │   ├── base.py             # Sandbox interface: run(code, files_in) -> files_out, stdout, exit code
+│   │   ├── local.py            # subprocess backend for dev and tests (NOT a security boundary)
+│   │   └── daytona.py          # Daytona backend (ephemeral, no secrets, egress allowlist)
 │   ├── scheduler/
 │   │   └── jobs.py             # background and scheduled tasks
 │   ├── auth/
@@ -74,7 +81,7 @@ Entry for the **Nebius x NVIDIA Global AI Hackathon, Personal AI Track**. Submit
 │   └── web/                    # templates and static files
 ├── skills/                     # one folder per skill
 │   └── _template/
-│       ├── skill.yaml          # name, description, tools needed, triggers
+│       ├── skill.yaml          # name, description, tools needed, triggers, permissions
 │       ├── SKILL.md            # instructions the agent follows
 │       └── tools.py            # optional Python tools for this skill
 ├── scripts/
@@ -86,7 +93,8 @@ Entry for the **Nebius x NVIDIA Global AI Hackathon, Personal AI Track**. Submit
 │   └── users/<user_id>/
 │       ├── memory/             # *.md memory files, human-readable
 │       ├── skills.yaml         # which skills this user has enabled
-│       └── logs/
+│       ├── grants.yaml         # what each enabled skill may read/write/reach (user-editable)
+│       └── logs/               # includes audit.jsonl: every tool call, allowed or blocked
 └── tests/
 ```
 
@@ -102,6 +110,8 @@ APP_SECRET_KEY=
 DATA_DIR=./data
 CACHE_ENABLED=true             # dev cache for identical LLM and Tavily calls
 CACHE_DIR=./.cache
+SANDBOX_BACKEND=local          # local (dev only) | daytona
+DAYTONA_API_KEY=
 ```
 
 ## Design principles
@@ -113,6 +123,36 @@ CACHE_DIR=./.cache
 - **Ask before acting.** Anything that sends, buys, deletes, or posts on the user's behalf needs explicit confirmation in the UI. Read-only actions don't.
 - **Fail visibly.** If a model or API call fails, show a clear message rather than silently degrading.
 
+## Isolation and permissions
+
+Threat model: skills can be written by anyone, web pages and emails the agent reads can carry prompt injections, and the model can make mistakes. Assume any tool call may be hostile. There are three layers, plus a rule about secrets:
+
+1. **Permission broker (always on, in-process).** The agent never calls a tool directly. Every call goes through `app/policy/broker.py`, which:
+   - checks the call against the skill's declared permissions (`skill.yaml`) **and** the user's grants (`grants.yaml`). Both must allow it.
+   - separates **read** from **write**: reads run if granted; writes, sends, deletes and purchases also need the UI confirmation.
+   - logs every call, allowed or blocked, to `data/users/<id>/logs/audit.jsonl`. The UI shows this as "What your assistant did".
+   - default-deny: anything not declared is blocked.
+2. **Path and data scoping (always on).** File tools resolve every path inside `data/users/<id>/` and reject `..`, absolute paths and symlinks pointing elsewhere. Memory read/write runs in-process through this layer. **Memory never goes into a remote sandbox.**
+3. **Execution sandbox (only for running code).** Only these run in a sandbox: a skill's `tools.py` if the skill isn't built in, code the agent writes, and parsing of untrusted files. Sandbox rules:
+   - ephemeral: one sandbox per task, destroyed afterwards
+   - copy in only the files the task needs, and copy out only declared outputs
+   - egress allowlist from the skill's declared domains, otherwise no network
+   - CPU and time limits
+
+**Secrets never enter a sandbox.** If sandboxed code needs an API (LLM, Tavily, email), it asks the broker, which makes the call with the core's credentials.
+
+Backends sit behind `app/sandbox/base.py`: `local` (subprocess, dev/tests only, not a security boundary) and `daytona`. **NVIDIA OpenShell** (a suggested tool for this track: kernel-level filesystem, network and syscall policy) gets evaluated on Day 7–8 as a backend or as the outer runtime for the whole app on a Nebius VM. It needs privileged Docker, so it can't run inside a Daytona sandbox. Don't integrate it until we've read its real docs.
+
+`skill.yaml` permissions shape (draft):
+```yaml
+permissions:
+  read: [memory, calendar]            # scopes the skill may read
+  write: [memory]                     # scopes it may change (always confirmed in the UI)
+  network: [api.example.com]          # egress allowlist when its code runs in the sandbox
+  tools: [web_search]                 # core tools it may call through the broker
+  runs_code: false                    # true -> tools.py executes in the sandbox
+```
+
 ## Budget constraints (important)
 
 Credits are limited: about $125 of Nebius Cloud, plus Token Factory credits, 9,000 Tavily credits, and $2,000 of Daytona credits.
@@ -120,6 +160,7 @@ Credits are limited: about $125 of Nebius Cloud, plus Token Factory credits, 9,0
 - Use Tavily **basic** search (1 credit) by default. Use advanced (2 credits) only when asked. **Never** call the Tavily Research endpoint in loops.
 - Cache identical LLM and search calls during development.
 - Keep the Docker image small enough to run on the smallest CPU VM.
+- Daytona: smallest resources (1 vCPU / 1 GB), ephemeral per-task sandboxes, short auto-stop, and always delete sandboxes after use. No always-on sandboxes per user.
 
 ## Privacy and repo hygiene
 
@@ -147,8 +188,10 @@ Credits are limited: about $125 of Nebius Cloud, plus Token Factory credits, 9,0
 5. Per-user auth and data isolation, plus the isolation test
 6. Memory store and the "What I remember about you" page
 7. Memory extractor (automatically saves durable facts from chats)
-8. Skill loader and registry, plus the `_template` skill
-9. Tavily web search tool, available to the agent
+8. Skill loader and registry, plus the `_template` skill (with `permissions:` in `skill.yaml`)
+8a. Permission broker, grants and audit log; path scoping for file tools; tests proving undeclared and cross-user calls are blocked
+8b. Sandbox interface with the `local` backend, then the `daytona` backend (ask before adding the `daytona` dependency)
+9. Tavily web search tool, available to the agent through the broker
 10. Scheduler for background tasks
 11. Skills 1–3 (defined after Sat 3 Oct)
 12. Deployment (Nebius CPU VM or Daytona), from Day 20 onward
@@ -166,4 +209,5 @@ Credits are limited: about $125 of Nebius Cloud, plus Token Factory credits, 9,0
 |---|---|
 | 2 Oct 2026 | Stack: Python/FastAPI, file-based memory, Token Factory via an OpenAI-compatible client |
 | 3 Oct 2026 | Identical LLM and Tavily calls are cached on disk in `.cache/` (gitignored, toggle with `CACHE_ENABLED`). LLM usage log lives at `data/logs/llm_usage.jsonl` until per-user logs exist. `openai` SDK is v3.x |
+| 3 Oct 2026 | Isolation is three layers: an in-process permission broker (default-deny, read/write split, audit log) → per-user path scoping → an execution sandbox only for running code. Daytona is the first sandbox backend; memory and secrets never enter it. OpenShell gets evaluated on Day 7–8 |
 | 3 Oct 2026 | *(idea lock: skills 1–3 go here)* |
