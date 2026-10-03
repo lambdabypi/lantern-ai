@@ -13,12 +13,14 @@ Usage:
     python scripts/research_sprint.py
     python scripts/research_sprint.py --max-results 5 --batch-size 6
     python scripts/research_sprint.py --no-thinking   # cheaper, faster Nano extraction
+    python scripts/research_sprint.py --runs 3        # mark themes that survive 3 clusterings
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+import random
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -138,19 +140,55 @@ def extract_items(
     return items, failed
 
 
-def cluster_themes(router: ModelRouter, items: list[dict]) -> tuple[tuple[list[dict], int], Any]:
-    """Ultra pass (one call): group items into themes. Counts are computed here, not by the model.
+def cluster_themes(
+    router: ModelRouter, items: list[dict], order: list[int] | None = None, purpose: str = "research:cluster"
+) -> tuple[tuple[list[dict], int], Any]:
+    """Ultra pass (one call, temperature 0): group items into themes. Counts are computed here.
 
+    `order` lists item ids (1-based) in the order to show them. Ids never change, so runs
+    with different orders can be compared. Defaults to the original order.
     Returns ((themes sorted by count, number of unassigned items), raw model JSON).
     """
-    listing = "\n".join(f"{i}. ({it['kind']}) {it['text']}" for i, it in enumerate(items, 1))
+    ids = order or list(range(1, len(items) + 1))
+    listing = "\n".join(f"{i}. ({items[i - 1]['kind']}) {items[i - 1]['text']}" for i in ids)
     messages = [
         {"role": "system", "content": CLUSTER_SYSTEM},
         {"role": "user", "content": f"Items:\n{listing}"},
     ]
     # Ultra reasons before answering; 8192 was exhausted on 113 items, so leave headroom.
-    data = ask_json(router, messages, Tier.REASONING, "research:cluster", max_tokens=20000)
+    data = ask_json(router, messages, Tier.REASONING, purpose, max_tokens=20000)
     return build_themes(data, items), data
+
+
+def shuffled_order(n_items: int, run: int) -> list[int]:
+    """Item ids in a reproducible shuffled order for run >= 2 (run 1 keeps the original order).
+
+    At temperature 0 an identical prompt gives the same answer (and hits the cache), so
+    repeat runs only test stability if the input order changes.
+    """
+    ids = list(range(1, n_items + 1))
+    if run > 1:
+        random.Random(run).shuffle(ids)
+    return ids
+
+
+def jaccard(a: set[int], b: set[int]) -> float:
+    return len(a & b) / len(a | b) if a | b else 0.0
+
+
+def mark_stability(runs: list[list[dict]], threshold: float = 0.5) -> list[dict]:
+    """Annotate run 1's themes with how many runs contain a matching theme.
+
+    Theme names change between runs, so a match means some theme in that run shares at
+    least `threshold` of its items (Jaccard similarity). Stable = matched in every run.
+    """
+    base, others = runs[0], runs[1:]
+    marked = []
+    for t in base:
+        ids = set(t["item_ids"])
+        present = 1 + sum(any(jaccard(ids, set(o["item_ids"])) >= threshold for o in run) for run in others)
+        marked.append({**t, "runs_present": present, "stable": present == len(runs)})
+    return marked
 
 
 def build_themes(data: Any, items: list[dict]) -> tuple[list[dict], int]:
@@ -178,6 +216,7 @@ def build_themes(data: Any, items: list[dict]) -> tuple[list[dict], int]:
             "count": len(ids),
             "complaints": kinds.count("complaint"),
             "wishes": kinds.count("wish"),
+            "item_ids": ids,
         })
     themes.sort(key=lambda t: t["count"], reverse=True)
     return themes, len(items) - len(assigned)
@@ -197,13 +236,24 @@ def render_findings(themes: list[dict], *, unassigned: int, stats: dict[str, Any
         f"- **Extracted:** {stats['complaints']} complaints and {stats['wishes']} wishes "
         f"(Nemotron Nano), clustered into {len(themes)} themes (Nemotron Ultra)",
         f"- **Not assigned to any theme:** {unassigned}",
+    ]
+    runs = stats.get("runs", 1)
+    if runs > 1:
+        lines.append(
+            f"- **Stability:** clustered {runs} times, with the items in a different order each run. "
+            "A theme is **stable** if every run has a theme sharing at least half its items."
+        )
+    stable_head, stable_rule = (" Stable |", "---|") if runs > 1 else ("", "")
+    lines += [
         "",
-        "| # | Theme | Mentions | Complaints | Wishes | Summary |",
-        "|---|---|---|---|---|---|",
+        f"| # | Theme | Mentions | Complaints | Wishes |{stable_head} Summary |",
+        f"|---|---|---|---|---|{stable_rule}---|",
     ]
     for n, t in enumerate(themes, 1):
+        stable = f" {'yes' if t['stable'] else 'no'} ({t['runs_present']}/{runs}) |" if runs > 1 else ""
         lines.append(
-            f"| {n} | {cell(t['name'])} | {t['count']} | {t['complaints']} | {t['wishes']} | {cell(t['summary'])} |"
+            f"| {n} | {cell(t['name'])} | {t['count']} | {t['complaints']} | {t['wishes']} |"
+            f"{stable} {cell(t['summary'])} |"
         )
     lines += ["", "## Queries", ""] + [f"- {q}" for q in stats["query_list"]] + [""]
     return "\n".join(lines)
@@ -224,7 +274,11 @@ def main() -> int:
     parser.add_argument("--out", type=Path, default=ROOT / "research" / "findings.md")
     parser.add_argument("--no-thinking", action="store_true",
                         help="turn Nano reasoning off for extraction (~14x fewer output tokens, coarser items)")
+    parser.add_argument("--runs", type=int, default=1,
+                        help="cluster N times (items reordered each run) and mark themes found in every run as stable")
     args = parser.parse_args()
+    if args.runs < 1:
+        parser.error("--runs must be at least 1")
 
     try:
         settings = load_settings(ROOT / ".env")
@@ -249,12 +303,22 @@ def main() -> int:
             print("No items extracted; nothing to cluster.", file=sys.stderr)
             return 1
 
-        print(f"[3/4] Clustering {len(items)} items into themes with Ultra...")
-        (themes, unassigned), raw_themes = cluster_themes(router, items)
-        save_json(run_dir / "themes_raw.json", raw_themes)
-        if not themes:
-            print("Ultra returned no usable themes. Raw output saved in " + str(run_dir), file=sys.stderr)
-            return 1
+        print(f"[3/4] Clustering {len(items)} items into themes with Ultra ({args.runs} run(s))...")
+        all_runs = []
+        for run in range(1, args.runs + 1):
+            purpose = "research:cluster" if run == 1 else f"research:cluster:run{run}"
+            (run_themes, run_unassigned), raw = cluster_themes(router, items, shuffled_order(len(items), run), purpose)
+            save_json(run_dir / ("themes_raw.json" if run == 1 else f"themes_raw_run{run}.json"), raw)
+            if not run_themes:
+                print(f"Ultra returned no usable themes in run {run}. Raw output saved in {run_dir}", file=sys.stderr)
+                return 1
+            if run == 1:
+                themes, unassigned = run_themes, run_unassigned
+            all_runs.append(run_themes)
+            if args.runs > 1:
+                print(f"  run {run}: {len(run_themes)} themes")
+        if args.runs > 1:
+            themes = mark_stability(all_runs)
 
         print(f"[4/4] Writing {args.out}...")
         stats = {
@@ -264,6 +328,7 @@ def main() -> int:
             "results": len(results),
             "complaints": sum(1 for i in items if i["kind"] == "complaint"),
             "wishes": sum(1 for i in items if i["kind"] == "wish"),
+            "runs": args.runs,
         }
         args.out.write_text(render_findings(themes, unassigned=unassigned, stats=stats), encoding="utf-8")
     except (ConfigError, LLMError, SearchError) as e:
@@ -275,7 +340,8 @@ def main() -> int:
 
     print("\nThemes:")
     for t in themes:
-        print(f"  {t['count']:>4}  {t['name']}")
+        mark = f"  [{'stable' if t['stable'] else 'unstable'} {t['runs_present']}/{args.runs}]" if args.runs > 1 else ""
+        print(f"  {t['count']:>4}  {t['name']}{mark}")
     if failed:
         print(f"\nWARNING: {failed} extraction batch(es) failed and were skipped.")
 

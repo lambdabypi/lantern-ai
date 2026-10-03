@@ -45,6 +45,32 @@ def test_findings_contain_no_urls_or_item_text():
     assert "u1" not in md and "Forgets context" not in md
 
 
+def test_shuffled_order_keeps_run1_and_is_reproducible():
+    assert rs.shuffled_order(5, 1) == [1, 2, 3, 4, 5]
+    assert sorted(rs.shuffled_order(50, 2)) == list(range(1, 51))
+    assert rs.shuffled_order(50, 2) == rs.shuffled_order(50, 2) != rs.shuffled_order(50, 3)
+
+
+def test_mark_stability_matches_by_items_not_names():
+    run1 = [{"name": "Memory", "item_ids": [1, 2, 3, 4]}, {"name": "Cost", "item_ids": [5, 6]}]
+    run2 = [{"name": "Recall problems", "item_ids": [1, 2, 3]}, {"name": "Misc", "item_ids": [5, 7, 8, 9]}]
+    run3 = [{"name": "Context", "item_ids": [2, 3, 4]}, {"name": "Pricing", "item_ids": [5, 6, 7]}]
+    marked = rs.mark_stability([run1, run2, run3])
+    assert [(t["name"], t["runs_present"], t["stable"]) for t in marked] == [
+        ("Memory", 3, True),
+        ("Cost", 2, False),  # run 2's best overlap is 1/5 < 0.5
+    ]
+
+
+def test_findings_show_stable_column_only_for_multiple_runs():
+    themes = [{"name": "Memory", "summary": "s", "count": 3, "complaints": 2, "wishes": 1,
+               "item_ids": [1, 2, 3], "stable": True, "runs_present": 3}]
+    stats = {"date": "d", "queries": 1, "query_list": ["q"], "results": 3, "complaints": 2, "wishes": 1}
+    assert "Stable" not in rs.render_findings(themes, unassigned=0, stats=stats)
+    md = rs.render_findings(themes, unassigned=0, stats={**stats, "runs": 3})
+    assert "| 1 | Memory | 3 | 2 | 1 | yes (3/3) | s |" in md
+
+
 class ScriptedOpenAI:
     """Returns replies in order: Nano extraction batches, then the Ultra clustering call."""
 
@@ -81,3 +107,17 @@ def test_extract_then_cluster_uses_nano_then_ultra(settings):
     (themes, unassigned), _ = rs.cluster_themes(router, items)
     assert themes[0]["count"] == 2 and unassigned == 0
     assert fake.models == ["nano-test", "nano-test", "nano-test", "ultra-test"]
+
+
+def test_cluster_order_changes_listing_but_not_ids(settings):
+    fake = ScriptedOpenAI([json.dumps({"themes": [{"name": "Memory", "summary": "s", "item_ids": [2]}]})])
+    fake.prompts = []
+    original = fake._create
+    fake.chat.completions.create = lambda **kw: (fake.prompts.append(kw["messages"][1]["content"]), original(**kw))[1]
+    router = ModelRouter(settings, client=TokenFactoryClient(settings, openai_client=fake))
+
+    (themes, _), _ = rs.cluster_themes(router, ITEMS, order=[3, 1, 2])
+    assert fake.prompts[0].splitlines()[1:] == [
+        "3. (complaint) Shares data", "1. (complaint) Forgets context", "2. (wish) Editable memory",
+    ]
+    assert themes[0]["item_ids"] == [2] and themes[0]["wishes"] == 1
