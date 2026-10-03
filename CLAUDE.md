@@ -100,6 +100,8 @@ MODEL_REASONING=               # Nemotron Ultra model ID
 TAVILY_API_KEY=
 APP_SECRET_KEY=
 DATA_DIR=./data
+CACHE_ENABLED=true             # dev cache for identical LLM and Tavily calls
+CACHE_DIR=./.cache
 ```
 
 ## Design principles
@@ -163,4 +165,5 @@ Credits are limited: about $125 of Nebius Cloud, plus Token Factory credits, 9,0
 | Date | Decision |
 |---|---|
 | 2 Oct 2026 | Stack: Python/FastAPI, file-based memory, Token Factory via an OpenAI-compatible client |
+| 3 Oct 2026 | Identical LLM and Tavily calls are cached on disk in `.cache/` (gitignored, toggle with `CACHE_ENABLED`). LLM usage log lives at `data/logs/llm_usage.jsonl` until per-user logs exist. `openai` SDK is v3.x |
 | 3 Oct 2026 | *(idea lock: skills 1–3 go here)* |

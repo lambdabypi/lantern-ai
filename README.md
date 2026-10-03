@@ -23,6 +23,12 @@ Check the Token Factory connection:
 python scripts/smoke_llm.py
 ```
 
+Run the research sprint (Tavily search → Nano extraction → Ultra clustering → `research/findings.md`):
+
+```bash
+python scripts/research_sprint.py
+```
+
 Run the tests:
 
 ```bash
