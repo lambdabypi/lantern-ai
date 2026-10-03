@@ -12,6 +12,7 @@ Identical searches and LLM calls are cached in .cache/, so re-running is free.
 Usage:
     python scripts/research_sprint.py
     python scripts/research_sprint.py --max-results 5 --batch-size 6
+    python scripts/research_sprint.py --no-thinking   # cheaper, faster Nano extraction
 """
 
 from __future__ import annotations
@@ -77,9 +78,17 @@ def run_searches(search: WebSearch, queries: list[str], max_results: int) -> lis
     return results
 
 
-def ask_json(router: ModelRouter, messages: list[dict[str, str]], tier: Tier, purpose: str, max_tokens: int) -> Any:
+def ask_json(
+    router: ModelRouter,
+    messages: list[dict[str, str]],
+    tier: Tier,
+    purpose: str,
+    max_tokens: int,
+    thinking: bool | None = None,
+) -> Any:
     """Call the model and parse JSON from the reply, retrying once if it isn't valid."""
-    r = router.complete(messages, tier, purpose=purpose, temperature=0, max_tokens=max_tokens)
+    opts = {"temperature": 0, "max_tokens": max_tokens, "thinking": thinking}
+    r = router.complete(messages, tier, purpose=purpose, **opts)
     try:
         return extract_json(r.text)
     except ValueError:
@@ -87,11 +96,13 @@ def ask_json(router: ModelRouter, messages: list[dict[str, str]], tier: Tier, pu
             {"role": "assistant", "content": r.text[-2000:]},
             {"role": "user", "content": "That was not valid JSON. Reply with only the JSON object, nothing else."},
         ]
-        r = router.complete(retry, tier, purpose=purpose + ":retry", temperature=0, max_tokens=max_tokens)
+        r = router.complete(retry, tier, purpose=purpose + ":retry", **opts)
         return extract_json(r.text)
 
 
-def extract_items(router: ModelRouter, results: list[dict[str, Any]], batch_size: int) -> tuple[list[dict], int]:
+def extract_items(
+    router: ModelRouter, results: list[dict[str, Any]], batch_size: int, thinking: bool | None = None
+) -> tuple[list[dict], int]:
     """Nano pass: pull complaints and wishes out of results. Returns (items, failed_batches)."""
     items: list[dict] = []
     failed = 0
@@ -105,7 +116,7 @@ def extract_items(router: ModelRouter, results: list[dict[str, Any]], batch_size
             {"role": "user", "content": f"Search results:\n\n{snippets}"},
         ]
         try:
-            data = ask_json(router, messages, Tier.FAST, "research:extract", max_tokens=4096)
+            data = ask_json(router, messages, Tier.FAST, "research:extract", max_tokens=4096, thinking=thinking)
         except (ValueError, LLMError) as e:
             failed += 1
             print(f"  WARNING: batch {n}/{len(batches)} skipped: {e}", file=sys.stderr)
@@ -211,6 +222,8 @@ def main() -> int:
     parser.add_argument("--max-results", type=int, default=10, help="results per search (credit cost is the same)")
     parser.add_argument("--batch-size", type=int, default=8, help="search results per Nano call")
     parser.add_argument("--out", type=Path, default=ROOT / "research" / "findings.md")
+    parser.add_argument("--no-thinking", action="store_true",
+                        help="turn Nano reasoning off for extraction (~14x fewer output tokens, coarser items)")
     args = parser.parse_args()
 
     try:
@@ -230,7 +243,7 @@ def main() -> int:
         save_json(run_dir / "search_results.json", results)
 
         print(f"[2/4] Extracting complaints and wishes from {len(results)} results with Nano...")
-        items, failed = extract_items(router, results, args.batch_size)
+        items, failed = extract_items(router, results, args.batch_size, thinking=False if args.no_thinking else None)
         save_json(run_dir / "items.json", items)
         if not items:
             print("No items extracted; nothing to cluster.", file=sys.stderr)

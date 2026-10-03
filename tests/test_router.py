@@ -43,6 +43,19 @@ def test_every_call_is_logged_with_model_and_tokens(settings, fake_openai):
     assert entries[0]["prompt_tokens"] == 10 and entries[0]["completion_tokens"] == 2
 
 
+def test_thinking_off_sets_chat_template_kwargs_and_is_logged(settings, fake_openai):
+    router = make_router(settings, fake_openai)
+    router.complete(MSGS, thinking=False, extra_body={"chat_template_kwargs": {"x": 1}, "y": 2})
+    assert fake_openai.calls[0]["extra_body"] == {"chat_template_kwargs": {"x": 1, "enable_thinking": False}, "y": 2}
+    entry = json.loads((settings.data_dir / "logs" / "llm_usage.jsonl").read_text().splitlines()[0])
+    assert entry["thinking"] == "off"
+
+
+def test_thinking_default_sends_no_extra_body(settings, fake_openai):
+    make_router(settings, fake_openai).complete(MSGS)
+    assert "extra_body" not in fake_openai.calls[0]
+
+
 def test_usage_summary_excludes_cached_tokens(settings, fake_openai):
     router = make_router(settings, fake_openai)
     router.complete(MSGS)
