@@ -141,7 +141,7 @@ Threat model: skills can be written by anyone, web pages and emails the agent re
 
 **Secrets never enter a sandbox.** If sandboxed code needs an API (LLM, Tavily, email), it asks the broker, which makes the call with the core's credentials.
 
-Backends sit behind `app/sandbox/base.py`: `local` (subprocess, dev/tests only, not a security boundary) and `daytona`. **NVIDIA OpenShell** (a suggested tool for this track: kernel-level filesystem, network and syscall policy) gets evaluated on Day 7–8 as a backend or as the outer runtime for the whole app on a Nebius VM. It needs privileged Docker, so it can't run inside a Daytona sandbox. Don't integrate it until we've read its real docs.
+Backends sit behind `app/sandbox/base.py`: `local` (subprocess, dev/tests only, not a security boundary) and `daytona`. **NVIDIA OpenShell** (a suggested tool for this track: kernel-level filesystem, network and syscall policy) is a candidate third backend, to trial on a Nebius Ubuntu 24.04 VM. Per its official docs it needs Linux kernel ≥ 6.2 and Docker ≥ 28 (or Podman 5); Windows works only through experimental WSL 2; running it inside Daytona is undocumented. Its Python SDK is `openshell` (gRPC to a gateway). The `nvidia_agent_toolkit` SDK mentioned in a third-party blog does not exist. See `docs/track-tools-evaluation.md`. The core must never depend on OpenShell.
 
 `skill.yaml` permissions shape (draft):
 ```yaml
@@ -210,4 +210,8 @@ Credits are limited: about $125 of Nebius Cloud, plus Token Factory credits, 9,0
 | 2 Oct 2026 | Stack: Python/FastAPI, file-based memory, Token Factory via an OpenAI-compatible client |
 | 3 Oct 2026 | Identical LLM and Tavily calls are cached on disk in `.cache/` (gitignored, toggle with `CACHE_ENABLED`). LLM usage log lives at `data/logs/llm_usage.jsonl` until per-user logs exist. `openai` SDK is v3.x |
 | 3 Oct 2026 | Isolation is three layers: an in-process permission broker (default-deny, read/write split, audit log) → per-user path scoping → an execution sandbox only for running code. Daytona is the first sandbox backend; memory and secrets never enter it. OpenShell gets evaluated on Day 7–8 |
-| 3 Oct 2026 | *(idea lock: skills 1–3 go here)* |
+| 3 Oct 2026 | Track confirmed as Personal AI, backed by the research findings (memory, privacy/data control, and portability are the top themes) |
+| 3 Oct 2026 | Positioning is "open, inspectable, user-owned" compared with big tech assistants like Meta's Muse. Never claim to be "more private" than a named competitor. No third-party logos or screenshots in the demo video or README |
+| 3 Oct 2026 | Nemotron reasoning is switchable per call via `chat_template_kwargs.enable_thinking` (on/off only; `reasoning_budget` and `reasoning_effort` had no reliable effect on Token Factory). Router: `complete(..., thinking=False)`. One extraction batch: 7,257 → 507 output tokens, 36.7 s → 3.1 s, coarser items. Use thinking off for simple calls |
+| 3 Oct 2026 | Track tools evaluated (`docs/track-tools-evaluation.md`): keep our own agent loop; skip NemoClaw and Hermes as dependencies, but borrow Hermes formats (agentskills.io-compatible `SKILL.md` front matter, memory tool actions add/replace/remove); OpenShell is a "maybe" sandbox backend; skip Serverless Jobs (keep APScheduler) |
+| 3 Oct 2026 | Skills 1–3: still pending until the form closes Sunday evening |
