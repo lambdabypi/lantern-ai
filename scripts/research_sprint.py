@@ -137,7 +137,8 @@ def cluster_themes(router: ModelRouter, items: list[dict]) -> tuple[tuple[list[d
         {"role": "system", "content": CLUSTER_SYSTEM},
         {"role": "user", "content": f"Items:\n{listing}"},
     ]
-    data = ask_json(router, messages, Tier.REASONING, "research:cluster", max_tokens=8192)
+    # Ultra reasons before answering; 8192 was exhausted on 113 items, so leave headroom.
+    data = ask_json(router, messages, Tier.REASONING, "research:cluster", max_tokens=20000)
     return build_themes(data, items), data
 
 
