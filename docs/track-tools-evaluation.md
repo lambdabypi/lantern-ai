@@ -56,6 +56,24 @@ These are the tools suggested for the Personal AI track, each checked against it
   - `4vcpu-16gb` ≈ $177, which is over budget.
   - It's unconfirmed whether endpoints accept `2vcpu-8gb`.
 
+## Daytona as the demo host (checked 3 Oct 2026)
+
+**Verdict:** it's only viable on **Tier 3+**, and we don't know whether our credits reach that tier. **The Nebius VM stays the primary host.**
+
+- **Lifecycle:** auto-stop `0` keeps a sandbox running indefinitely. Auto-delete is off unless set, and no maximum lifetime is documented. Traffic through preview URLs resets the inactivity timer. It is **not documented** whether a request wakes a stopped sandbox, so one stop could take the demo offline.
+- **Public URL:** `https://{port}-{sandboxId}.{proxyDomain}`. It's reachable without auth when the sandbox is `public`. Signed URLs expire after at most 24 h. **Browsers see a warning page on first visit** unless we're on Tier 3, send a special header, or self-host a preview proxy, which a custom domain also requires.
+- **Storage:** the filesystem survives stop and archive. Volumes are S3-backed FUSE mounts, persistent but slow.
+- **Network:** **Tiers 1–2 restrict egress to an "essential services" allowlist that doesn't include Token Factory or Tavily.** Tier 3+ has full internet access. Tier 3 needs a $500 top-up, and it's undocumented whether the $2,000 credits count.
+- **Cost:**
+  - 1 vCPU / 1 GiB running 24/7 for 1,344 h ≈ **$90**.
+  - 2 vCPU / 4 GiB ≈ **$223**.
+  - Both fit within the credits.
+- **Terms:** nothing prohibits public web hosting.
+- **This also affects the sandbox backend (step 8b):** on Tiers 1–2, skill code in a Daytona sandbox can't reach arbitrary APIs. That's fine for our default-no-network rule, but skills that declare network domains would need Tier 3 or the OpenShell backend.
+- **To do:** ask Daytona support whether the credits count toward Tier 3.
+
+Sources: [sandboxes](https://www.daytona.io/docs/en/sandboxes/) · [preview](https://www.daytona.io/docs/en/preview/) · [network limits](https://www.daytona.io/docs/en/network-limits/) · [volumes](https://www.daytona.io/docs/en/volumes/) · [limits](https://www.daytona.io/docs/en/limits/) · [billing](https://www.daytona.io/docs/en/billing/) · [pricing](https://www.daytona.io/pricing)
+
 ## Recommended architecture for build step 4
 
 1. **Keep our own agent loop** (`app/agent/loop.py`) in-process in FastAPI, using OpenAI-style tool calling through the router.
