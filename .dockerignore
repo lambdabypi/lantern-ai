@@ -1,0 +1,12 @@
+.env
+.env.*
+data/
+research/raw/
+.cache/
+.venv/
+venv/
+.git/
+__pycache__/
+*.pyc
+.pytest_cache/
+docs/
