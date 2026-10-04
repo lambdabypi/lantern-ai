@@ -12,6 +12,6 @@ RUN pip install .
 
 COPY scripts ./scripts
 
-# Placeholder until the web app exists: verify the Token Factory connection.
-# Pass secrets at runtime: docker run --env-file .env personal-ai
-CMD ["python", "scripts/smoke_llm.py"]
+# Pass secrets at runtime: docker run --env-file .env -p 8000:8000 personal-ai
+EXPOSE 8000
+CMD ["uvicorn", "app.main:create_app", "--factory", "--host", "0.0.0.0", "--port", "8000"]

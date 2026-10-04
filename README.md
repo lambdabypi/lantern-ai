@@ -23,17 +23,41 @@ Check the Token Factory connection:
 python scripts/smoke_llm.py
 ```
 
+Run the app, then open http://127.0.0.1:8000:
+
+```bash
+uvicorn app.main:create_app --factory --reload
+# or: docker build -t personal-ai . && docker run --env-file .env -p 8000:8000 personal-ai
+```
+
+Check that native tool calling works on your models:
+
+```bash
+python scripts/smoke_tools.py
+```
+
 Run the research sprint (Tavily search → Nano extraction → Ultra clustering → `research/findings.md`):
 
 ```bash
 python scripts/research_sprint.py
 ```
 
-Run the tests:
+Run the tests (mocked, no tokens spent). The live test is opt-in:
 
 ```bash
 pytest
+RUN_LIVE_TESTS=1 pytest tests/test_live.py
 ```
+
+## How the agent works
+
+Each message runs a loop: Nemotron Nano picks tools via native tool calling, every tool call goes through a single `ToolRegistry` checkpoint, and results go back to the model until it answers.
+
+- **Guardrails:** at most 6 tool calls and 40k tokens per message, plus a timeout on every tool. When a limit is hit, you get a clear message instead of a silent failure.
+- **Confirmation:** tools that would act on your behalf are flagged `requires_confirmation` and refused until the confirmation UI exists.
+- **Audit log:** every tool call is logged to `data/users/<id>/logs/audit.jsonl` with secrets redacted and result sizes only.
+- **Starter tools:** `calculator` (the model never does arithmetic itself) and `web_search` (Tavily, basic depth).
+- **Think harder:** sends the turn to Nemotron Ultra instead.
 
 ## How we use NVIDIA Nemotron and Nebius Token Factory
 
