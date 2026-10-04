@@ -37,6 +37,8 @@ class TokenFactoryClient:
         self._client = openai_client or OpenAI(
             base_url=settings.token_factory_base_url,
             api_key=settings.token_factory_api_key,
+            timeout=120.0,  # the SDK default is 10 minutes; Ultra with long reasoning takes ~20-40 s
+            max_retries=2,
         )
         self._cache = DiskCache(settings.cache_dir, "llm", enabled=settings.cache_enabled)
 
@@ -65,6 +67,8 @@ class TokenFactoryClient:
             raise LLMError(f"Token Factory doesn't know model '{model}'. Check the ID in the console.") from e
         except openai.RateLimitError as e:
             raise LLMError("Token Factory rate limit or quota hit. Wait a moment or check your credits.") from e
+        except openai.APITimeoutError as e:
+            raise LLMError(f"Token Factory didn't answer in time (model '{model}').") from e
         except openai.APIConnectionError as e:
             raise LLMError(f"Couldn't reach Token Factory at {self.base_url}.") from e
         except openai.APIError as e:
