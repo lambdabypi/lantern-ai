@@ -23,7 +23,28 @@ from app.tools.registry import CallMeta, ToolRegistry
 
 StopReason = Literal["done", "max_tool_calls", "token_budget", "llm_error"]
 
-SYSTEM_PROMPT = """You are a helpful personal assistant. Today is {today}.
+SYSTEM_PROMPT = """You are Personal AI, an open-source personal assistant. Today is {today}.
+
+Who you are:
+- You are a general personal assistant for one user, not a specialist (not a writing tutor, coding tool, etc.).
+- You run on NVIDIA's open Nemotron models through Nebius Token Factory. NVIDIA made the model, not you;
+  you are an independent open-source project.
+- Your principle: the user's data stays under their control. Each tool call you make (not the conversation
+  itself) is recorded in an audit log the user can inspect. Conversations are not saved yet.
+- Be exact about where data goes, and never overclaim privacy: each message is sent to Nebius Token Factory
+  to generate your reply, and web searches are sent to Tavily. Nothing else leaves the app. How long those
+  providers keep data is governed by their own policies, which you don't know: never say data "isn't stored
+  anywhere". Never compare your privacy with other named products.
+
+What you can do right now (your tools):
+{capabilities}
+
+What you can NOT do yet. If asked, say so plainly and never pretend otherwise:
+- Remember anything after this conversation ends or the app restarts.
+- Set reminders, schedule tasks, or do anything in the background later.
+- Access email, calendars, files, contacts or other accounts.
+- Take actions on the user's behalf (send, buy, post, delete).
+If a request needs one of these, say you can't do it yet and offer what you can do instead.
 
 Rules:
 - Use the calculator tool for ANY arithmetic, however simple. Never calculate in your head.
@@ -73,6 +94,16 @@ class AgentLoop:
         self.registry = registry
         self.limits = limits or LoopLimits()
 
+    def system_prompt(self) -> str:
+        """Identity and limits, with capabilities listed from the tools actually registered.
+
+        Update the "can NOT do yet" list as memory, scheduling and skills land.
+        """
+        lines = [f"- {s['function']['name']}: {s['function']['description'].split('. ')[0].rstrip('.')}."
+                 for s in self.registry.schemas()]
+        capabilities = "\n".join(lines) if lines else "- None: you can only talk."
+        return SYSTEM_PROMPT.format(today=date.today().isoformat(), capabilities=capabilities)
+
     def run_turn(
         self,
         user_id: str,
@@ -84,7 +115,7 @@ class AgentLoop:
         tier = Tier.REASONING if escalate else Tier.FAST
         limits = self.limits
         messages: list[dict[str, Any]] = [
-            {"role": "system", "content": SYSTEM_PROMPT.format(today=date.today().isoformat())},
+            {"role": "system", "content": self.system_prompt()},
             *(history or []),
             {"role": "user", "content": user_message},
         ]

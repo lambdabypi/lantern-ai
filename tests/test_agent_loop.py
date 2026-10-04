@@ -49,6 +49,22 @@ def test_full_turn_question_tool_result_answer(settings):
            ("calculator", "ok", "nano-test", "fast", "default")
 
 
+def test_system_prompt_states_identity_tools_and_limits(settings):
+    loop, llm = make_loop(settings, ["Hi."])
+    loop.run_turn("demo", "who are you?")
+    prompt = llm.calls[0]["messages"][0]["content"]
+    assert "Personal AI" in prompt and "not a writing tutor" in prompt
+    assert "- calculator: Evaluate an arithmetic expression exactly." in prompt
+    assert "- web_search:" in prompt
+    assert "Remember anything after this conversation ends" in prompt
+
+
+def test_system_prompt_without_tools(settings):
+    loop = AgentLoop(ModelRouter(settings, client=TokenFactoryClient(settings, openai_client=ScriptedLLM([]))),
+                     ToolRegistry(settings.data_dir, []))
+    assert "- None: you can only talk." in loop.system_prompt()
+
+
 def test_escalate_uses_ultra(settings):
     loop, llm = make_loop(settings, ["Planned."])
     turn = loop.run_turn("demo", "Plan my week", escalate=True)
