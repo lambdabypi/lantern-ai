@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import time
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from typing import Any
 
 import openai
@@ -25,6 +25,9 @@ class ChatResult:
     completion_tokens: int
     latency_ms: int
     cached: bool = False
+    # OpenAI-style tool calls requested by the model: [{"id", "name", "arguments" (JSON string)}]
+    tool_calls: list[dict[str, str]] = field(default_factory=list)
+    finish_reason: str = ""
 
 
 class TokenFactoryClient:
@@ -71,12 +74,19 @@ class TokenFactoryClient:
         if not resp.choices:
             raise LLMError(f"Token Factory returned no choices for model '{model}'.")
         usage = resp.usage
+        choice = resp.choices[0]
+        message = choice.message
         result = ChatResult(
-            text=resp.choices[0].message.content or "",
+            text=message.content or "",
             model=resp.model or model,
             prompt_tokens=getattr(usage, "prompt_tokens", 0) or 0,
             completion_tokens=getattr(usage, "completion_tokens", 0) or 0,
             latency_ms=latency_ms,
+            tool_calls=[
+                {"id": c.id, "name": c.function.name, "arguments": c.function.arguments or ""}
+                for c in (getattr(message, "tool_calls", None) or [])
+            ],
+            finish_reason=getattr(choice, "finish_reason", "") or "",
         )
         if use_cache:
             self._cache.set(key, {k: v for k, v in asdict(result).items() if k != "cached"})

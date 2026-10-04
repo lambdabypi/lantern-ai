@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -45,3 +46,43 @@ class FakeOpenAI:
 @pytest.fixture
 def fake_openai() -> FakeOpenAI:
     return FakeOpenAI()
+
+
+def tool_call(name: str, arguments: str | dict, call_id: str = "call_1") -> dict:
+    """Build one scripted tool call for ScriptedLLM."""
+    args = arguments if isinstance(arguments, str) else json.dumps(arguments)
+    return {"id": call_id, "name": name, "arguments": args}
+
+
+class ScriptedLLM:
+    """Stands in for openai.OpenAI, returning scripted replies in order (no tokens spent).
+
+    Each reply is either a string (final answer) or a list of tool calls from tool_call().
+    """
+
+    def __init__(self, replies: list, prompt_tokens: int = 100, completion_tokens: int = 20):
+        self.replies = list(replies)
+        self.calls: list[dict] = []
+        self.prompt_tokens = prompt_tokens
+        self.completion_tokens = completion_tokens
+        self.chat = SimpleNamespace(completions=SimpleNamespace(create=self._create))
+
+    def _create(self, **kwargs):
+        self.calls.append(kwargs)
+        if not self.replies:
+            raise AssertionError("ScriptedLLM ran out of replies")
+        reply = self.replies.pop(0)
+        if isinstance(reply, str):
+            message, finish = SimpleNamespace(content=reply, tool_calls=None), "stop"
+        else:
+            calls = [
+                SimpleNamespace(id=c["id"], type="function",
+                                function=SimpleNamespace(name=c["name"], arguments=c["arguments"]))
+                for c in reply
+            ]
+            message, finish = SimpleNamespace(content="", tool_calls=calls), "tool_calls"
+        return SimpleNamespace(
+            model=kwargs["model"],
+            choices=[SimpleNamespace(message=message, finish_reason=finish)],
+            usage=SimpleNamespace(prompt_tokens=self.prompt_tokens, completion_tokens=self.completion_tokens),
+        )

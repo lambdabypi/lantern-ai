@@ -84,6 +84,7 @@ class ModelRouter:
             "completion_tokens": r.completion_tokens,
             "latency_ms": r.latency_ms,
             "cached": r.cached,
+            "tool_calls": len(r.tool_calls),
         }
         self.usage_log.parent.mkdir(parents=True, exist_ok=True)
         with self.usage_log.open("a", encoding="utf-8") as f:

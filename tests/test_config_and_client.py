@@ -52,6 +52,19 @@ def test_cache_can_be_bypassed(settings, fake_openai):
     assert len(fake_openai.calls) == 2
 
 
+def test_chat_returns_tool_calls_and_caches_them(settings):
+    from tests.conftest import ScriptedLLM, tool_call
+
+    fake = ScriptedLLM([[tool_call("calculator", {"expression": "12*7"})]])
+    client = TokenFactoryClient(settings, openai_client=fake)
+    msgs = [{"role": "user", "content": "12*7?"}]
+    r = client.chat("nano-test", msgs, tools=[{"type": "function"}])
+    assert r.finish_reason == "tool_calls"
+    assert r.tool_calls == [{"id": "call_1", "name": "calculator", "arguments": '{"expression": "12*7"}'}]
+    again = client.chat("nano-test", msgs, tools=[{"type": "function"}])  # served from cache
+    assert again.cached and again.tool_calls == r.tool_calls
+
+
 def test_empty_model_fails_visibly(settings, fake_openai):
     client = TokenFactoryClient(settings, openai_client=fake_openai)
     with pytest.raises(LLMError, match="MODEL_FAST"):
