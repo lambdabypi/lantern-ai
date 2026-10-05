@@ -28,6 +28,18 @@ class Settings:
     data_dir: Path
     cache_enabled: bool
     cache_dir: Path
+    cookie_secure: bool = False      # true behind HTTPS in production
+    guest_ttl_days: int = 7          # guest accounts and their data are deleted after this
+    guest_ultra_per_day: int = 10    # "Think harder" (Ultra) turns per guest per day
+
+    def require_secret_key(self) -> None:
+        """The session-signing key must be set and long enough to resist guessing."""
+        self.require("app_secret_key")
+        if len(self.app_secret_key) < 32:
+            raise ConfigError(
+                "APP_SECRET_KEY must be at least 32 characters. Generate one with: "
+                "python -c \"import secrets; print(secrets.token_urlsafe(48))\""
+            )
 
     def require(self, *names: str) -> None:
         """Raise a ConfigError naming every env var in `names` that is empty.
@@ -65,4 +77,17 @@ def load_settings(env_file: str | Path | None = ".env") -> Settings:
         data_dir=Path(get("DATA_DIR", "./data")),
         cache_enabled=_as_bool(get("CACHE_ENABLED", "true")),
         cache_dir=Path(get("CACHE_DIR", "./.cache")),
+        cookie_secure=_as_bool(get("COOKIE_SECURE", "false")),
+        guest_ttl_days=_as_int("GUEST_TTL_DAYS", get("GUEST_TTL_DAYS", "7")),
+        guest_ultra_per_day=_as_int("GUEST_ULTRA_PER_DAY", get("GUEST_ULTRA_PER_DAY", "10")),
     )
+
+
+def _as_int(name: str, value: str) -> int:
+    try:
+        number = int(value)
+    except ValueError:
+        raise ConfigError(f"{name} must be a whole number, got {value!r}.") from None
+    if number < 0:
+        raise ConfigError(f"{name} must not be negative.")
+    return number
