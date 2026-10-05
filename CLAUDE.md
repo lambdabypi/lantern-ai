@@ -19,9 +19,11 @@ The developer (Shreyas) is user #1. The project is open source and built in publ
 
 ## Companion (mascot)
 
-Two front ends share one mascot, built once in HTML/CSS/JS:
-- **Web**, at the hosted demo URL judges use: the mascot lives in the web app and reacts to what you do *in that page*.
-- **Desktop** (Windows first): a transparent, always-on-top window running the same mascot, plus local sensors. Phones are out of scope beyond a phone-sized web layout.
+Two front ends share the same **artwork (layered SVG) and state definitions**, each with its own small renderer:
+- **Web**, at the hosted demo URL judges use: rendered with SVG and CSS in the web app. It reacts to what you do *in that page*.
+- **Desktop** (Windows first): rendered with **PySide6 (Qt)** in a frameless, always-on-top, per-pixel-transparent window that never takes focus (`WA_TranslucentBackground`, `WindowDoesNotAcceptFocus`, `WA_ShowWithoutActivating`, `Tool`), plus local sensors. Install with `pip install -e ".[desktop]"`; the server and its Docker image never need PySide6. Phones are out of scope beyond a phone-sized web layout.
+- **Why Qt, not pywebview (C0 spike, 5 Oct):** pywebview's WebView2 window couldn't be made transparent on Windows. Its `transparent` flag, colour-keying and `WEBVIEW2_DEFAULT_BACKGROUND_COLOR` all left a grey or black box, and `transparent=True` also steals focus. Qt passed every check: desktop pixels unchanged around the mascot, soft edges blend, focus stays with the user's app.
+- **Sensors (Windows):** `ctypes` only, no extra dependency. `GetForegroundWindow` → process exe name and title; `GetLastInputInfo` → idle seconds. Ignore our own process.
 
 Pipeline: the **local sensor** polls every ~2 s and emits a change event. Then:
 1. **Local filter:** applies the ignore list, pause and quiet hours, and redacts the window title. Nothing leaves the machine if this filter drops the event.
@@ -44,7 +46,14 @@ interruptions: balanced     # off | quiet (≤1/h) | balanced (≤1/15 min) | ch
 helpers: {}                 # helper skill name -> on/off; helpers are ordinary skills with `triggers`
 personality: friendly       # friendly | minimal | playful
 ```
-Mascot states: `idle`, `noticing`, `thinking`, `suggestion`, `talking`, `sleeping` (quiet hours or idle), `paused` (eyes visibly closed, so it's obvious it isn't watching).
+Mascot states: `idle`, `noticing`, `thinking`, `suggestion`, `talking`, `sleeping` (quiet hours or idle), `paused` (paws over its eyes, so it's obvious it isn't watching).
+
+**Mascot: "Glim", the glass droplet** (concept sheet by Shreyas, `Mascot_test.jpg`):
+- **Body:** a translucent teal droplet (`#7FB8A4`, ~70% opacity) with a `#2F5D50` outline and specular highlights.
+- **Core:** amber (`#FFBE5A`) with a glow gradient. It holds a contextual icon slot (globe = browsing, pen = writing).
+- **Parts:** mouth variants and paw "nubbins". A soft ground shadow.
+- **Behaviour:** procedural motion (bob, blink, glow and core swirl) is done in code, so the art supplies parts, not frames.
+- **Never bake text into the art** (e.g. "Quiet Hours"). Labels and speech bubbles belong to the UI.
 
 ## Hackathon context (hard requirements)
 
@@ -212,7 +221,7 @@ Credits are limited: about $125 of Nebius Cloud, plus Token Factory credits, 9,0
 
 **Then, in order (Phase 2 starts Mon 5 Oct):**
 1–4. ✅ Done: skeleton, Token Factory client, router, agent loop with ToolRegistry, audit log, calculator, web_search, chat UI
-- **C0 (5 Oct): desktop window spike.** Confirm a transparent, always-on-top window with an HTML mascot plus the active-app sensor work on Windows. Done in the scratchpad, with no project dependency added until approved.
+- ✅ **C0 (5 Oct): desktop window spike.** pywebview failed (no real transparency); PySide6 passed. PySide6 is added as the optional `desktop` extra.
 
 Target dates assume the 28 Oct submission:
 5. **(6–7 Oct)** Per-user auth and data isolation, plus the isolation test
@@ -221,8 +230,8 @@ Target dates assume the 28 Oct submission:
 8. **(10–12 Oct)** Skill loader and registry, plus the `_template` skill. `skill.yaml` gets `permissions:` and companion `triggers:`
 8a. **(12–13 Oct)** Permission broker, grants and audit log; companion signals become grants; tests proving undeclared and cross-user calls are blocked
 C1. **(13–15 Oct)** `companion.yaml` settings and their UI, `POST /api/context`, rate limiter, suggestion engine, and delivery to the mascot
-C2. **(15–17 Oct)** Mascot UI component with every state, embedded in the web app. Placeholder art until Shreyas's art arrives, **needed by ~16 Oct**
-C3. **(17–20 Oct)** Desktop companion: mascot window, Windows sensors, local filter and redaction, pause/tray
+C2. **(15–17 Oct)** Layered Glim SVG (`app/web/mascot/`) plus the web renderer (SVG and CSS) with every state, embedded in the web app
+C3. **(17–20 Oct)** Desktop companion (`desktop/`): Qt renderer of the same SVG layers, Windows sensors, local filter and redaction, pause and tray
 10. **(18–20 Oct)** Scheduler for background checks
 11. **(20–23 Oct)** Helper skills 1–3, e.g. focus nudges, writing help, and research help (Tavily). Users switch each on or off
 12. **(22–24 Oct)** Deployment of the web demo on a Nebius CPU VM; the desktop companion ships as a download from the repo
@@ -251,3 +260,4 @@ C3. **(17–20 Oct)** Desktop companion: mascot window, Windows sensors, local f
 | 3 Oct 2026 | Skills 1–3: still pending until the form closes Sunday evening |
 | 4 Oct 2026 | The system prompt states the assistant's identity, lists capabilities generated from the registered tools, lists what it can't do yet, and says exactly where data goes. Nano still overclaims privacy about 1 time in 4, so authoritative privacy statements belong in the UI and README, not only in the model's own answers |
 | 5 Oct 2026 | **The product gets an animated mascot companion.** It lives on the desktop (Windows first) and in the web app, which stays the hosted demo for judges. Phones are limited to a phone-sized web layout. v1 signals are active app and window title, idle time, and opt-in clipboard; there are no screenshots. Suggestions are user-controlled: helper skills toggled per user plus the `companion.yaml` settings (signals, ignore list, pause, quiet hours, interruption level, personality). The mascot is built once in HTML/CSS/JS and shared by both front ends. Sandbox backends (8b) become optional to make room. Shreyas draws the mascot from a proposed concept |
+| 5 Oct 2026 | **Desktop companion uses PySide6 (Qt), not pywebview.** The C0 spike showed pywebview can't do real transparency on Windows, while Qt passed every check. PySide6 is the optional `desktop` extra (~200 MB, never in the server image). Web and desktop share the layered SVG art and state definitions, with two small renderers (CSS / Qt), replacing "one HTML mascot reused everywhere". Mascot is **Glim, the glass droplet** (concept sheet received) |

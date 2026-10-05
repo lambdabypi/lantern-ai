@@ -19,6 +19,8 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=8"]
+# Desktop companion only (transparent mascot window). Not needed by the server or its Docker image.
+desktop = ["PySide6-Essentials>=6.7"]
 
 [tool.setuptools.packages.find]
 include = ["app*"]
