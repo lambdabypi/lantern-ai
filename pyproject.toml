@@ -26,7 +26,7 @@ desktop = ["PySide6-Essentials>=6.7"]
 include = ["app*"]
 
 [tool.setuptools.package-data]
-app = ["web/*"]
+app = ["web/*", "web/mascot/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

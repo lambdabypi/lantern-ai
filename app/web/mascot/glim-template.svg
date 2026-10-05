@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Glim: drawing template (256 x 256).
+  Draw each part inside its named layer. Keep the layer ids exactly as they are; the app
+  animates them by id. Delete or hide the "guides" layer before exporting.
+  Rules: no blur/filters (Qt ignores them, so use radial gradients fading to transparent for glows),
+  no text, outline stroke ~6-8 px. Export as Plain SVG (Inkscape) or standard SVG (Figma).
+  Layer order below = stacking order (first is at the back).
+-->
+<svg xmlns="http://www.w3.org/2000/svg"
+     xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+     width="256" height="256" viewBox="0 0 256 256">
+
+  <!-- Ground shadow under the droplet (soft ellipse; gradient to transparent). -->
+  <g id="shadow" inkscape:groupmode="layer" inkscape:label="shadow"></g>
+
+  <!-- Droplet fill: translucent teal #7FB8A4 at ~70% opacity. -->
+  <g id="body" inkscape:groupmode="layer" inkscape:label="body"></g>
+
+  <!-- Amber core #FFBE5A with its glow (radial gradient, no blur). -->
+  <g id="core" inkscape:groupmode="layer" inkscape:label="core"></g>
+
+  <!-- Placeholder square for the contextual icon (globe, pen...). The app swaps the icon in here. -->
+  <g id="core-icon" inkscape:groupmode="layer" inkscape:label="core-icon"></g>
+
+  <!-- Glass shine on the upper-left of the body. -->
+  <g id="highlight" inkscape:groupmode="layer" inkscape:label="highlight"></g>
+
+  <!-- Droplet outline: #2F5D50, stroke ~6-8 px, no fill. -->
+  <g id="outline" inkscape:groupmode="layer" inkscape:label="outline"></g>
+
+  <!-- Face: draw each variant in its own layer; the app shows one eye and one mouth layer at a time. -->
+  <g id="eyes-open" inkscape:groupmode="layer" inkscape:label="eyes-open"></g>
+  <g id="eyes-closed" inkscape:groupmode="layer" inkscape:label="eyes-closed"></g>
+  <g id="mouth-neutral" inkscape:groupmode="layer" inkscape:label="mouth-neutral"></g>
+  <g id="mouth-smile" inkscape:groupmode="layer" inkscape:label="mouth-smile"></g>
+  <g id="mouth-o" inkscape:groupmode="layer" inkscape:label="mouth-o"></g>
+
+  <!-- Optional blush cheeks (suggestion / talking). -->
+  <g id="cheeks" inkscape:groupmode="layer" inkscape:label="cheeks"></g>
+
+  <!-- Paws ("nubbins") covering the eyes for the paused state; drawn in front of the face. -->
+  <g id="paws" inkscape:groupmode="layer" inkscape:label="paws"></g>
+
+  <!-- GUIDES: reference only. Hide or delete before export. -->
+  <g id="guides" inkscape:groupmode="layer" inkscape:label="guides (delete before export)"
+     fill="none" stroke="#c03" stroke-opacity="0.35" stroke-width="1" stroke-dasharray="4 3">
+    <!-- safe area: keep the droplet inside so the bob animation never clips -->
+    <rect x="28" y="16" width="200" height="216"/>
+    <!-- centre lines -->
+    <line x1="128" y1="0" x2="128" y2="256"/>
+    <line x1="0" y1="128" x2="256" y2="128"/>
+    <!-- suggested droplet silhouette: tip at top, round base -->
+    <path d="M128 24 C 128 24, 60 110, 60 152 A 68 68 0 0 0 196 152 C 196 110, 128 24, 128 24 Z"/>
+    <!-- core position and size -->
+    <circle cx="128" cy="160" r="24"/>
+    <!-- eye line and mouth position -->
+    <line x1="92" y1="132" x2="164" y2="132"/>
+    <circle cx="128" cy="184" r="6"/>
+    <!-- shadow position -->
+    <ellipse cx="128" cy="236" rx="56" ry="8"/>
+  </g>
+</svg>
