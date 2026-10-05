@@ -50,6 +50,14 @@ pytest
 RUN_LIVE_TESTS=1 pytest tests/test_live.py
 ```
 
+## Accounts and privacy
+
+- **Try it as a guest:** one click, no sign-up. Each guest gets their own isolated space, deleted automatically after 7 days.
+- **Accounts:** username and password (hashed with scrypt). There's no email address and no tracking.
+- **Isolation:** every user's data lives only in `data/users/<id>/`, and the tests in `tests/test_isolation.py` prove users can't see each other's chats or logs.
+- **Desktop companion:** it signs in with a personal access token you create and can revoke.
+- **Where your data goes:** your messages go to Nebius Token Factory to generate replies, and web searches go to Tavily. Nothing else leaves the app.
+
 ## How the agent works
 
 Each message runs a loop: Nemotron Nano picks tools via native tool calling, every tool call goes through a single `ToolRegistry` checkpoint, and results go back to the model until it answers.

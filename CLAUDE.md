@@ -145,9 +145,12 @@ TOKEN_FACTORY_API_KEY=
 MODEL_FAST=                    # Nemotron Nano model ID
 MODEL_REASONING=               # Nemotron Ultra model ID
 TAVILY_API_KEY=
-APP_SECRET_KEY=
+APP_SECRET_KEY=                # 32+ chars; signs session cookies
+COOKIE_SECURE=false            # true behind HTTPS
+GUEST_TTL_DAYS=7
+GUEST_ULTRA_PER_DAY=10
 DATA_DIR=./data
-CACHE_ENABLED=true             # dev cache for identical LLM and Tavily calls
+CACHE_ENABLED=true             # dev cache for identical LLM and Tavily calls; set false for the hosted demo
 CACHE_DIR=./.cache
 SANDBOX_BACKEND=local          # local (dev only) | daytona
 DAYTONA_API_KEY=
@@ -224,7 +227,7 @@ Credits are limited: about $125 of Nebius Cloud, plus Token Factory credits, 9,0
 - ✅ **C0 (5 Oct): desktop window spike.** pywebview failed (no real transparency); PySide6 passed. PySide6 is added as the optional `desktop` extra.
 
 Target dates assume the 28 Oct submission:
-5. **(6–7 Oct)** Per-user auth and data isolation, plus the isolation test
+5. ✅ **(5 Oct)** Per-user auth and data isolation, plus the isolation tests (`tests/test_isolation.py`)
 6. **(7–9 Oct)** Memory store and the "What I remember about you" page
 7. **(9–10 Oct)** Memory extractor (automatically saves durable facts from chats)
 8. **(10–12 Oct)** Skill loader and registry, plus the `_template` skill. `skill.yaml` gets `permissions:` and companion `triggers:`
@@ -262,3 +265,4 @@ C3. **(17–20 Oct)** Desktop companion (`desktop/`): Qt renderer of the same SV
 | 5 Oct 2026 | **The product gets an animated mascot companion.** It lives on the desktop (Windows first) and in the web app, which stays the hosted demo for judges. Phones are limited to a phone-sized web layout. v1 signals are active app and window title, idle time, and opt-in clipboard; there are no screenshots. Suggestions are user-controlled: helper skills toggled per user plus the `companion.yaml` settings (signals, ignore list, pause, quiet hours, interruption level, personality). The mascot is built once in HTML/CSS/JS and shared by both front ends. Sandbox backends (8b) become optional to make room. Shreyas draws the mascot from a proposed concept |
 | 5 Oct 2026 | **Desktop companion uses PySide6 (Qt), not pywebview.** The C0 spike showed pywebview can't do real transparency on Windows, while Qt passed every check. PySide6 is the optional `desktop` extra (~200 MB, never in the server image). Web and desktop share the layered SVG art and state definitions, with two small renderers (CSS / Qt), replacing "one HTML mascot reused everywhere". Mascot is **Glim, the glass droplet** (concept sheet received) |
 | 5 Oct 2026 | **Mascot art is drawn by Shreyas** in a vector tool, using the Gemini-generated concept only as reference. That gives clear human authorship, so the art is covered by the repo's MIT licence. Provenance is disclosed: "designed by Shreyas, from an AI-generated concept". He draws into `app/web/mascot/glim-template.svg` (named layers, no filters or text) and saves the result as `glim.svg`; `tests/test_mascot_art.py` checks it. The raw Gemini JPG is not committed |
+| 5 Oct 2026 | **Auth (step 5), standard library only.** Accounts live in `data/users/<id>/account.json` (scrypt passwords; username = user id). The browser uses an HMAC-signed HttpOnly SameSite=Lax cookie; the desktop companion uses personal access tokens (`pat_<user>.<secret>`, stored hashed, shown once). Judges use **"Try it as a guest"**: each guest is isolated and their folder is deleted after `GUEST_TTL_DAYS`. Guests get `GUEST_ULTRA_PER_DAY` Ultra turns; registered users are uncapped. Logins are throttled to 5 failures per 10 min. The app won't start without a 32+ char `APP_SECRET_KEY`. Usernames `demo` and `guest-*` are reserved |
