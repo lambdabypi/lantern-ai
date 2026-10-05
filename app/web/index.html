@@ -38,32 +38,139 @@
                 color: var(--accent-text); font: inherit; font-weight: 600; cursor: pointer; }
   button.send:disabled { opacity: .5; cursor: progress; }
   label { font-size: .85rem; color: var(--muted); display: flex; gap: 6px; align-items: center; }
+  [hidden] { display: none !important; }
+  .who { font-size: .85rem; color: var(--muted); display: flex; gap: 12px; align-items: baseline; }
+  .notice { font-size: .85rem; color: var(--muted); background: var(--surface); border: 1px solid var(--border);
+            border-radius: 10px; padding: 8px 12px; margin-bottom: 8px; }
+  #auth { margin: auto 0; display: grid; gap: 16px; max-width: 380px; width: 100%; align-self: center; }
+  #auth h2 { margin: 0; font-size: 1.4rem; }
+  #auth p { margin: 0; color: var(--muted); }
+  #auth input { padding: 12px; border-radius: 10px; border: 1px solid var(--border); background: var(--surface);
+                color: var(--text); font: inherit; width: 100%; }
+  .big { padding: 14px; border: none; border-radius: 12px; background: var(--accent); color: var(--accent-text);
+         font: inherit; font-weight: 600; cursor: pointer; }
+  .ghost { padding: 12px; border-radius: 12px; border: 1px solid var(--border); background: none; color: var(--text);
+           font: inherit; cursor: pointer; }
+  .divider { text-align: center; color: var(--muted); font-size: .85rem; }
+  .error { color: var(--warn); font-size: .9rem; min-height: 1.2em; }
+  #chat { flex: 1; display: flex; flex-direction: column; }
 </style>
 </head>
 <body>
 <main>
   <header>
     <h1>Personal AI</h1>
-    <button type="button" id="reset">New chat</button>
-  </header>
-  <section id="log" aria-live="polite"><p class="empty" id="empty">Ask anything. I use a calculator for maths and web search for current facts.</p></section>
-  <form id="form">
-    <div class="row">
-      <textarea id="msg" placeholder="Message" rows="1" required maxlength="4000" aria-label="Message"></textarea>
-      <button class="send" id="send" type="submit">Send</button>
+    <div class="who" id="who" hidden>
+      <span id="whoName"></span>
+      <button type="button" id="reset">New chat</button>
+      <button type="button" id="logout">Sign out</button>
     </div>
-    <label><input type="checkbox" id="escalate"> Think harder (Nemotron Ultra)</label>
-  </form>
+  </header>
+
+  <section id="auth" hidden>
+    <h2>Your own assistant</h2>
+    <p>Everything it does for you is logged where you can see it. Try it without an account.</p>
+    <button type="button" class="big" id="guestBtn">Try it as a guest</button>
+    <div class="divider">or use an account</div>
+    <form id="authForm" autocomplete="on">
+      <div style="display:grid; gap:8px">
+        <input id="username" name="username" placeholder="Username" autocomplete="username" maxlength="64" required>
+        <input id="password" name="password" type="password" placeholder="Password (8+ characters)"
+               autocomplete="current-password" maxlength="256" required>
+        <div class="row">
+          <button type="submit" class="ghost" id="loginBtn" style="flex:1">Sign in</button>
+          <button type="button" class="ghost" id="registerBtn" style="flex:1">Create account</button>
+        </div>
+      </div>
+    </form>
+    <div class="error" id="authError" role="alert"></div>
+  </section>
+
+  <section id="chat" hidden>
+    <div class="notice" id="guestNotice" hidden></div>
+    <section id="log" aria-live="polite"><p class="empty" id="empty">Ask anything. I use a calculator for maths and web search for current facts.</p></section>
+    <form id="form">
+      <div class="row">
+        <textarea id="msg" placeholder="Message" rows="1" required maxlength="4000" aria-label="Message"></textarea>
+        <button class="send" id="send" type="submit">Send</button>
+      </div>
+      <label><input type="checkbox" id="escalate"> Think harder (Nemotron Ultra)<span id="ultraLeft"></span></label>
+    </form>
+  </section>
 </main>
 <script>
-const log = document.getElementById("log");
-const form = document.getElementById("form");
-const input = document.getElementById("msg");
-const send = document.getElementById("send");
-const escalate = document.getElementById("escalate");
+const $ = (id) => document.getElementById(id);
+const log = $("log"), form = $("form"), input = $("msg"), send = $("send"), escalate = $("escalate");
 
+async function api(path, options = {}) {
+  const res = await fetch(path, {
+    method: options.method || "GET",
+    headers: options.body ? { "Content-Type": "application/json" } : {},
+    body: options.body ? JSON.stringify(options.body) : undefined,
+  });
+  let data = null;
+  try { data = await res.json(); } catch { /* empty body */ }
+  return { res, data };
+}
+
+function detail(data, fallback) {
+  if (!data) return fallback;
+  if (typeof data.detail === "string") return data.detail;
+  if (Array.isArray(data.detail)) return "Please check the username and password fields.";
+  return fallback;
+}
+
+// ---- signed-in / signed-out views ----------------------------------------------------------
+function showAuth(message = "") {
+  $("auth").hidden = false; $("chat").hidden = true; $("who").hidden = true;
+  $("authError").textContent = message;
+}
+
+function showChat(me) {
+  $("auth").hidden = true; $("chat").hidden = false; $("who").hidden = false;
+  $("whoName").textContent = me.kind === "guest" ? "Guest" : me.user_id;
+  const notice = $("guestNotice");
+  if (me.kind === "guest") {
+    const when = new Date(me.expires_ts * 1000).toLocaleDateString(undefined, { day: "numeric", month: "short" });
+    notice.textContent = `You're a guest. Your chats and data are deleted on ${when}. Create an account to keep them.`;
+    notice.hidden = false;
+  } else {
+    notice.hidden = true;
+  }
+  $("ultraLeft").textContent = me.ultra_left_today === null ? "" : ` · ${me.ultra_left_today} left today`;
+  input.focus();
+}
+
+async function refreshMe() {
+  const { res, data } = await api("/api/me");
+  if (res.ok) showChat(data); else showAuth();
+}
+
+async function signIn(path, body) {
+  $("authError").textContent = "";
+  const { res, data } = await api(path, { method: "POST", body });
+  if (res.ok) { log.innerHTML = ""; showChat(data); }
+  else showAuth(detail(data, `Couldn't sign in (error ${res.status}).`));
+}
+
+$("guestBtn").addEventListener("click", () => signIn("/api/auth/guest"));
+$("authForm").addEventListener("submit", (e) => {
+  e.preventDefault();
+  signIn("/api/auth/login", { username: $("username").value, password: $("password").value });
+});
+$("registerBtn").addEventListener("click", () => {
+  if (!$("authForm").reportValidity()) return;
+  signIn("/api/auth/register", { username: $("username").value, password: $("password").value });
+});
+$("logout").addEventListener("click", async () => {
+  await api("/api/auth/logout", { method: "POST" });
+  log.innerHTML = '<p class="empty" id="empty">Ask anything. I use a calculator for maths and web search for current facts.</p>';
+  showAuth();
+});
+
+// ---- chat ------------------------------------------------------------------------------------
 function add(text, cls) {
-  document.getElementById("empty")?.remove();
+  $("empty")?.remove();
   const div = document.createElement("div");
   div.className = "msg " + cls;
   div.textContent = text;
@@ -75,7 +182,8 @@ function add(text, cls) {
 function meta(data) {
   const parts = data.tool_calls.map(c => `${c.name} ${c.status === "ok" ? "✓" : "(" + c.status + ")"}`);
   const model = data.model ? data.model.split("/").pop() : data.tier;
-  parts.push(`${data.tokens.toLocaleString()} tokens`, model);
+  if (data.tokens) parts.push(`${data.tokens.toLocaleString()} tokens`);
+  if (model) parts.push(model);
   const p = document.createElement("div");
   p.className = "meta";
   p.textContent = parts.join(" · ");
@@ -91,16 +199,13 @@ form.addEventListener("submit", async (e) => {
   send.disabled = true;
   const pending = add("Thinking…", "bot");
   try {
-    const res = await fetch("/api/chat", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ message, escalate: escalate.checked }),
-    });
-    if (!res.ok) throw new Error(`Server error ${res.status}`);
-    const data = await res.json();
+    const { res, data } = await api("/api/chat", { method: "POST", body: { message, escalate: escalate.checked } });
+    if (res.status === 401) { pending.remove(); showAuth("Your session ended. Sign in again."); return; }
+    if (!res.ok) throw new Error(detail(data, `Server error ${res.status}`));
     pending.textContent = data.answer;
     if (data.stop_reason !== "done") pending.classList.add("stopped");
     pending.appendChild(meta(data));
+    if (escalate.checked) refreshMe();  // update "left today"
   } catch (err) {
     pending.textContent = `Something went wrong: ${err.message}`;
     pending.classList.add("stopped");
@@ -114,10 +219,12 @@ input.addEventListener("keydown", (e) => {
   if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); form.requestSubmit(); }
 });
 
-document.getElementById("reset").addEventListener("click", async () => {
-  await fetch("/api/reset", { method: "POST" });
+$("reset").addEventListener("click", async () => {
+  await api("/api/reset", { method: "POST" });
   log.innerHTML = '<p class="empty" id="empty">New chat started.</p>';
 });
+
+refreshMe();
 </script>
 </body>
 </html>

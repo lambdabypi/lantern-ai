@@ -17,7 +17,7 @@ def settings(tmp_path: Path) -> Settings:
         model_fast="nano-test",
         model_reasoning="ultra-test",
         tavily_api_key="tavily-test",
-        app_secret_key="secret",
+        app_secret_key="test-secret-key-that-is-at-least-32-chars",
         data_dir=tmp_path / "data",
         cache_enabled=True,
         cache_dir=tmp_path / "cache",

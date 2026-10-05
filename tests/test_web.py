@@ -7,9 +7,13 @@ from tests.conftest import tool_call
 from tests.test_agent_loop import make_loop
 
 
-def client_for(settings, replies):
+def client_for(settings, replies, sign_in=True):
+    """A browser-like client (own cookie jar), signed in as a fresh guest unless sign_in=False."""
     loop, llm = make_loop(settings, replies)
-    return TestClient(create_app(loop=loop)), llm
+    client = TestClient(create_app(loop=loop, settings=settings))
+    if sign_in:
+        assert client.post("/api/auth/guest").status_code == 200
+    return client, llm
 
 
 def test_index_serves_chat_page(settings):
