@@ -11,10 +11,40 @@
 - **Chosen tools and data:** the user decides which tools and data sources the assistant can access.
 - **Real task execution:** it carries out multi-step tasks, including in the background on a schedule.
 - **User-owned data:** data is isolated per user, never mixed, and never leaves the user's control except for model and search API calls.
+- **A companion that lives with you:** an animated mascot on the desktop (Windows first) and in the web app. It notices what you're doing, using only signals you've switched on, and offers suggestions without nagging.
 
 The developer (Shreyas) is user #1. The project is open source and built in public.
 
-**Status:** the core idea is locked on **Sat 3 Oct 2026**. The first 2–3 skills are TBD. Build the foundation so skills can be plugged in later. Don't hard-code any specific skill into the core.
+**Status:** the core idea is locked on **Sat 3 Oct 2026**. The mascot companion was added on **Mon 5 Oct**. Suggestion types are skills that users switch on and off, so never hard-code a specific use case into the core.
+
+## Companion (mascot)
+
+Two front ends share one mascot, built once in HTML/CSS/JS:
+- **Web**, at the hosted demo URL judges use: the mascot lives in the web app and reacts to what you do *in that page*.
+- **Desktop** (Windows first): a transparent, always-on-top window running the same mascot, plus local sensors. Phones are out of scope beyond a phone-sized web layout.
+
+Pipeline: the **local sensor** polls every ~2 s and emits a change event. Then:
+1. **Local filter:** applies the ignore list, pause and quiet hours, and redacts the window title. Nothing leaves the machine if this filter drops the event.
+2. `POST /api/context`, called at most every ~20 s with the app, the redacted title and idle seconds.
+3. **Rate limit** from the user's interruption setting.
+4. **Matching:** enabled helper skills whose `triggers` match the event.
+5. **Decision:** one Nano call (thinking off) returns JSON `{suggest, helper, text}`. It should usually say no.
+6. **Delivery:** the suggestion goes to the mascot.
+7. **On accept,** a normal agent turn runs with that helper skill's instructions.
+
+Every observation and suggestion is written to the audit log.
+
+User settings in `data/users/<id>/companion.yaml`, editable in the UI (draft):
+```yaml
+signals: {active_app: true, window_title: true, idle: true, clipboard: false, screenshots: false}  # screenshots unsupported in v1 (no vision model on our key)
+ignore_apps: ["1Password", "KeePass*", "*bank*"]   # never observed
+paused_until: null
+quiet_hours: ["22:00-08:00"]
+interruptions: balanced     # off | quiet (≤1/h) | balanced (≤1/15 min) | chatty (≤1/5 min)
+helpers: {}                 # helper skill name -> on/off; helpers are ordinary skills with `triggers`
+personality: friendly       # friendly | minimal | playful
+```
+Mascot states: `idle`, `noticing`, `thinking`, `suggestion`, `talking`, `sleeping` (quiet hours or idle), `paused` (eyes visibly closed, so it's obvious it isn't watching).
 
 ## Hackathon context (hard requirements)
 
@@ -181,20 +211,23 @@ Credits are limited: about $125 of Nebius Cloud, plus Token Factory credits, 9,0
 6. Print the total Tavily credits and tokens used.
 
 **Then, in order (Phase 2 starts Mon 5 Oct):**
-1. Repo skeleton, LICENSE (MIT), `.gitignore`, `.env.example`, README stub, Dockerfile
-2. Config plus a Token Factory client, with one test call that works
-3. Model router (Nano/Ultra) with usage logging
-4. A basic chat agent loop end to end in the web UI
-5. Per-user auth and data isolation, plus the isolation test
-6. Memory store and the "What I remember about you" page
-7. Memory extractor (automatically saves durable facts from chats)
-8. Skill loader and registry, plus the `_template` skill (with `permissions:` in `skill.yaml`)
-8a. Permission broker, grants and audit log; path scoping for file tools; tests proving undeclared and cross-user calls are blocked
-8b. Sandbox interface with the `local` backend, then the `daytona` backend (ask before adding the `daytona` dependency)
-9. Tavily web search tool, available to the agent through the broker
-10. Scheduler for background tasks
-11. Skills 1–3 (defined after Sat 3 Oct)
-12. Deployment (Nebius CPU VM or Daytona), from Day 20 onward
+1–4. ✅ Done: skeleton, Token Factory client, router, agent loop with ToolRegistry, audit log, calculator, web_search, chat UI
+- **C0 (5 Oct): desktop window spike.** Confirm a transparent, always-on-top window with an HTML mascot plus the active-app sensor work on Windows. Done in the scratchpad, with no project dependency added until approved.
+
+Target dates assume the 28 Oct submission:
+5. **(6–7 Oct)** Per-user auth and data isolation, plus the isolation test
+6. **(7–9 Oct)** Memory store and the "What I remember about you" page
+7. **(9–10 Oct)** Memory extractor (automatically saves durable facts from chats)
+8. **(10–12 Oct)** Skill loader and registry, plus the `_template` skill. `skill.yaml` gets `permissions:` and companion `triggers:`
+8a. **(12–13 Oct)** Permission broker, grants and audit log; companion signals become grants; tests proving undeclared and cross-user calls are blocked
+C1. **(13–15 Oct)** `companion.yaml` settings and their UI, `POST /api/context`, rate limiter, suggestion engine, and delivery to the mascot
+C2. **(15–17 Oct)** Mascot UI component with every state, embedded in the web app. Placeholder art until Shreyas's art arrives, **needed by ~16 Oct**
+C3. **(17–20 Oct)** Desktop companion: mascot window, Windows sensors, local filter and redaction, pause/tray
+10. **(18–20 Oct)** Scheduler for background checks
+11. **(20–23 Oct)** Helper skills 1–3, e.g. focus nudges, writing help, and research help (Tavily). Users switch each on or off
+12. **(22–24 Oct)** Deployment of the web demo on a Nebius CPU VM; the desktop companion ships as a download from the repo
+13. **(25–28 Oct)** Polish, demo video, README, submission
+- **Optional, only if there's time:** 8b sandbox backends (local, then Daytona); OpenShell trial
 
 ## How to work with me
 
@@ -216,3 +249,5 @@ Credits are limited: about $125 of Nebius Cloud, plus Token Factory credits, 9,0
 | 3 Oct 2026 | Track tools evaluated (`docs/track-tools-evaluation.md`): keep our own agent loop; skip NemoClaw and Hermes as dependencies, but borrow Hermes formats (agentskills.io-compatible `SKILL.md` front matter, memory tool actions add/replace/remove); OpenShell is a "maybe" sandbox backend; skip Serverless Jobs (keep APScheduler) |
 | 3 Oct 2026 | Native OpenAI-style tool calling works on Token Factory for Nano and Ultra, with thinking on or off: correct `tool_calls`, valid JSON args, uses the tool result, no spurious calls (`scripts/smoke_tools.py`). But Nano with thinking **off** answered 12×7 = 72 (reproducible), so the loop keeps thinking on (Nano default) for any turn that needs reasoning, and uses thinking off only for formatting/extraction. Hosting: Nebius VM is primary; Daytona hosting needs Tier 3+ (Tier 1–2 egress blocks Token Factory/Tavily) |
 | 3 Oct 2026 | Skills 1–3: still pending until the form closes Sunday evening |
+| 4 Oct 2026 | The system prompt states the assistant's identity, lists capabilities generated from the registered tools, lists what it can't do yet, and says exactly where data goes. Nano still overclaims privacy about 1 time in 4, so authoritative privacy statements belong in the UI and README, not only in the model's own answers |
+| 5 Oct 2026 | **The product gets an animated mascot companion.** It lives on the desktop (Windows first) and in the web app, which stays the hosted demo for judges. Phones are limited to a phone-sized web layout. v1 signals are active app and window title, idle time, and opt-in clipboard; there are no screenshots. Suggestions are user-controlled: helper skills toggled per user plus the `companion.yaml` settings (signals, ignore list, pause, quiet hours, interruption level, personality). The mascot is built once in HTML/CSS/JS and shared by both front ends. Sandbox backends (8b) become optional to make room. Shreyas draws the mascot from a proposed concept |
