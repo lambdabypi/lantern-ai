@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Callable
 
-from app.memory.store import GAME_STATUSES, SPOILER_PREFERENCES, MemoryStore
+from app.memory.store import GAME_STATUSES, SPOILER_PREFERENCES, MemoryStore, slugify
 from app.tools.registry import Tool, ToolContext
 
 _STR_LIST = {"type": "array", "items": {"type": "string"}}
@@ -14,10 +14,16 @@ def _pick(args: dict[str, Any], *names: str) -> dict[str, Any]:
     return {n: args[n] for n in names if args.get(n) not in (None, "", [])}
 
 
-def make_profile_tools(store: MemoryStore) -> list[Tool]:
+def make_profile_tools(store: MemoryStore, known_sources: Callable[[str], list[str]] | None = None) -> list[Tool]:
+    """known_sources(title) returns a game's already-discovered sources, attached when it's first saved."""
+
     def save_game(args: dict[str, Any], ctx: ToolContext) -> dict[str, Any]:
-        item = store.upsert(ctx.user_id, "game", args["title"], _pick(args, "status", "progress", "platform"),
-                            note=args.get("note"), source="chat")
+        fields = _pick(args, "status", "progress", "platform")
+        existing = store.get(ctx.user_id, "game", slugify(args["title"]))
+        if known_sources and not (existing and existing.meta.get("sources")):
+            if sources := known_sources(args["title"]):
+                fields["sources"] = sources
+        item = store.upsert(ctx.user_id, "game", args["title"], fields, note=args.get("note"), source="chat")
         return {"saved": "game", "slug": item.slug, "fields": item.meta}
 
     def save_creator(args: dict[str, Any], ctx: ToolContext) -> dict[str, Any]:

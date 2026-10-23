@@ -93,7 +93,8 @@ def create_app(loop: AgentLoop | None = None, settings: Settings | None = None,
     if loop is None:
         search = WebSearch(settings)
         knowledge = GameKnowledge(memory, search, settings.data_dir)
-        tools = make_game_tools(knowledge) + builtin_tools(settings, search) + make_profile_tools(memory)
+        tools = (make_game_tools(knowledge) + builtin_tools(settings, search)
+                 + make_profile_tools(memory, knowledge.cached_sources))
         loop = AgentLoop(ModelRouter(settings), ToolRegistry(settings.data_dir, tools),
                          profile_context=memory.context_for_prompt)
 

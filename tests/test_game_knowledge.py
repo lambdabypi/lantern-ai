@@ -130,3 +130,25 @@ def test_tool_through_registry(settings):
     assert ok.ok and "Orokin" in ok.content
     assert reg.call("alice", "ask_game", {"game": "Warframe"}).status == "invalid_args"
     assert reg.call("alice", "ask_game", {"game": "!!!", "question": "x"}).status == "error"
+
+
+def test_fallback_answers_must_say_they_used_the_general_web(settings):
+    fake = warframe_fake()
+    fake["searches"][QUESTION] = []
+    fake["searches"]["Warframe " + QUESTION] = [r("https://somesite.gg/guide")]
+    gk, _, _ = make(settings, **fake)
+    assert gk.ask("alice", "Warframe", QUESTION)["instructions"].startswith("The game's own sources had nothing")
+    from dataclasses import replace
+    fresh = replace(settings, cache_dir=settings.cache_dir.parent / "cache2", data_dir=settings.data_dir.parent / "data2")
+    gk2, _, _ = make(fresh, **warframe_fake())  # separate dev cache: the first half cached an empty search
+    assert "general web" not in gk2.ask("alice", "Warframe", QUESTION)["instructions"]
+
+
+def test_saving_a_game_after_asking_attaches_known_sources(settings):
+    from app.tools.profile_tools import make_profile_tools
+    gk, store, _ = make(settings, **warframe_fake())
+    gk.ask("alice", "Warframe", QUESTION)                       # not in the profile yet: sources only cached
+    assert store.get("alice", "game", "warframe") is None
+    reg = ToolRegistry(settings.data_dir, make_profile_tools(store, gk.cached_sources))
+    reg.call("alice", "save_game", {"title": "Warframe", "progress": "Saturn"})
+    assert store.get("alice", "game", "warframe").meta["sources"][0] == "warframe.fandom.com"
