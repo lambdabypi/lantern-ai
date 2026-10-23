@@ -144,7 +144,7 @@ Already done and reused: skeleton, Token Factory client, router (thinking switch
 | G1 | 23 Oct | ✅ Pivot docs, PyYAML and httpx, `STEAM_API_KEY` setting, gamer research sprint (`research/findings-gamers.md`) |
 | G2 | 23 Oct | ✅ Memory store (games, creators, profile files), agent profile tools, persisted chat history, and the "Your gaming profile" page (view, edit, delete, export) |
 | G3 | 24–25 Oct | Game knowledge: source discovery plus `ask_game` (domain-restricted search, extract, cited and spoiler-safe answers) |
-| G4 | 23–25 Oct | Steam import. ✅ Client `app/tools/steam.py` (resolve, owned games, achievements; mocked tests). Still to do: write imports into the profile, add a UI button, and run a live test with the key (response fields are unconfirmed in the docs) |
+| G4 | 23 Oct | ✅ Steam import: client (`app/tools/steam.py`), import into memory (`app/steam_import.py`: top 25 played games, achievements for the 5 most recent, never overwrites player-given status, progress or platform), `POST /api/steam/import`, and an "Import from Steam" form. Verified live on Shreyas's profile (27 games, 24 imported) |
 | G5 | 25–26 Oct | "What's new for me" briefing; demo guest seeded with a fake profile |
 | G6 | 26–27 Oct | Deploy on a Nebius CPU VM (Docker with a restart policy, `CACHE_ENABLED=false`); README rewrite |
 | G7 | 27–28 Oct | Demo video, polish, submit. 29–30 Oct is buffer |

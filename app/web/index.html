@@ -133,6 +133,11 @@
 
   <section id="games" hidden>
     <p class="hint">Everything I remember about you is here, as plain files you can edit or delete.</p>
+    <form class="inline-form" id="steamForm" hidden>
+      <input id="steamProfile" placeholder="Steam profile URL or custom name" maxlength="200" required aria-label="Steam profile">
+      <button class="ghost" type="submit" id="steamBtn">Import from Steam</button>
+    </form>
+    <div class="hint" id="steamMsg" role="status"></div>
     <h2>Games</h2>
     <div class="cards" id="gameList"></div>
     <form class="inline-form" id="addGame">
@@ -223,6 +228,7 @@ function showChat(me) {
     notice.hidden = true;
   }
   $("ultraLeft").textContent = me.ultra_left_today === null ? "" : ` · ${me.ultra_left_today} left today`;
+  $("steamForm").hidden = !me.steam_enabled;
   showTab("chat");
 }
 
@@ -384,6 +390,7 @@ async function loadProfile() {
     profile.replaceChildren(card(p, "profile", "Your profile", [
       p.platforms ? `Platforms: ${p.platforms.join(", ")}` : "",
       p.play_style ? `Play style: ${p.play_style}` : "",
+      p.steam_id ? `Steam: ${p.steam_id}` : "",
       `Spoilers: ${p.spoiler_preference || "strict"}`]));
   } else {
     const startBtn = el("button", "link", "Set up your profile (platforms, spoiler preference)");
@@ -440,6 +447,21 @@ $("addCreator").addEventListener("submit", async (e) => {
   if (!res.ok) { alert(detail(data, "Couldn't add that creator.")); return; }
   $("addCreator").reset();
   loadProfile();
+});
+
+$("steamForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  $("steamBtn").disabled = true;
+  $("steamMsg").textContent = "Importing from Steam…";
+  try {
+    const { res, data } = await api("/api/steam/import", { method: "POST", body: { profile: $("steamProfile").value } });
+    $("steamMsg").textContent = res.ok
+      ? `Imported ${data.imported} new and updated ${data.updated} games (your ${data.total_owned}-game library; most played first).`
+      : detail(data, "Steam import failed.");
+    if (res.ok) loadProfile();
+  } finally {
+    $("steamBtn").disabled = false;
+  }
 });
 
 refreshMe();

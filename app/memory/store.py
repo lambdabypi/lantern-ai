@@ -35,7 +35,7 @@ FIELDS: dict[str, dict[str, type | tuple]] = {
     "game": {"title": str, "status": str, "progress": str, "platform": str, "steam_appid": int,
              "playtime_hours": (int, float), "achievements": str, "last_played": str, "sources": list},
     "creator": {"name": str, "platforms": list, "links": list},
-    "profile": {"platforms": list, "play_style": str, "spoiler_preference": str},
+    "profile": {"platforms": list, "play_style": str, "spoiler_preference": str, "steam_id": str},
 }
 NAME_FIELD = {"game": "title", "creator": "name"}
 _SLUG = re.compile(r"^[a-z0-9][a-z0-9-]{0,63}$")

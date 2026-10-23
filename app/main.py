@@ -5,6 +5,7 @@ Run:  uvicorn app.main:create_app --factory --reload
 
 from __future__ import annotations
 
+from dataclasses import asdict
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
@@ -19,8 +20,10 @@ from app.config import Settings, load_settings
 from app.llm.router import ModelRouter
 from app.memory.history import HistoryStore
 from app.memory.store import KINDS, MemoryStore, MemoryStoreError
+from app.steam_import import import_steam_library
 from app.tools.builtin import builtin_tools
 from app.tools.profile_tools import make_profile_tools
+from app.tools.steam import SteamClient, SteamError
 from app.tools.registry import ToolRegistry
 
 WEB_DIR = Path(__file__).parent / "web"
@@ -67,14 +70,20 @@ class MemoryText(BaseModel):
     text: str = Field(min_length=1, max_length=20_000)
 
 
+class SteamImportRequest(BaseModel):
+    profile: str = Field(min_length=2, max_length=200)
+
+
 class MeResponse(BaseModel):
     user_id: str
     kind: str
     expires_ts: float | None
     ultra_left_today: int | None  # None = no daily limit
+    steam_enabled: bool = False
 
 
-def create_app(loop: AgentLoop | None = None, settings: Settings | None = None) -> FastAPI:
+def create_app(loop: AgentLoop | None = None, settings: Settings | None = None,
+               steam: SteamClient | None = None) -> FastAPI:
     settings = settings or load_settings()
     settings.require_secret_key()
     memory = MemoryStore(settings.data_dir)
@@ -84,6 +93,7 @@ def create_app(loop: AgentLoop | None = None, settings: Settings | None = None) 
         loop = AgentLoop(ModelRouter(settings), ToolRegistry(settings.data_dir, tools),
                          profile_context=memory.context_for_prompt)
 
+    steam_client = steam or (SteamClient(settings.steam_api_key) if settings.steam_api_key else None)
     accounts = AccountStore(settings.data_dir, guest_ttl_days=settings.guest_ttl_days)
     signer = SessionSigner(settings.app_secret_key)
     quota = DailyQuota(settings.data_dir)
@@ -124,8 +134,8 @@ def create_app(loop: AgentLoop | None = None, settings: Settings | None = None) 
         left = None
         if account.is_guest:
             left = max(0, settings.guest_ultra_per_day - quota.used(account.user_id, "ultra"))
-        return MeResponse(user_id=account.user_id, kind=account.kind,
-                          expires_ts=account.expires_ts, ultra_left_today=left)
+        return MeResponse(user_id=account.user_id, kind=account.kind, expires_ts=account.expires_ts,
+                          ultra_left_today=left, steam_enabled=steam_client is not None)
 
     # ---- pages ------------------------------------------------------------------------------
     @app.get("/", include_in_schema=False)
@@ -242,6 +252,16 @@ def create_app(loop: AgentLoop | None = None, settings: Settings | None = None) 
         if not memory.delete(account.user_id, check_kind(kind), None if kind == "profile" else slug):
             raise HTTPException(status_code=404, detail="Not found.")
         return {"ok": True}
+
+    @app.post("/api/steam/import")
+    def steam_import(req: SteamImportRequest, account: Account = Depends(current_account)) -> dict:
+        if steam_client is None:
+            raise HTTPException(status_code=503, detail="Steam import isn't set up on this server (no STEAM_API_KEY).")
+        try:
+            result = import_steam_library(memory, steam_client, account.user_id, req.profile)
+        except SteamError as e:
+            raise HTTPException(status_code=422, detail=str(e)) from None
+        return asdict(result)
 
     @app.get("/api/export")
     def export(account: Account = Depends(current_account)) -> RawResponse:
