@@ -8,7 +8,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, Response as RawResponse
 from pydantic import BaseModel, Field
 
 from app.agent.loop import AgentLoop, TurnResult
@@ -17,11 +17,14 @@ from app.auth.quota import DailyQuota
 from app.auth.sessions import COOKIE_NAME, SessionSigner
 from app.config import Settings, load_settings
 from app.llm.router import ModelRouter
+from app.memory.history import HistoryStore
+from app.memory.store import KINDS, MemoryStore, MemoryStoreError
 from app.tools.builtin import builtin_tools
+from app.tools.profile_tools import make_profile_tools
 from app.tools.registry import ToolRegistry
 
 WEB_DIR = Path(__file__).parent / "web"
-MAX_HISTORY_MESSAGES = 20  # question/answer pairs kept per user, in memory until the memory store exists
+MAX_HISTORY_MESSAGES = 20  # recent messages sent to the model each turn
 USER_SESSION_S = 14 * 86400
 
 
@@ -54,6 +57,16 @@ class ChatResponse(BaseModel):
     tier: str
 
 
+class MemoryCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=200)
+    fields: dict = Field(default_factory=dict)
+    note: str = Field(default="", max_length=2000)
+
+
+class MemoryText(BaseModel):
+    text: str = Field(min_length=1, max_length=20_000)
+
+
 class MeResponse(BaseModel):
     user_id: str
     kind: str
@@ -64,20 +77,27 @@ class MeResponse(BaseModel):
 def create_app(loop: AgentLoop | None = None, settings: Settings | None = None) -> FastAPI:
     settings = settings or load_settings()
     settings.require_secret_key()
+    memory = MemoryStore(settings.data_dir)
+    history_store = HistoryStore(settings.data_dir)
     if loop is None:
-        loop = AgentLoop(ModelRouter(settings), ToolRegistry(settings.data_dir, builtin_tools(settings)))
+        tools = builtin_tools(settings) + make_profile_tools(memory)
+        loop = AgentLoop(ModelRouter(settings), ToolRegistry(settings.data_dir, tools),
+                         profile_context=memory.context_for_prompt)
 
     accounts = AccountStore(settings.data_dir, guest_ttl_days=settings.guest_ttl_days)
     signer = SessionSigner(settings.app_secret_key)
     quota = DailyQuota(settings.data_dir)
     accounts.cleanup_expired_guests()
 
-    app = FastAPI(title="Personal AI")
-    histories: dict[str, list[dict[str, str]]] = {}
+    app = FastAPI(title="Personal AI for Gamers")
 
     @app.exception_handler(AuthError)
     def auth_error(_: Request, e: AuthError) -> JSONResponse:
         return JSONResponse({"detail": str(e)}, status_code=e.status)
+
+    @app.exception_handler(MemoryStoreError)
+    def memory_error(_: Request, e: MemoryStoreError) -> JSONResponse:
+        return JSONResponse({"detail": str(e)}, status_code=422)
 
     # ---- identity ---------------------------------------------------------------------------
     def current_account(request: Request) -> Account:
@@ -164,11 +184,10 @@ def create_app(loop: AgentLoop | None = None, settings: Settings | None = None) 
                         "Untick it to keep chatting with the fast model, or create an account."),
                 stop_reason="quota", tool_calls=[], tokens=0, model="", tier="reasoning")
 
-        history = histories.setdefault(user_id, [])
+        history = history_store.recent(user_id, MAX_HISTORY_MESSAGES)
         turn: TurnResult = loop.run_turn(user_id, message, history, escalate=req.escalate)
         if turn.stop_reason == "done":
-            history.extend(turn.history_messages(message))
-            del history[:-MAX_HISTORY_MESSAGES]
+            history_store.append(user_id, turn.history_messages(message))
         return ChatResponse(
             answer=turn.answer,
             stop_reason=turn.stop_reason,
@@ -180,7 +199,53 @@ def create_app(loop: AgentLoop | None = None, settings: Settings | None = None) 
 
     @app.post("/api/reset")
     def reset(account: Account = Depends(current_account)) -> dict[str, bool]:
-        histories.pop(account.user_id, None)
+        history_store.clear(account.user_id)
         return {"ok": True}
+
+    @app.get("/api/history")
+    def history(account: Account = Depends(current_account)) -> list[dict[str, str]]:
+        return history_store.recent(account.user_id, MAX_HISTORY_MESSAGES)
+
+    # ---- visible memory ("Your gaming profile") ---------------------------------------------
+    def check_kind(kind: str) -> str:
+        if kind not in (*KINDS, "profile"):
+            raise HTTPException(status_code=404, detail="Unknown memory type.")
+        return kind
+
+    @app.get("/api/profile")
+    def profile(account: Account = Depends(current_account)) -> dict:
+        uid = account.user_id
+        prof = memory.get(uid, "profile")
+        return {"profile": prof.summary() if prof else None,
+                "games": [g.summary() for g in memory.list(uid, "game")],
+                "creators": [c.summary() for c in memory.list(uid, "creator")]}
+
+    @app.post("/api/memory/{kind}")
+    def create_memory(kind: str, req: MemoryCreate, account: Account = Depends(current_account)) -> dict:
+        item = memory.upsert(account.user_id, check_kind(kind), req.name, req.fields, note=req.note, source="user")
+        return item.summary()
+
+    @app.get("/api/memory/{kind}/{slug}")
+    def read_memory(kind: str, slug: str, account: Account = Depends(current_account)) -> dict[str, str]:
+        text = memory.raw(account.user_id, check_kind(kind), None if kind == "profile" else slug)
+        if text is None:
+            raise HTTPException(status_code=404, detail="Not found.")
+        return {"text": text}
+
+    @app.put("/api/memory/{kind}/{slug}")
+    def write_memory(kind: str, slug: str, req: MemoryText, account: Account = Depends(current_account)) -> dict:
+        item = memory.save_raw(account.user_id, check_kind(kind), None if kind == "profile" else slug, req.text)
+        return item.summary()
+
+    @app.delete("/api/memory/{kind}/{slug}")
+    def delete_memory(kind: str, slug: str, account: Account = Depends(current_account)) -> dict[str, bool]:
+        if not memory.delete(account.user_id, check_kind(kind), None if kind == "profile" else slug):
+            raise HTTPException(status_code=404, detail="Not found.")
+        return {"ok": True}
+
+    @app.get("/api/export")
+    def export(account: Account = Depends(current_account)) -> RawResponse:
+        return RawResponse(memory.export_zip(account.user_id), media_type="application/zip",
+                           headers={"Content-Disposition": 'attachment; filename="my-gaming-memory.zip"'})
 
     return app

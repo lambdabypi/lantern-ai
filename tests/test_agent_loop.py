@@ -53,10 +53,22 @@ def test_system_prompt_states_identity_tools_and_limits(settings):
     loop, llm = make_loop(settings, ["Hi."])
     loop.run_turn("demo", "who are you?")
     prompt = llm.calls[0]["messages"][0]["content"]
-    assert "Personal AI" in prompt and "not a writing tutor" in prompt
+    assert "personal AI for gamers" in prompt and "not a general-purpose assistant" in prompt
     assert "- calculator: Evaluate an arithmetic expression exactly." in prompt
     assert "- web_search:" in prompt
-    assert "Remember anything after this conversation ends" in prompt
+    assert "Spoiler:" in prompt and "Never invent stats" in prompt
+    assert "Nothing saved yet." in prompt  # no profile provider -> neutral placeholder
+
+
+def test_profile_context_reaches_the_prompt_per_user(settings):
+    llm = ScriptedLLM(["ok", "ok"])
+    router = ModelRouter(settings, client=TokenFactoryClient(settings, openai_client=llm))
+    profiles = {"alice": "- Game: Warframe (playing, progress: Saturn {x})", "bob": "Nothing saved yet."}
+    loop = AgentLoop(router, ToolRegistry(settings.data_dir, []), profile_context=profiles.__getitem__)
+    loop.run_turn("alice", "hi")
+    loop.run_turn("bob", "hi")
+    assert "Warframe (playing, progress: Saturn {x})" in llm.calls[0]["messages"][0]["content"]  # braces kept
+    assert "Warframe" not in llm.calls[1]["messages"][0]["content"]
 
 
 def test_system_prompt_without_tools(settings):
