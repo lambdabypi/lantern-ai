@@ -1,6 +1,7 @@
-# Personal AI
+# Lantern
 
-An open-source, always-on personal assistant that anyone can make their own: memory you can read and edit, skills you can switch on and off, and data that stays yours.
+**A personal AI for gamers.** Ask anything about your game and get answers from that game's own wiki and patch notes: cited, and spoiler-safe for where you're up to. Lantern remembers your games, progress and favourite creators in plain files you can see, edit and delete.
+
 
 Built for the **Nebius x NVIDIA Global AI Hackathon** (Personal AI track).
 

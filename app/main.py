@@ -89,7 +89,7 @@ def create_app(loop: AgentLoop | None = None, settings: Settings | None = None) 
     quota = DailyQuota(settings.data_dir)
     accounts.cleanup_expired_guests()
 
-    app = FastAPI(title="Personal AI for Gamers")
+    app = FastAPI(title="Lantern")
 
     @app.exception_handler(AuthError)
     def auth_error(_: Request, e: AuthError) -> JSONResponse:

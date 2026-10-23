@@ -23,7 +23,7 @@ from app.tools.registry import CallMeta, ToolRegistry
 
 StopReason = Literal["done", "max_tool_calls", "token_budget", "llm_error"]
 
-SYSTEM_PROMPT = """You are a personal AI for gamers: an open-source assistant for one player. Today is {today}.
+SYSTEM_PROMPT = """You are Lantern, a personal AI for gamers: an open-source assistant for one player. Today is {today}.
 
 Who you are:
 - You help this player with THEIR games: mechanics, builds, quests, items, bosses, what's new, and keeping track
