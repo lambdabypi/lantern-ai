@@ -5,6 +5,7 @@ Deliberately exposes search only. Never call Tavily's Research endpoint in loops
 
 from __future__ import annotations
 
+import threading
 from typing import Any, Literal
 
 from app.cache import DiskCache, cache_key
@@ -30,6 +31,7 @@ class WebSearch:
         self.credits_used = 0
         self.live_searches = 0
         self.cached_searches = 0
+        self._count_lock = threading.Lock()  # searches may run in parallel threads
 
     def search(
         self,
@@ -59,8 +61,9 @@ class WebSearch:
             raise SearchError(f"Tavily search failed for {query!r}: {e}") from e
 
         usage = resp.get("usage") or {}
-        self.credits_used += int(usage.get("credits", _CREDITS[depth]))
-        self.live_searches += 1
+        with self._count_lock:
+            self.credits_used += int(usage.get("credits", _CREDITS[depth]))
+            self.live_searches += 1
 
         results = [
             {"title": r.get("title", ""), "url": r.get("url", ""), "content": r.get("content", "")}
@@ -98,8 +101,9 @@ class WebSearch:
             raise SearchError(f"Tavily extract failed: {e}") from e
 
         reported = int((resp.get("usage") or {}).get("credits") or 0)
-        self.credits_used += reported or 2 * -(-len(urls) // 5)  # documented price if usage isn't reported
-        self.live_searches += 1
+        with self._count_lock:
+            self.credits_used += reported or 2 * -(-len(urls) // 5)  # documented price if usage isn't reported
+            self.live_searches += 1
         pages = [{"url": r.get("url", ""), "content": r.get("raw_content") or ""}
                  for r in resp.get("results", []) if r.get("raw_content")]
         if use_cache:

@@ -56,7 +56,7 @@ def test_system_prompt_states_identity_tools_and_limits(settings):
     assert "You are Lantern, a personal AI for gamers" in prompt and "not a general-purpose assistant" in prompt
     assert "- calculator: Evaluate an arithmetic expression exactly." in prompt
     assert "- web_search:" in prompt
-    assert "Spoiler:" in prompt and "Never invent stats" in prompt
+    assert "Spoiler:" in prompt and "Never state game facts" in prompt and "unless ask_game returned them" in prompt
     assert "Nothing saved yet." in prompt  # no profile provider -> neutral placeholder
 
 
@@ -145,3 +145,34 @@ def test_history_keeps_only_question_and_answer(settings):
     turn = loop.run_turn("demo", "2+2?")
     assert turn.history_messages("2+2?") == [{"role": "user", "content": "2+2?"},
                                              {"role": "assistant", "content": "4"}]
+
+
+def _thinking(call):
+    return call.get("extra_body", {}).get("chat_template_kwargs", {}).get("enable_thinking")
+
+
+def test_answer_after_tool_results_is_written_with_thinking_off(settings):
+    loop, llm = make_loop(settings, [[tool_call("calculator", {"expression": "2+2"})], "4"])
+    loop.run_turn("demo", "2+2?")
+    assert _thinking(llm.calls[0]) is None      # tool choice: model default
+    assert _thinking(llm.calls[1]) is False     # writing the answer from tool results
+
+
+def test_escalated_turns_keep_full_thinking(settings):
+    loop, llm = make_loop(settings, [[tool_call("calculator", {"expression": "2+2"})], "4"])
+    loop.run_turn("demo", "2+2?", escalate=True)
+    assert _thinking(llm.calls[1]) is None
+
+
+def test_empty_reply_is_retried_without_thinking(settings):
+    loop, llm = make_loop(settings, ["", "Here's the answer."])
+    turn = loop.run_turn("demo", "hi")
+    assert turn.answer == "Here's the answer." and turn.stop_reason == "done"
+    assert _thinking(llm.calls[1]) is False and turn.prompt_tokens == 200  # both calls counted
+
+
+def test_two_empty_replies_fail_visibly(settings):
+    loop, llm = make_loop(settings, [[tool_call("calculator", {"expression": "1+1"})], "", ""])
+    turn = loop.run_turn("demo", "1+1?")
+    # after tools the first answer call is already thinking-off, so it isn't retried again
+    assert turn.stop_reason == "llm_error" and "couldn't put an answer together" in turn.answer
