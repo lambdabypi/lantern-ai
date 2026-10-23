@@ -100,5 +100,6 @@ CALCULATOR = Tool(
         "required": ["expression"],
     },
     handler=_handler,
+    status="Calculating…",
     timeout_s=5.0,
 )

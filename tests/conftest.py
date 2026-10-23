@@ -72,6 +72,8 @@ class ScriptedLLM:
         if not self.replies:
             raise AssertionError("ScriptedLLM ran out of replies")
         reply = self.replies.pop(0)
+        if kwargs.get("stream"):
+            return self._stream_chunks(kwargs["model"], reply)
         if isinstance(reply, str):
             message, finish = SimpleNamespace(content=reply, tool_calls=None), "stop"
         else:
@@ -86,3 +88,25 @@ class ScriptedLLM:
             choices=[SimpleNamespace(message=message, finish_reason=finish)],
             usage=SimpleNamespace(prompt_tokens=self.prompt_tokens, completion_tokens=self.completion_tokens),
         )
+
+    def _stream_chunks(self, model, reply):
+        """Yield OpenAI-style stream chunks: text in 2 pieces, or tool calls split across chunks."""
+        def chunk(delta, finish=None):
+            return SimpleNamespace(model=model, usage=None,
+                                   choices=[SimpleNamespace(delta=delta, finish_reason=finish)])
+        if isinstance(reply, str):
+            half = len(reply) // 2
+            for part in (reply[:half], reply[half:]):
+                if part:
+                    yield chunk(SimpleNamespace(content=part, tool_calls=None))
+            yield chunk(SimpleNamespace(content=None, tool_calls=None), "stop")
+        else:
+            for i, c in enumerate(reply):
+                cut = len(c["arguments"]) // 2
+                yield chunk(SimpleNamespace(content=None, tool_calls=[SimpleNamespace(
+                    index=i, id=c["id"], function=SimpleNamespace(name=c["name"], arguments=c["arguments"][:cut]))]))
+                yield chunk(SimpleNamespace(content=None, tool_calls=[SimpleNamespace(
+                    index=i, id=None, function=SimpleNamespace(name=None, arguments=c["arguments"][cut:]))]))
+            yield chunk(SimpleNamespace(content=None, tool_calls=None), "tool_calls")
+        yield SimpleNamespace(model=model, choices=[], usage=SimpleNamespace(
+            prompt_tokens=self.prompt_tokens, completion_tokens=self.completion_tokens))

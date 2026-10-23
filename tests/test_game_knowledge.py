@@ -204,3 +204,40 @@ def test_the_and_no_the_share_cached_sources(settings):
     gk.ask("alice", "Witcher 3", GRIFFIN_Q)
     discovery = [q for q, _ in tav.search_calls[before:] if "wiki" in q or "official" in q]
     assert discovery == []  # "Witcher 3" reused "The Witcher 3"'s sources
+
+
+def test_shared_cache_skips_searching_for_the_next_player_but_keeps_their_own_progress(settings):
+    gk, store, tav = make(settings, **warframe_fake())
+    store.upsert("alice", "game", "Warframe", {"progress": "Saturn"})
+    store.upsert("bob", "game", "Warframe", {"progress": "Earth"})
+    a = gk.ask("alice", "Warframe", QUESTION)
+    calls_after_alice = (len(tav.search_calls), len(tav.extract_calls))
+    b = gk.ask("bob", "Warframe", QUESTION)
+    assert (len(tav.search_calls), len(tav.extract_calls)) == calls_after_alice   # served from the shared cache
+    assert a["passages"] == b["passages"]
+    assert (a["player_progress"], b["player_progress"]) == ("Saturn", "Earth")       # per-player, never shared
+
+
+def test_time_sensitive_questions_are_never_shared(settings):
+    q = "current Baro items"
+    fake = warframe_fake()
+    fake["searches"][q] = [r("https://wiki.warframe.com/w/Baro_Ki%27Teer", "Baro", "rotating stock")]
+    gk, _, _ = make(settings, **fake)
+    gk.ask("alice", "Warframe", q)
+    shared = settings.data_dir / "shared_cache" / "ask_game"
+    assert not (shared.exists() and list(shared.glob("*.json")))   # "current" never goes in the shared cache
+    gk.ask("alice", "Warframe", QUESTION)
+    assert len(list(shared.glob("*.json"))) == 1                     # an ordinary question does
+
+
+def test_slow_page_reads_fall_back_to_snippets_and_are_not_shared(settings, monkeypatch):
+    import time as _time
+    from app.tools import game_knowledge as gkmod
+    monkeypatch.setattr(gkmod, "EXTRACT_WAIT_S", 0.05)
+    fake = warframe_fake()
+    gk, _, tav = make(settings, **fake)
+    real_extract = tav.extract
+    tav.extract = lambda urls, **kw: (_time.sleep(0.3), real_extract(urls, **kw))[1]
+    out = gk.ask("alice", "Warframe", QUESTION)
+    assert all(p["depth"] == "search snippet" for p in out["passages"])
+    assert not (settings.data_dir / "shared_cache" / "ask_game").exists()  # incomplete: not pinned for a day

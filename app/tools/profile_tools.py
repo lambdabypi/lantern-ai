@@ -61,6 +61,7 @@ def make_profile_tools(store: MemoryStore, known_sources: Callable[[str], list[s
                 "required": ["title"],
             },
             handler=save_game,
+            status="Updating your profile…",
             timeout_s=5.0,
         ),
         Tool(
@@ -77,6 +78,7 @@ def make_profile_tools(store: MemoryStore, known_sources: Callable[[str], list[s
                 "required": ["name"],
             },
             handler=save_creator,
+            status="Updating your profile…",
             timeout_s=5.0,
         ),
         Tool(
@@ -91,6 +93,7 @@ def make_profile_tools(store: MemoryStore, known_sources: Callable[[str], list[s
                 },
             },
             handler=update_profile,
+            status="Updating your profile…",
             timeout_s=5.0,
         ),
         Tool(
@@ -98,6 +101,7 @@ def make_profile_tools(store: MemoryStore, known_sources: Callable[[str], list[s
             description="Read everything saved about the player: profile, games with progress, and creators.",
             parameters={"type": "object", "properties": {}},
             handler=get_profile,
+            status="Checking your profile…",
             timeout_s=5.0,
         ),
     ]

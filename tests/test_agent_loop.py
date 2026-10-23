@@ -176,3 +176,19 @@ def test_two_empty_replies_fail_visibly(settings):
     turn = loop.run_turn("demo", "1+1?")
     # after tools the first answer call is already thinking-off, so it isn't retried again
     assert turn.stop_reason == "llm_error" and "couldn't put an answer together" in turn.answer
+
+
+def test_on_event_streams_status_then_answer_text(settings):
+    loop, llm = make_loop(settings, [[tool_call("calculator", {"expression": "12*7"})], "12 × 7 = 84."])
+    events = []
+    turn = loop.run_turn("demo", "12*7?", on_event=events.append)
+    assert events[0] == {"type": "status", "text": "Calculating…"}
+    deltas = [e["text"] for e in events if e["type"] == "delta"]
+    assert "".join(deltas) == "12 × 7 = 84." == turn.answer and len(deltas) == 2   # arrived in pieces
+    assert all(c.get("stream") for c in llm.calls) and turn.prompt_tokens == 200   # usage still counted
+
+
+def test_answers_after_tools_are_capped(settings):
+    loop, llm = make_loop(settings, [[tool_call("calculator", {"expression": "1+1"})], "2"])
+    loop.run_turn("demo", "1+1?")
+    assert llm.calls[0]["max_tokens"] == 4096 and llm.calls[1]["max_tokens"] == 900

@@ -57,6 +57,7 @@ class Tool:
     handler: Callable[[dict[str, Any], ToolContext], Any]
     requires_confirmation: bool = False
     timeout_s: float = 20.0
+    status: str = ""  # shown while it runs, e.g. "Searching the {game} wiki…" (filled from the arguments)
 
 
 @dataclass
@@ -98,6 +99,16 @@ class ToolRegistry:
 
     def names(self) -> list[str]:
         return list(self._tools)
+
+    def status_for(self, tool_name: str, args: Any) -> str:
+        """A short, friendly line describing what the tool is doing, for live progress in the UI."""
+        tool = self._tools.get(tool_name)
+        if tool is None or not tool.status:
+            return "Working…"
+        try:
+            return tool.status.format(**{k: str(v)[:60] for k, v in (args if isinstance(args, dict) else {}).items()})
+        except (KeyError, IndexError, ValueError):
+            return tool.status.split("{")[0].strip() or "Working…"
 
     def schemas(self) -> list[dict[str, Any]]:
         """Tool definitions in the OpenAI `tools` format."""

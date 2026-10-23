@@ -151,5 +151,6 @@ def make_web_search_tool(search: WebSearch):
             "required": ["query"],
         },
         handler=handler,
+        status="Searching the web for “{query}”…",
         timeout_s=20.0,
     )
