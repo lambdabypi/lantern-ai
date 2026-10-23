@@ -148,7 +148,8 @@ Already done and reused: skeleton, Token Factory client, router (thinking switch
 | G3b | 23 Oct | ✅ Memory extractor (background, after each reply; platforms only if named). Chat model runs with thinking off (2–10× faster), answers are never blank, and no game facts without ask_game |
 | G4b | 23 Oct | ✅ Sign in through Steam (OpenID 2.0, server-side verification, state cookie); library imported on first sign-in. Verified live with Shreyas's account (24 games). Still to do: Steam's official button image; set `PUBLIC_BASE_URL` on deploy |
 | G4 | 23 Oct | ✅ Steam import: client (`app/tools/steam.py`), import into memory (`app/steam_import.py`: top 25 played games, achievements for the 5 most recent, never overwrites player-given status, progress or platform), `POST /api/steam/import`, and an "Import from Steam" form. Verified live on Shreyas's profile (27 games, 24 imported) |
-| G5 | 25–26 Oct | "What's new for me" briefing; demo guest seeded with a fake profile |
+| G3c | 23 Oct | ✅ Streaming with live status, lookup planner, Super for answers, and background prewarming of game sources (Steam import and sign-in, added games, extractor) with scored source picking |
+| G5 | 24–25 Oct | "What's new for me" briefing; demo guest seeded with a fake profile |
 | G6 | 26–27 Oct | Deploy on a Nebius CPU VM (Docker with a restart policy, `CACHE_ENABLED=false`); README rewrite |
 | G7 | 27–28 Oct | Demo video, polish, submit. 29–30 Oct is buffer |
 
