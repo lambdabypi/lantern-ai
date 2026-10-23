@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Lantern</title>
 <style>
   :root {
@@ -29,7 +29,8 @@
   .bot.stopped { background: var(--warn-bg); color: var(--warn); border-color: transparent; }
   .meta { font-size: .8rem; color: var(--muted); margin-top: 6px; white-space: normal; }
   .empty { color: var(--muted); text-align: center; margin: auto 0; }
-  form { position: sticky; bottom: 0; background: var(--bg); padding: 12px 0 20px; display: grid; gap: 8px; }
+  form { position: sticky; bottom: 0; background: var(--bg); padding: 12px 0 calc(20px + env(safe-area-inset-bottom));
+         display: grid; gap: 8px; }
   .row { display: flex; gap: 8px; }
   textarea { flex: 1; resize: none; min-height: 48px; max-height: 160px; padding: 12px; border-radius: 12px;
              border: 1px solid var(--border); background: var(--surface); color: var(--text); font: inherit; }
@@ -80,6 +81,14 @@
   dialog textarea { width: 100%; font: 13px/1.5 ui-monospace, Consolas, monospace; padding: 10px; border-radius: 10px;
                     border: 1px solid var(--border); background: var(--surface); color: var(--text); }
   .msg.status { color: var(--muted); font-style: italic; }
+  .msg.rich { white-space: normal; }
+  .msg.rich p { margin: 0 0 8px; }
+  .msg.rich p:last-child, .msg.rich ul:last-child { margin-bottom: 0; }
+  .msg.rich ul { margin: 0 0 8px; padding-left: 20px; }
+  .msg.rich li { margin: 2px 0; }
+  .msg a { color: var(--accent); }
+  .msg a.cite { font-size: .8rem; white-space: nowrap; text-decoration: none; padding: 0 4px; margin-left: 2px;
+                border-radius: 6px; background: var(--user); }
   details.spoiler { margin-top: 6px; background: var(--warn-bg); border-radius: 8px; padding: 6px 10px; }
   details.spoiler summary { cursor: pointer; color: var(--warn); font-size: .85rem; }
   a.ghost { text-decoration: none; display: inline-block; margin-top: 16px; }
@@ -269,19 +278,79 @@ function resetLog(text = EMPTY_CHAT) {
   log.firstChild.id = "empty";
 }
 
+// ---- answer rendering: a safe Markdown subset, built from DOM nodes (never innerHTML) ----------
+// Supports **bold**, bullet/numbered lists, "### headings", and links: [text](url), 【url】 citations
+// and bare URLs. Links show just the site name and open in a new tab.
+const INLINE = /\[([^\]\n]{1,200})\]\((https?:\/\/[^\s)]+)\)|【\s*(https?:\/\/[^\s】]+)\s*】|(https?:\/\/[^\s<>()【】\]]+)|\*\*([^*\n]+)\*\*/g;
+
+function siteName(url) {
+  try { return new URL(url).hostname.replace(/^www\./, ""); } catch { return "link"; }
+}
+
+function link(url, label, cite) {
+  const a = document.createElement("a");
+  a.href = url;
+  a.target = "_blank";
+  a.rel = "noopener noreferrer";
+  a.textContent = label;
+  if (cite) a.className = "cite";
+  return a;
+}
+
+function inline(parent, text) {
+  let last = 0;
+  for (const m of text.matchAll(INLINE)) {
+    if (m.index > last) parent.appendChild(document.createTextNode(text.slice(last, m.index)));
+    if (m[2]) parent.appendChild(link(m[2], m[1], false));
+    else if (m[3]) parent.appendChild(link(m[3], siteName(m[3]), true));
+    else if (m[4]) {
+      const url = m[4].replace(/[.,;:!?]+$/, "");   // keep sentence punctuation out of the link
+      parent.appendChild(link(url, siteName(url), true));
+      parent.appendChild(document.createTextNode(m[4].slice(url.length)));
+    } else if (m[5]) parent.appendChild(el("strong", "", m[5]));
+    last = m.index + m[0].length;
+  }
+  if (last < text.length) parent.appendChild(document.createTextNode(text.slice(last)));
+}
+
+function rich(parent, text) {
+  let list = null;
+  for (const raw of text.split("\n")) {
+    const line = raw.trimEnd();
+    const bullet = line.match(/^\s*(?:[-*•]|\d+[.)])\s+(.*)$/);
+    if (bullet) {
+      if (!list) { list = document.createElement("ul"); parent.appendChild(list); }
+      const li = document.createElement("li");
+      inline(li, bullet[1]);
+      list.appendChild(li);
+      continue;
+    }
+    list = null;
+    if (!line.trim()) continue;
+    const heading = line.match(/^\s*#{1,6}\s+(.*)$/);
+    const p = document.createElement("p");
+    if (heading) { const s = el("strong"); inline(s, heading[1]); p.appendChild(s); }
+    else inline(p, line);
+    parent.appendChild(p);
+  }
+}
+
 // Lines starting with "Spoiler:" are hidden behind a click.
 function renderAnswer(container, text) {
   container.replaceChildren();
+  container.classList.add("rich");
   const normal = [], spoilers = [];
   for (const line of text.split("\n")) {
     const m = line.match(/^\s*\**spoiler:?\**\s*(.*)$/i);
     if (m) spoilers.push(m[1]); else normal.push(line);
   }
-  container.appendChild(document.createTextNode(normal.join("\n").trim()));
+  rich(container, normal.join("\n").trim());
   if (spoilers.length) {
     const d = el("details", "spoiler");
     d.appendChild(el("summary", "", "Spoiler beyond your progress (tap to reveal)"));
-    d.appendChild(el("div", "", spoilers.join("\n")));
+    const body = el("div");
+    rich(body, spoilers.join("\n"));
+    d.appendChild(body);
     container.appendChild(d);
   }
 }
