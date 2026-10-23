@@ -31,6 +31,7 @@ class Settings:
     cookie_secure: bool = False      # true behind HTTPS in production
     guest_ttl_days: int = 7          # guest accounts and their data are deleted after this
     guest_ultra_per_day: int = 10    # "Think harder" (Ultra) turns per guest per day
+    steam_api_key: str = ""          # optional: Steam Web API key for importing public Steam libraries
 
     def require_secret_key(self) -> None:
         """The session-signing key must be set and long enough to resist guessing."""
@@ -80,6 +81,7 @@ def load_settings(env_file: str | Path | None = ".env") -> Settings:
         cookie_secure=_as_bool(get("COOKIE_SECURE", "false")),
         guest_ttl_days=_as_int("GUEST_TTL_DAYS", get("GUEST_TTL_DAYS", "7")),
         guest_ultra_per_day=_as_int("GUEST_ULTRA_PER_DAY", get("GUEST_ULTRA_PER_DAY", "10")),
+        steam_api_key=get("STEAM_API_KEY"),
     )
 
 

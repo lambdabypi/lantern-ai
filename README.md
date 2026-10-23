@@ -14,7 +14,6 @@ Requires Python 3.11+.
 python -m venv .venv
 # Windows: .venv\Scripts\activate    macOS/Linux: source .venv/bin/activate
 pip install -e ".[dev]"
-pip install -e ".[desktop]"   # optional: the desktop companion (PySide6)
 cp .env.example .env   # then fill in your keys and model IDs
 ```
 
