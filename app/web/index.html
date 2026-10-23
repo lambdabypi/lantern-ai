@@ -54,12 +54,40 @@
   .divider { text-align: center; color: var(--muted); font-size: .85rem; }
   .error { color: var(--warn); font-size: .9rem; min-height: 1.2em; }
   #chat { flex: 1; display: flex; flex-direction: column; }
+  nav.tabs { display: flex; gap: 4px; margin-bottom: 12px; border-bottom: 1px solid var(--border); }
+  nav.tabs button { background: none; border: none; padding: 8px 12px; font: inherit; color: var(--muted);
+                    cursor: pointer; border-bottom: 2px solid transparent; }
+  nav.tabs button.active { color: var(--text); border-bottom-color: var(--accent); font-weight: 600; }
+  #games h2 { font-size: 1rem; margin: 20px 0 8px; }
+  .hint { color: var(--muted); font-size: .9rem; margin: 0 0 8px; }
+  .cards { display: grid; gap: 8px; }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 10px 14px; }
+  .card .top { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
+  .card .title { font-weight: 600; }
+  .chip { font-size: .75rem; padding: 2px 8px; border-radius: 999px; background: var(--user); white-space: nowrap; }
+  .card .line { font-size: .9rem; margin-top: 2px; }
+  .card .sub { font-size: .8rem; color: var(--muted); margin-top: 4px; }
+  .card .notes { font-size: .85rem; color: var(--muted); white-space: pre-wrap; margin-top: 6px; }
+  .card .actions { display: flex; gap: 12px; margin-top: 6px; }
+  .link { background: none; border: none; padding: 0; color: var(--accent); font: inherit; font-size: .85rem; cursor: pointer; }
+  .link.danger { color: var(--warn); }
+  .inline-form { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+  .inline-form input, .inline-form select { flex: 1 1 160px; padding: 10px; border-radius: 10px; border: 1px solid var(--border);
+                                            background: var(--surface); color: var(--text); font: inherit; }
+  .empty-list { color: var(--muted); font-size: .9rem; }
+  dialog { border: 1px solid var(--border); border-radius: 14px; background: var(--bg); color: var(--text);
+           width: min(640px, calc(100vw - 32px)); padding: 16px; }
+  dialog textarea { width: 100%; font: 13px/1.5 ui-monospace, Consolas, monospace; padding: 10px; border-radius: 10px;
+                    border: 1px solid var(--border); background: var(--surface); color: var(--text); }
+  details.spoiler { margin-top: 6px; background: var(--warn-bg); border-radius: 8px; padding: 6px 10px; }
+  details.spoiler summary { cursor: pointer; color: var(--warn); font-size: .85rem; }
+  a.ghost { text-decoration: none; display: inline-block; margin-top: 16px; }
 </style>
 </head>
 <body>
 <main>
   <header>
-    <h1>Personal AI</h1>
+    <h1>Personal AI for Gamers</h1>
     <div class="who" id="who" hidden>
       <span id="whoName"></span>
       <button type="button" id="reset">New chat</button>
@@ -68,8 +96,8 @@
   </header>
 
   <section id="auth" hidden>
-    <h2>Your own assistant</h2>
-    <p>Everything it does for you is logged where you can see it. Try it without an account.</p>
+    <h2>Ask anything about your games</h2>
+    <p>Answers from each game's own wiki and patch notes, cited and spoiler-safe for where you're up to. Everything it remembers is yours to see and edit.</p>
     <button type="button" class="big" id="guestBtn">Try it as a guest</button>
     <div class="divider">or use an account</div>
     <form id="authForm" autocomplete="on">
@@ -86,9 +114,14 @@
     <div class="error" id="authError" role="alert"></div>
   </section>
 
+  <nav class="tabs" id="tabs" hidden>
+    <button type="button" data-tab="chat" class="active">Chat</button>
+    <button type="button" data-tab="games">My games</button>
+  </nav>
+
   <section id="chat" hidden>
     <div class="notice" id="guestNotice" hidden></div>
-    <section id="log" aria-live="polite"><p class="empty" id="empty">Ask anything. I use a calculator for maths and web search for current facts.</p></section>
+    <section id="log" aria-live="polite"><p class="empty" id="empty">Tell me what you're playing, or ask anything about a game.</p></section>
     <form id="form">
       <div class="row">
         <textarea id="msg" placeholder="Message" rows="1" required maxlength="4000" aria-label="Message"></textarea>
@@ -97,10 +130,47 @@
       <label><input type="checkbox" id="escalate"> Think harder (Nemotron Ultra)<span id="ultraLeft"></span></label>
     </form>
   </section>
+
+  <section id="games" hidden>
+    <p class="hint">Everything I remember about you is here, as plain files you can edit or delete.</p>
+    <h2>Games</h2>
+    <div class="cards" id="gameList"></div>
+    <form class="inline-form" id="addGame">
+      <input id="newGame" placeholder="Add a game…" maxlength="200" required aria-label="Game title">
+      <select id="newStatus" aria-label="Status">
+        <option value="playing">Playing</option><option value="backlog">Backlog</option>
+        <option value="finished">Finished</option><option value="dropped">Dropped</option>
+      </select>
+      <input id="newProgress" placeholder="Where you're up to (optional)" maxlength="300" aria-label="Progress">
+      <button class="ghost" type="submit">Add</button>
+    </form>
+
+    <h2>Creators you follow</h2>
+    <div class="cards" id="creatorList"></div>
+    <form class="inline-form" id="addCreator">
+      <input id="newCreator" placeholder="Add a streamer or creator…" maxlength="200" required aria-label="Creator name">
+      <input id="newPlatforms" placeholder="Platforms, e.g. twitch, youtube" maxlength="200" aria-label="Platforms">
+      <button class="ghost" type="submit">Add</button>
+    </form>
+
+    <h2>Profile</h2>
+    <div class="cards" id="profileBox"></div>
+    <a class="ghost" href="/api/export" download>Download everything (zip)</a>
+  </section>
+
+  <dialog id="editor">
+    <h3 id="edTitle" style="margin-top:0"></h3>
+    <p class="hint">This is the actual file I keep. Edit the values after the colons, or the notes below the second ---.</p>
+    <textarea id="edText" rows="14" spellcheck="false" aria-label="Memory file"></textarea>
+    <div class="error" id="edError" role="alert"></div>
+    <div class="row"><button type="button" class="send" id="edSave">Save</button>
+      <button type="button" class="ghost" id="edCancel">Cancel</button></div>
+  </dialog>
 </main>
 <script>
 const $ = (id) => document.getElementById(id);
 const log = $("log"), form = $("form"), input = $("msg"), send = $("send"), escalate = $("escalate");
+const EMPTY_CHAT = "Tell me what you're playing, or ask anything about a game.";
 
 async function api(path, options = {}) {
   const res = await fetch(path, {
@@ -116,18 +186,33 @@ async function api(path, options = {}) {
 function detail(data, fallback) {
   if (!data) return fallback;
   if (typeof data.detail === "string") return data.detail;
-  if (Array.isArray(data.detail)) return "Please check the username and password fields.";
+  if (Array.isArray(data.detail)) return "Please check the fields and try again.";
   return fallback;
+}
+
+function el(tag, cls, text) {
+  const node = document.createElement(tag);
+  if (cls) node.className = cls;
+  if (text !== undefined) node.textContent = text;
+  return node;
 }
 
 // ---- signed-in / signed-out views ----------------------------------------------------------
 function showAuth(message = "") {
-  $("auth").hidden = false; $("chat").hidden = true; $("who").hidden = true;
+  $("auth").hidden = false; $("chat").hidden = true; $("games").hidden = true;
+  $("who").hidden = true; $("tabs").hidden = true;
   $("authError").textContent = message;
 }
 
+function showTab(name) {
+  $("chat").hidden = name !== "chat";
+  $("games").hidden = name !== "games";
+  document.querySelectorAll("#tabs button").forEach(b => b.classList.toggle("active", b.dataset.tab === name));
+  if (name === "games") loadProfile(); else input.focus();
+}
+
 function showChat(me) {
-  $("auth").hidden = true; $("chat").hidden = false; $("who").hidden = false;
+  $("auth").hidden = true; $("who").hidden = false; $("tabs").hidden = false;
   $("whoName").textContent = me.kind === "guest" ? "Guest" : me.user_id;
   const notice = $("guestNotice");
   if (me.kind === "guest") {
@@ -138,18 +223,18 @@ function showChat(me) {
     notice.hidden = true;
   }
   $("ultraLeft").textContent = me.ultra_left_today === null ? "" : ` · ${me.ultra_left_today} left today`;
-  input.focus();
+  showTab("chat");
 }
 
 async function refreshMe() {
   const { res, data } = await api("/api/me");
-  if (res.ok) showChat(data); else showAuth();
+  if (res.ok) { showChat(data); loadHistory(); } else showAuth();
 }
 
 async function signIn(path, body) {
   $("authError").textContent = "";
   const { res, data } = await api(path, { method: "POST", body });
-  if (res.ok) { log.innerHTML = ""; showChat(data); }
+  if (res.ok) { resetLog(); showChat(data); loadHistory(); }
   else showAuth(detail(data, `Couldn't sign in (error ${res.status}).`));
 }
 
@@ -164,19 +249,47 @@ $("registerBtn").addEventListener("click", () => {
 });
 $("logout").addEventListener("click", async () => {
   await api("/api/auth/logout", { method: "POST" });
-  log.innerHTML = '<p class="empty" id="empty">Ask anything. I use a calculator for maths and web search for current facts.</p>';
+  resetLog();
   showAuth();
 });
+document.querySelectorAll("#tabs button").forEach(b => b.addEventListener("click", () => showTab(b.dataset.tab)));
 
 // ---- chat ------------------------------------------------------------------------------------
+function resetLog(text = EMPTY_CHAT) {
+  log.replaceChildren(el("p", "empty", text));
+  log.firstChild.id = "empty";
+}
+
+// Lines starting with "Spoiler:" are hidden behind a click.
+function renderAnswer(container, text) {
+  container.replaceChildren();
+  const normal = [], spoilers = [];
+  for (const line of text.split("\n")) {
+    const m = line.match(/^\s*\**spoiler:?\**\s*(.*)$/i);
+    if (m) spoilers.push(m[1]); else normal.push(line);
+  }
+  container.appendChild(document.createTextNode(normal.join("\n").trim()));
+  if (spoilers.length) {
+    const d = el("details", "spoiler");
+    d.appendChild(el("summary", "", "Spoiler beyond your progress (tap to reveal)"));
+    d.appendChild(el("div", "", spoilers.join("\n")));
+    container.appendChild(d);
+  }
+}
+
 function add(text, cls) {
   $("empty")?.remove();
-  const div = document.createElement("div");
-  div.className = "msg " + cls;
-  div.textContent = text;
+  const div = el("div", "msg " + cls);
+  if (cls === "bot") renderAnswer(div, text); else div.textContent = text;
   log.appendChild(div);
   div.scrollIntoView({ block: "end" });
   return div;
+}
+
+async function loadHistory() {
+  const { res, data } = await api("/api/history");
+  if (!res.ok || !data.length || log.querySelector(".msg")) return;
+  data.forEach(m => add(m.content, m.role === "user" ? "user" : "bot"));
 }
 
 function meta(data) {
@@ -184,10 +297,7 @@ function meta(data) {
   const model = data.model ? data.model.split("/").pop() : data.tier;
   if (data.tokens) parts.push(`${data.tokens.toLocaleString()} tokens`);
   if (model) parts.push(model);
-  const p = document.createElement("div");
-  p.className = "meta";
-  p.textContent = parts.join(" · ");
-  return p;
+  return el("div", "meta", parts.join(" · "));
 }
 
 form.addEventListener("submit", async (e) => {
@@ -202,10 +312,10 @@ form.addEventListener("submit", async (e) => {
     const { res, data } = await api("/api/chat", { method: "POST", body: { message, escalate: escalate.checked } });
     if (res.status === 401) { pending.remove(); showAuth("Your session ended. Sign in again."); return; }
     if (!res.ok) throw new Error(detail(data, `Server error ${res.status}`));
-    pending.textContent = data.answer;
+    renderAnswer(pending, data.answer);
     if (data.stop_reason !== "done") pending.classList.add("stopped");
     pending.appendChild(meta(data));
-    if (escalate.checked) refreshMe();  // update "left today"
+    if (escalate.checked) refreshUltra();
   } catch (err) {
     pending.textContent = `Something went wrong: ${err.message}`;
     pending.classList.add("stopped");
@@ -215,13 +325,121 @@ form.addEventListener("submit", async (e) => {
   }
 });
 
+async function refreshUltra() {
+  const { res, data } = await api("/api/me");
+  if (res.ok) $("ultraLeft").textContent = data.ultra_left_today === null ? "" : ` · ${data.ultra_left_today} left today`;
+}
+
 input.addEventListener("keydown", (e) => {
   if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); form.requestSubmit(); }
 });
 
 $("reset").addEventListener("click", async () => {
   await api("/api/reset", { method: "POST" });
-  log.innerHTML = '<p class="empty" id="empty">New chat started.</p>';
+  resetLog("New chat started. I still remember your games (see My games).");
+});
+
+// ---- my games (visible memory) -------------------------------------------------------------
+const SOURCE_LABEL = { chat: "from chat", steam: "from Steam", user: "added by you" };
+
+function card(item, kind, titleText, lines) {
+  const c = el("div", "card");
+  const top = el("div", "top");
+  top.appendChild(el("span", "title", titleText));
+  if (item.status) top.appendChild(el("span", "chip", item.status));
+  c.appendChild(top);
+  lines.filter(Boolean).forEach(l => c.appendChild(el("div", "line", l)));
+  const sub = [SOURCE_LABEL[item.source] || item.source, item.updated ? `updated ${item.updated}` : ""].filter(Boolean);
+  c.appendChild(el("div", "sub", sub.join(" · ")));
+  if (item.notes) c.appendChild(el("div", "notes", item.notes));
+  const actions = el("div", "actions");
+  const edit = el("button", "link", "Edit");
+  edit.type = "button";
+  edit.addEventListener("click", () => openEditor(kind, item.slug, titleText));
+  actions.appendChild(edit);
+  if (kind !== "profile") {
+    const del = el("button", "link danger", "Delete");
+    del.type = "button";
+    del.addEventListener("click", () => removeItem(kind, item.slug, titleText));
+    actions.appendChild(del);
+  }
+  c.appendChild(actions);
+  return c;
+}
+
+async function loadProfile() {
+  const { res, data } = await api("/api/profile");
+  if (res.status === 401) { showAuth("Your session ended. Sign in again."); return; }
+  if (!res.ok) return;
+  const games = $("gameList"), creators = $("creatorList"), profile = $("profileBox");
+  games.replaceChildren(...(data.games.length ? data.games.map(g => card(g, "game", g.title || g.slug, [
+      g.progress ? `Progress: ${g.progress}` : "",
+      [g.platform, g.playtime_hours ? `${g.playtime_hours} h played` : "", g.achievements].filter(Boolean).join(" · ")]))
+    : [el("p", "empty-list", "No games yet. Tell me in chat what you're playing, or add one below.")]));
+  creators.replaceChildren(...(data.creators.length ? data.creators.map(c => card(c, "creator", c.name || c.slug, [
+      (c.platforms || []).join(", ")]))
+    : [el("p", "empty-list", "No creators yet.")]));
+  const p = data.profile;
+  if (p) {
+    profile.replaceChildren(card(p, "profile", "Your profile", [
+      p.platforms ? `Platforms: ${p.platforms.join(", ")}` : "",
+      p.play_style ? `Play style: ${p.play_style}` : "",
+      `Spoilers: ${p.spoiler_preference || "strict"}`]));
+  } else {
+    const startBtn = el("button", "link", "Set up your profile (platforms, spoiler preference)");
+    startBtn.type = "button";
+    startBtn.addEventListener("click", async () => {
+      await api("/api/memory/profile", { method: "POST", body: { name: "profile", fields: { spoiler_preference: "strict" } } });
+      openEditor("profile", "profile", "Your profile");
+    });
+    profile.replaceChildren(startBtn);
+  }
+}
+
+let editing = null;
+async function openEditor(kind, slug, title) {
+  const { res, data } = await api(`/api/memory/${kind}/${encodeURIComponent(slug)}`);
+  if (!res.ok) { alert(detail(data, "Couldn't open that file.")); return; }
+  editing = { kind, slug };
+  $("edTitle").textContent = title;
+  $("edText").value = data.text;
+  $("edError").textContent = "";
+  $("editor").showModal();
+}
+$("edCancel").addEventListener("click", () => $("editor").close());
+$("edSave").addEventListener("click", async () => {
+  const { res, data } = await api(`/api/memory/${editing.kind}/${encodeURIComponent(editing.slug)}`,
+                                  { method: "PUT", body: { text: $("edText").value } });
+  if (!res.ok) { $("edError").textContent = detail(data, "Couldn't save."); return; }
+  $("editor").close();
+  loadProfile();
+});
+
+async function removeItem(kind, slug, title) {
+  if (!confirm(`Delete "${title}" from my memory? This can't be undone.`)) return;
+  const { res, data } = await api(`/api/memory/${kind}/${encodeURIComponent(slug)}`, { method: "DELETE" });
+  if (!res.ok) alert(detail(data, "Couldn't delete."));
+  loadProfile();
+}
+
+$("addGame").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const fields = { status: $("newStatus").value };
+  if ($("newProgress").value.trim()) fields.progress = $("newProgress").value.trim();
+  const { res, data } = await api("/api/memory/game", { method: "POST", body: { name: $("newGame").value, fields } });
+  if (!res.ok) { alert(detail(data, "Couldn't add that game.")); return; }
+  $("addGame").reset();
+  loadProfile();
+});
+
+$("addCreator").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const platforms = $("newPlatforms").value.split(",").map(s => s.trim()).filter(Boolean);
+  const { res, data } = await api("/api/memory/creator",
+                                  { method: "POST", body: { name: $("newCreator").value, fields: platforms.length ? { platforms } : {} } });
+  if (!res.ok) { alert(detail(data, "Couldn't add that creator.")); return; }
+  $("addCreator").reset();
+  loadProfile();
 });
 
 refreshMe();
