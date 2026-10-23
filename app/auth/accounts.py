@@ -14,6 +14,7 @@ import hashlib
 import hmac
 import json
 import os
+import re
 import secrets
 import shutil
 import threading
@@ -25,6 +26,7 @@ from typing import Callable, Literal
 from app.auth.users import user_dir, validate_user_id
 
 GUEST_PREFIX = "guest-"
+STEAM_PREFIX = "steam-"
 MIN_PASSWORD, MAX_PASSWORD = 8, 256
 _SCRYPT = {"n": 2**14, "r": 8, "p": 1}
 _LOGIN_WINDOW_S, _LOGIN_MAX_FAILURES = 600, 5
@@ -46,6 +48,7 @@ class Account:
     expires_ts: float | None = None
     pw_hash: str | None = None
     tokens: list[dict] = field(default_factory=list)  # {"id", "hash", "label", "created_ts"}
+    display_name: str | None = None                    # e.g. the Steam persona name
 
     @property
     def is_guest(self) -> bool:
@@ -119,7 +122,7 @@ class AccountStore:
             validate_user_id(user_id)
         except ValueError:
             raise AuthError("Usernames are 1-64 characters: a-z, 0-9, '_' or '-'.") from None
-        if user_id.startswith(GUEST_PREFIX) or user_id == "demo":
+        if user_id.startswith((GUEST_PREFIX, STEAM_PREFIX)) or user_id == "demo":
             raise AuthError("That username is reserved.")
         if not (MIN_PASSWORD <= len(password or "") <= MAX_PASSWORD):
             raise AuthError(f"Passwords must be {MIN_PASSWORD}-{MAX_PASSWORD} characters.")
@@ -143,6 +146,24 @@ class AccountStore:
             raise AuthError("Wrong username or password.", status=401)
         self._failures.pop(user_id, None)
         return account
+
+    # ---- Sign in through Steam ------------------------------------------------------------
+    def get_or_create_steam(self, steam_id: str, display_name: str | None = None) -> tuple[Account, bool]:
+        """The account for a Steam-verified SteamID64: (account, created). No password is ever set,
+        so password sign-in can't be used for it."""
+        if not re.fullmatch(r"7656\d{13}", steam_id or ""):
+            raise AuthError("Invalid SteamID.")
+        user_id = STEAM_PREFIX + steam_id
+        with self._lock:
+            account = self.get(user_id)
+            created = account is None
+            if created:
+                account = Account(user_id=user_id, kind="user", created_ts=self.clock())
+            if display_name and display_name != account.display_name:
+                account.display_name = display_name[:64]
+            if created or display_name:
+                self._save(account)
+        return account, created
 
     # ---- guests --------------------------------------------------------------------------
     def create_guest(self) -> Account:

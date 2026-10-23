@@ -82,6 +82,7 @@
   details.spoiler { margin-top: 6px; background: var(--warn-bg); border-radius: 8px; padding: 6px 10px; }
   details.spoiler summary { cursor: pointer; color: var(--warn); font-size: .85rem; }
   a.ghost { text-decoration: none; display: inline-block; margin-top: 16px; }
+  a.steam { margin-top: 0; text-align: center; color: var(--text); font-weight: 600; }
 </style>
 </head>
 <body>
@@ -99,6 +100,7 @@
     <h2>Ask anything about your games</h2>
     <p>Answers from each game's own wiki and patch notes, cited and spoiler-safe for where you're up to. Everything it remembers is yours to see and edit.</p>
     <button type="button" class="big" id="guestBtn">Try it as a guest</button>
+    <a class="ghost steam" href="/auth/steam/start" id="steamSignIn">Sign in through Steam</a>
     <div class="divider">or use an account</div>
     <form id="authForm" autocomplete="on">
       <div style="display:grid; gap:8px">
@@ -218,7 +220,7 @@ function showTab(name) {
 
 function showChat(me) {
   $("auth").hidden = true; $("who").hidden = false; $("tabs").hidden = false;
-  $("whoName").textContent = me.kind === "guest" ? "Guest" : me.user_id;
+  $("whoName").textContent = me.kind === "guest" ? "Guest" : (me.display_name || me.user_id);
   const notice = $("guestNotice");
   if (me.kind === "guest") {
     const when = new Date(me.expires_ts * 1000).toLocaleDateString(undefined, { day: "numeric", month: "short" });
@@ -464,7 +466,14 @@ $("steamForm").addEventListener("submit", async (e) => {
   }
 });
 
-refreshMe();
+// Errors from the Steam sign-in redirect arrive as ?auth_error=...
+const authError = new URLSearchParams(location.search).get("auth_error");
+if (authError) {
+  history.replaceState(null, "", "/");
+  showAuth(authError);
+} else {
+  refreshMe();
+}
 </script>
 </body>
 </html>

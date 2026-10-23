@@ -34,6 +34,9 @@ class FakeSteam:
     def owned_games(self, steamid):
         return self.games
 
+    def player_name(self, steamid):
+        return None
+
     def achievements(self, steamid, appid):
         self.achievement_calls.append(appid)
         if appid == 292030:

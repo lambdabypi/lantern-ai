@@ -182,6 +182,16 @@ class SteamClient:
             return "This game has no achievements or stats on Steam."
         return "Steam couldn't return achievements for this game."
 
+    def player_name(self, steamid: str) -> str | None:
+        """The player's public persona name (ISteamUser/GetPlayerSummaries/v2), or None if unavailable."""
+        try:
+            data = self._get("ISteamUser/GetPlayerSummaries/v2/", {"steamids": steamid})
+        except SteamError:
+            return None  # a missing display name must never block sign-in
+        players = (data.get("response") or {}).get("players") or []
+        name = players[0].get("personaname") if players and isinstance(players[0], dict) else None
+        return str(name)[:64] if name else None
+
     def _get(self, path: str, params: dict[str, Any]) -> dict:
         try:
             r = self._http.get(BASE_URL + path, params={"key": self._key, **params},

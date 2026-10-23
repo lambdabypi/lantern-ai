@@ -5,16 +5,22 @@ Run:  uvicorn app.main:create_app --factory --reload
 
 from __future__ import annotations
 
+import hmac
+import secrets
 from dataclasses import asdict
 from pathlib import Path
+from urllib.parse import quote
+
+import httpx
 
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
-from fastapi.responses import FileResponse, JSONResponse, Response as RawResponse
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Response as RawResponse
 from pydantic import BaseModel, Field
 
 from app.agent.loop import AgentLoop, TurnResult
 from app.auth.accounts import Account, AccountStore, AuthError
 from app.auth.quota import DailyQuota
+from app.auth import steam_openid
 from app.auth.sessions import COOKIE_NAME, SessionSigner
 from app.config import Settings, load_settings
 from app.llm.router import ModelRouter
@@ -31,6 +37,7 @@ from app.tools.registry import ToolRegistry
 WEB_DIR = Path(__file__).parent / "web"
 MAX_HISTORY_MESSAGES = 20  # recent messages sent to the model each turn
 USER_SESSION_S = 14 * 86400
+STEAM_STATE_COOKIE = "pai_steam_state"
 
 
 class Credentials(BaseModel):
@@ -81,11 +88,12 @@ class MeResponse(BaseModel):
     kind: str
     expires_ts: float | None
     ultra_left_today: int | None  # None = no daily limit
+    display_name: str | None = None
     steam_enabled: bool = False
 
 
 def create_app(loop: AgentLoop | None = None, settings: Settings | None = None,
-               steam: SteamClient | None = None) -> FastAPI:
+               steam: SteamClient | None = None, openid_http: httpx.Client | None = None) -> FastAPI:
     settings = settings or load_settings()
     settings.require_secret_key()
     memory = MemoryStore(settings.data_dir)
@@ -100,6 +108,7 @@ def create_app(loop: AgentLoop | None = None, settings: Settings | None = None,
 
     steam_client = steam or (SteamClient(settings.steam_api_key) if settings.steam_api_key else None)
     accounts = AccountStore(settings.data_dir, guest_ttl_days=settings.guest_ttl_days)
+    openid_clients: list[httpx.Client] = [openid_http] if openid_http else []  # created on first Steam sign-in
     signer = SessionSigner(settings.app_secret_key)
     quota = DailyQuota(settings.data_dir)
     accounts.cleanup_expired_guests()
@@ -140,7 +149,8 @@ def create_app(loop: AgentLoop | None = None, settings: Settings | None = None,
         if account.is_guest:
             left = max(0, settings.guest_ultra_per_day - quota.used(account.user_id, "ultra"))
         return MeResponse(user_id=account.user_id, kind=account.kind, expires_ts=account.expires_ts,
-                          ultra_left_today=left, steam_enabled=steam_client is not None)
+                          ultra_left_today=left, steam_enabled=steam_client is not None,
+                          display_name=account.display_name)
 
     # ---- pages ------------------------------------------------------------------------------
     @app.get("/", include_in_schema=False)
@@ -159,6 +169,50 @@ def create_app(loop: AgentLoop | None = None, settings: Settings | None = None,
     @app.post("/api/auth/login", response_model=MeResponse)
     def login(creds: Credentials, response: Response) -> MeResponse:
         return start_session(response, accounts.authenticate(creds.username, creds.password))
+
+    # ---- Sign in through Steam (OpenID 2.0) --------------------------------------------------
+    def base_url(request: Request) -> str:
+        return settings.public_base_url or str(request.base_url).rstrip("/")
+
+    @app.get("/auth/steam/start", include_in_schema=False)
+    def steam_start(request: Request) -> RedirectResponse:
+        state = secrets.token_urlsafe(16)  # ties Steam's answer to this browser (stops login CSRF)
+        base = base_url(request)
+        response = RedirectResponse(
+            steam_openid.login_url(f"{base}/auth/steam/callback?state={state}", base), status_code=303)
+        response.set_cookie(STEAM_STATE_COOKIE, state, max_age=600, httponly=True, samesite="lax",
+                            secure=settings.cookie_secure, path="/auth/steam")
+        return response
+
+    @app.get("/auth/steam/callback", include_in_schema=False)
+    def steam_callback(request: Request) -> RedirectResponse:
+        def fail(message: str) -> RedirectResponse:
+            r = RedirectResponse("/?auth_error=" + quote(message), status_code=303)
+            r.delete_cookie(STEAM_STATE_COOKIE, path="/auth/steam")
+            return r
+
+        params = dict(request.query_params)
+        state = params.get("state", "")
+        if not state or not hmac.compare_digest(state, request.cookies.get(STEAM_STATE_COOKIE, "")):
+            return fail("That Steam sign-in expired or was started somewhere else. Please try again.")
+        try:
+            if not openid_clients:
+                openid_clients.append(httpx.Client(timeout=steam_openid.TIMEOUT_S))
+            steam_id = steam_openid.verify(params, f"{base_url(request)}/auth/steam/callback?state={state}",
+                                           openid_clients[0])
+        except AuthError as e:
+            return fail(str(e))
+        account, created = accounts.get_or_create_steam(
+            steam_id, steam_client.player_name(steam_id) if steam_client else None)
+        if created and steam_client:
+            try:  # first sign-in: bring their library in straight away
+                import_steam_library(memory, steam_client, account.user_id, steam_id)
+            except SteamError:
+                pass  # e.g. private game details; they can import later from My games
+        response = RedirectResponse("/", status_code=303)
+        start_session(response, account)
+        response.delete_cookie(STEAM_STATE_COOKIE, path="/auth/steam")
+        return response
 
     @app.post("/api/auth/logout")
     def logout(response: Response) -> dict[str, bool]:
