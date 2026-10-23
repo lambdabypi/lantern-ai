@@ -22,8 +22,10 @@ from app.memory.history import HistoryStore
 from app.memory.store import KINDS, MemoryStore, MemoryStoreError
 from app.steam_import import import_steam_library
 from app.tools.builtin import builtin_tools
+from app.tools.game_knowledge import GameKnowledge, make_game_tools
 from app.tools.profile_tools import make_profile_tools
 from app.tools.steam import SteamClient, SteamError
+from app.tools.web_search import WebSearch
 from app.tools.registry import ToolRegistry
 
 WEB_DIR = Path(__file__).parent / "web"
@@ -89,7 +91,9 @@ def create_app(loop: AgentLoop | None = None, settings: Settings | None = None,
     memory = MemoryStore(settings.data_dir)
     history_store = HistoryStore(settings.data_dir)
     if loop is None:
-        tools = builtin_tools(settings) + make_profile_tools(memory)
+        search = WebSearch(settings)
+        knowledge = GameKnowledge(memory, search, settings.data_dir)
+        tools = make_game_tools(knowledge) + builtin_tools(settings, search) + make_profile_tools(memory)
         loop = AgentLoop(ModelRouter(settings), ToolRegistry(settings.data_dir, tools),
                          profile_context=memory.context_for_prompt)
 

@@ -37,17 +37,23 @@ class WebSearch:
         *,
         depth: Depth = "basic",
         max_results: int = 5,
+        include_domains: list[str] | None = None,
         use_cache: bool = True,
     ) -> list[dict[str, Any]]:
-        """Return a list of results, each with at least title, url and content."""
-        key = cache_key({"query": query, "depth": depth, "max_results": max_results})
+        """Return a list of results, each with at least title, url and content.
+
+        include_domains restricts results to those sites (e.g. a game's own wiki).
+        """
+        key = cache_key({"query": query, "depth": depth, "max_results": max_results,
+                         "include_domains": sorted(include_domains or [])})
         if use_cache and (hit := self._cache.get(key)) is not None:
             self.cached_searches += 1
             return hit
 
+        extra = {"include_domains": list(include_domains)} if include_domains else {}
         try:
             resp = self._client.search(
-                query, search_depth=depth, max_results=max_results, include_usage=True
+                query, search_depth=depth, max_results=max_results, include_usage=True, **extra
             )
         except Exception as e:  # tavily raises several unrelated exception types
             raise SearchError(f"Tavily search failed for {query!r}: {e}") from e
@@ -63,6 +69,42 @@ class WebSearch:
         if use_cache:
             self._cache.set(key, results)
         return results
+
+    def extract(
+        self,
+        urls: list[str],
+        *,
+        query: str,
+        chunks_per_source: int = 3,
+        use_cache: bool = True,
+    ) -> list[dict[str, str]]:
+        """Pull the passages most relevant to `query` from each page: [{url, content}].
+
+        Uses advanced extraction: game wikis often block the basic fetcher (seen with the
+        Warframe wikis). Pages that still fail are simply left out; callers fall back to
+        search snippets. Billed as 2 credits per 5 URLs.
+        """
+        urls = [u for u in urls if u][:5]
+        if not urls:
+            return []
+        key = cache_key({"extract": urls, "query": query, "chunks": chunks_per_source})
+        if use_cache and (hit := self._cache.get(key)) is not None:
+            self.cached_searches += 1
+            return hit
+        try:
+            resp = self._client.extract(urls, extract_depth="advanced", format="markdown", query=query,
+                                        chunks_per_source=chunks_per_source, include_usage=True)
+        except Exception as e:  # tavily raises several unrelated exception types
+            raise SearchError(f"Tavily extract failed: {e}") from e
+
+        reported = int((resp.get("usage") or {}).get("credits") or 0)
+        self.credits_used += reported or 2 * -(-len(urls) // 5)  # documented price if usage isn't reported
+        self.live_searches += 1
+        pages = [{"url": r.get("url", ""), "content": r.get("raw_content") or ""}
+                 for r in resp.get("results", []) if r.get("raw_content")]
+        if use_cache:
+            self._cache.set(key, pages)
+        return pages
 
 
 UNTRUSTED_NOTE = (
