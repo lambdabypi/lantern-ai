@@ -79,6 +79,7 @@
            width: min(640px, calc(100vw - 32px)); padding: 16px; }
   dialog textarea { width: 100%; font: 13px/1.5 ui-monospace, Consolas, monospace; padding: 10px; border-radius: 10px;
                     border: 1px solid var(--border); background: var(--surface); color: var(--text); }
+  .msg.status { color: var(--muted); font-style: italic; }
   details.spoiler { margin-top: 6px; background: var(--warn-bg); border-radius: 8px; padding: 6px 10px; }
   details.spoiler summary { cursor: pointer; color: var(--warn); font-size: .85rem; }
   a.ghost { text-decoration: none; display: inline-block; margin-top: 16px; }
@@ -308,6 +309,30 @@ function meta(data) {
   return el("div", "meta", parts.join(" · "));
 }
 
+function setStatus(el, text) {
+  el.classList.add("status");
+  el.textContent = text;
+  el.scrollIntoView({ block: "end" });
+}
+
+// Read server-sent events from a fetch response: calls onEvent for each {"type": ...} message.
+async function readEvents(res, onEvent) {
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  for (;;) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    let cut;
+    while ((cut = buffer.indexOf("\n\n")) >= 0) {
+      const line = buffer.slice(0, cut).split("\n").find(l => l.startsWith("data: "));
+      buffer = buffer.slice(cut + 2);
+      if (line) onEvent(JSON.parse(line.slice(6)));
+    }
+  }
+}
+
 form.addEventListener("submit", async (e) => {
   e.preventDefault();
   const message = input.value.trim();
@@ -315,16 +340,46 @@ form.addEventListener("submit", async (e) => {
   add(message, "user");
   input.value = "";
   send.disabled = true;
-  const pending = add("Thinking…", "bot");
+  const pending = add("", "bot");
+  setStatus(pending, "Thinking…");
+  let text = "";
   try {
-    const { res, data } = await api("/api/chat", { method: "POST", body: { message, escalate: escalate.checked } });
+    const res = await fetch("/api/chat/stream", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ message, escalate: escalate.checked }),
+    });
     if (res.status === 401) { pending.remove(); showAuth("Your session ended. Sign in again."); return; }
-    if (!res.ok) throw new Error(detail(data, `Server error ${res.status}`));
-    renderAnswer(pending, data.answer);
-    if (data.stop_reason !== "done") pending.classList.add("stopped");
-    pending.appendChild(meta(data));
+    if (!res.ok) {
+      let data = null;
+      try { data = await res.json(); } catch { /* not JSON */ }
+      throw new Error(detail(data, `Server error ${res.status}`));
+    }
+    let failure = null;
+    await readEvents(res, (ev) => {
+      if (ev.type === "status") {
+        text = "";                       // anything said before a lookup is replaced by the result
+        setStatus(pending, ev.text);
+      } else if (ev.type === "delta") {
+        text += ev.text;
+        if (text.trim()) {
+          pending.classList.remove("status");
+          pending.textContent = text;
+          pending.scrollIntoView({ block: "end" });
+        }
+      } else if (ev.type === "done") {
+        pending.classList.remove("status");
+        renderAnswer(pending, ev.answer);
+        if (ev.stop_reason !== "done") pending.classList.add("stopped");
+        pending.appendChild(meta(ev));
+      } else if (ev.type === "error") {
+        failure = ev.text;
+      }
+    });
+    if (failure) throw new Error(failure);
     if (escalate.checked) refreshUltra();
   } catch (err) {
+    pending.classList.remove("status");
     pending.textContent = `Something went wrong: ${err.message}`;
     pending.classList.add("stopped");
   } finally {

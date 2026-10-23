@@ -6,24 +6,29 @@ Run:  uvicorn app.main:create_app --factory --reload
 from __future__ import annotations
 
 import hmac
+import json
+import logging
 import secrets
+import threading
 from dataclasses import asdict
 from pathlib import Path
+from queue import Queue
 from urllib.parse import quote
 
 import httpx
 
 from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Request, Response
-from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Response as RawResponse
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Response as RawResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
+from app.agent.lookup import LookupPlanner
 from app.agent.loop import AgentLoop, TurnResult
 from app.auth.accounts import Account, AccountStore, AuthError
 from app.auth.quota import DailyQuota
 from app.auth import steam_openid
 from app.auth.sessions import COOKIE_NAME, SessionSigner
 from app.config import Settings, load_settings
-from app.llm.router import ModelRouter
+from app.llm.router import ModelRouter, Tier
 from app.memory.extractor import MemoryExtractor
 from app.memory.history import HistoryStore
 from app.memory.store import KINDS, MemoryStore, MemoryStoreError
@@ -35,6 +40,7 @@ from app.tools.steam import SteamClient, SteamError
 from app.tools.web_search import WebSearch
 from app.tools.registry import ToolRegistry
 
+log = logging.getLogger(__name__)
 WEB_DIR = Path(__file__).parent / "web"
 MAX_HISTORY_MESSAGES = 20  # recent messages sent to the model each turn
 USER_SESSION_S = 14 * 86400
@@ -108,8 +114,11 @@ def create_app(loop: AgentLoop | None = None, settings: Settings | None = None,
                  + make_profile_tools(memory, knowledge.cached_sources))
         # Thinking off for the chat model: 2-10x faster in a live comparison and still used the calculator
         # for arithmetic. Saving memories is the extractor's job, so it no longer depends on this model.
+        # The planner decides game lookups up front: with thinking off the chat model often skipped
+        # ask_game and invented facts, so that decision is no longer left to it.
         loop = AgentLoop(router, ToolRegistry(settings.data_dir, tools),
-                         profile_context=memory.context_for_prompt, plan_thinking=False)
+                         profile_context=memory.context_for_prompt, plan_thinking=False,
+                         planner=LookupPlanner(router, memory.context_for_prompt), answer_tier=Tier.BALANCED)
         extractor = extractor or MemoryExtractor(router, memory, knowledge.cached_sources)
 
     steam_client = steam or (SteamClient(settings.steam_api_key) if settings.steam_api_key else None)
@@ -246,26 +255,27 @@ def create_app(loop: AgentLoop | None = None, settings: Settings | None = None,
         return {"ok": True}
 
     # ---- chat -------------------------------------------------------------------------------
-    @app.post("/api/chat", response_model=ChatResponse)
-    def chat(req: ChatRequest, background: BackgroundTasks,
-             account: Account = Depends(current_account)) -> ChatResponse:
+    def check_message(req: ChatRequest) -> str:
         message = req.message.strip()
         if not message:
             raise HTTPException(status_code=422, detail="Message is empty.")
-        user_id = account.user_id
+        return message
+
+    def quota_block(req: ChatRequest, account: Account) -> ChatResponse | None:
         if req.escalate and account.is_guest and not quota.try_consume(
-                user_id, "ultra", settings.guest_ultra_per_day):
+                account.user_id, "ultra", settings.guest_ultra_per_day):
             return ChatResponse(
                 answer=(f"You've used today's {settings.guest_ultra_per_day} \"Think harder\" turns for guests. "
                         "Untick it to keep chatting with the fast model, or create an account."),
                 stop_reason="quota", tool_calls=[], tokens=0, model="", tier="reasoning")
+        return None
 
+    def run_chat_turn(req: ChatRequest, account: Account, message: str, on_event=None) -> ChatResponse:
+        user_id = account.user_id
         history = history_store.recent(user_id, MAX_HISTORY_MESSAGES)
-        turn: TurnResult = loop.run_turn(user_id, message, history, escalate=req.escalate)
+        turn: TurnResult = loop.run_turn(user_id, message, history, escalate=req.escalate, on_event=on_event)
         if turn.stop_reason == "done":
             history_store.append(user_id, turn.history_messages(message))
-        if extractor is not None:  # saves games/progress/creators after the reply is sent: no extra wait
-            background.add_task(extractor.run, user_id, message)
         return ChatResponse(
             answer=turn.answer,
             stop_reason=turn.stop_reason,
@@ -274,6 +284,50 @@ def create_app(loop: AgentLoop | None = None, settings: Settings | None = None,
             model=turn.model,
             tier=turn.tier,
         )
+
+    @app.post("/api/chat", response_model=ChatResponse)
+    def chat(req: ChatRequest, background: BackgroundTasks,
+             account: Account = Depends(current_account)) -> ChatResponse:
+        message = check_message(req)
+        if (blocked := quota_block(req, account)) is not None:
+            return blocked
+        response = run_chat_turn(req, account, message)
+        if extractor is not None:  # saves games/progress/creators after the reply is sent: no extra wait
+            background.add_task(extractor.run, account.user_id, message)
+        return response
+
+    @app.post("/api/chat/stream")
+    def chat_stream(req: ChatRequest, background: BackgroundTasks,
+                    account: Account = Depends(current_account)) -> StreamingResponse:
+        """Server-sent events: {"type": "status"|"delta"|"done"|"error", ...}. The turn runs in a worker
+        thread so status lines and answer text reach the browser the moment they exist."""
+        message = check_message(req)
+        blocked = quota_block(req, account)
+
+        def events():
+            if blocked is not None:
+                yield _sse({"type": "done", **blocked.model_dump()})
+                return
+            queue: Queue = Queue()
+
+            def work() -> None:
+                try:
+                    done = run_chat_turn(req, account, message, on_event=queue.put)
+                    queue.put({"type": "done", **done.model_dump()})
+                except Exception:  # noqa: BLE001 - report it to the browser instead of hanging the stream
+                    log.exception("streamed chat turn failed")
+                    queue.put({"type": "error", "text": "Something went wrong on our side. Please try again."})
+                finally:
+                    queue.put(None)
+
+            threading.Thread(target=work, daemon=True).start()
+            while (event := queue.get()) is not None:
+                yield _sse(event)
+
+        if extractor is not None and blocked is None:
+            background.add_task(extractor.run, account.user_id, message)
+        return StreamingResponse(events(), media_type="text/event-stream", background=background,
+                                 headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
     @app.post("/api/reset")
     def reset(account: Account = Depends(current_account)) -> dict[str, bool]:
@@ -337,3 +391,7 @@ def create_app(loop: AgentLoop | None = None, settings: Settings | None = None,
                            headers={"Content-Disposition": 'attachment; filename="my-gaming-memory.zip"'})
 
     return app
+
+
+def _sse(event: dict) -> str:
+    return f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
