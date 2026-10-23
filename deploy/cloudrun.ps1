@@ -32,4 +32,7 @@ $deployArgs = @(
     "--add-volume", "name=data,type=cloud-storage,bucket=$Project-data,mount-options=uid=10001;gid=10001",
     "--add-volume-mount", "volume=data,mount-path=/data"
 )
-& gcloud @deployArgs
+# gcloud writes progress to stderr, which Windows PowerShell 5.1 turns into errors; judge by the exit code instead.
+$ErrorActionPreference = "Continue"
+& gcloud @deployArgs 2>&1 | ForEach-Object { "$_" }
+if ($LASTEXITCODE -ne 0) { throw "gcloud run deploy failed (exit code $LASTEXITCODE)" }
