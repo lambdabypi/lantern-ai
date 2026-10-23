@@ -10,3 +10,10 @@ __pycache__/
 *.pyc
 .pytest_cache/
 docs/
+tests/
+research/
+scripts/
+.claude/
+Mascot_test.jpg
+*.md
+!README.md
