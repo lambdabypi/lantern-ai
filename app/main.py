@@ -24,7 +24,7 @@ from pydantic import BaseModel, Field
 from app.agent.lookup import LookupPlanner
 from app.agent.loop import AgentLoop, TurnResult
 from app.auth.accounts import Account, AccountStore, AuthError
-from app.auth.quota import DailyQuota
+from app.auth.quota import DailyQuota, SiteQuota
 from app.auth import steam_openid
 from app.auth.sessions import COOKIE_NAME, SessionSigner
 from app.config import Settings, load_settings
@@ -95,6 +95,7 @@ class MeResponse(BaseModel):
     kind: str
     expires_ts: float | None
     ultra_left_today: int | None  # None = no daily limit
+    messages_left_today: int | None = None
     display_name: str | None = None
     steam_enabled: bool = False
 
@@ -105,10 +106,12 @@ def create_app(loop: AgentLoop | None = None, settings: Settings | None = None,
     settings = settings or load_settings()
     settings.require_secret_key()
     memory = MemoryStore(settings.data_dir)
+    site_quota = SiteQuota(settings.data_dir)
     history_store = HistoryStore(settings.data_dir)
     if loop is None:
         router = ModelRouter(settings)
-        search = WebSearch(settings)
+        search = WebSearch(settings, credit_guard=lambda credits: site_quota.try_consume(
+            "tavily", settings.site_tavily_credits_per_day or None, credits))
         knowledge = knowledge or GameKnowledge(memory, search, settings.data_dir)
         tools = (make_game_tools(knowledge) + builtin_tools(settings, search)
                  + make_profile_tools(memory, knowledge.cached_sources))
@@ -164,9 +167,15 @@ def create_app(loop: AgentLoop | None = None, settings: Settings | None = None,
         left = None
         if account.is_guest:
             left = max(0, settings.guest_ultra_per_day - quota.used(account.user_id, "ultra"))
+        cap = message_cap(account)
+        messages_left = None if cap is None else max(0, cap - quota.used(account.user_id, "messages"))
         return MeResponse(user_id=account.user_id, kind=account.kind, expires_ts=account.expires_ts,
                           ultra_left_today=left, steam_enabled=steam_client is not None,
-                          display_name=account.display_name)
+                          display_name=account.display_name, messages_left_today=messages_left)
+
+    def message_cap(account: Account) -> int | None:
+        cap = settings.guest_messages_per_day if account.is_guest else settings.user_messages_per_day
+        return cap or None
 
     # ---- pages ------------------------------------------------------------------------------
     @app.get("/", include_in_schema=False)
@@ -264,12 +273,22 @@ def create_app(loop: AgentLoop | None = None, settings: Settings | None = None,
         return message
 
     def quota_block(req: ChatRequest, account: Account) -> ChatResponse | None:
+        """Daily limits that protect the demo's Token Factory and Tavily credits. Checked before any model call."""
+        def blocked(text: str, tier: str = "fast") -> ChatResponse:
+            return ChatResponse(answer=text, stop_reason="quota", tool_calls=[], tokens=0, model="", tier=tier)
+
         if req.escalate and account.is_guest and not quota.try_consume(
                 account.user_id, "ultra", settings.guest_ultra_per_day):
-            return ChatResponse(
-                answer=(f"You've used today's {settings.guest_ultra_per_day} \"Think harder\" turns for guests. "
-                        "Untick it to keep chatting with the fast model, or create an account."),
-                stop_reason="quota", tool_calls=[], tokens=0, model="", tier="reasoning")
+            return blocked(f"You've used today's {settings.guest_ultra_per_day} \"Think harder\" turns for guests. "
+                           "Untick it to keep chatting with the fast model, or create an account.", "reasoning")
+        cap = message_cap(account)
+        if not quota.try_consume(account.user_id, "messages", cap):
+            more = " Create an account or sign in with Steam for more, or" if account.is_guest else ""
+            return blocked(f"You've reached today's limit of {cap} messages.{more} Come back tomorrow (it resets "
+                           "at midnight UTC).")
+        if not site_quota.try_consume("messages", settings.site_messages_per_day or None):
+            return blocked("Lantern's demo has reached its daily limit across all players. It resets at "
+                           "midnight UTC. Sorry!")
         return None
 
     def run_chat_turn(req: ChatRequest, account: Account, message: str, on_event=None) -> ChatResponse:

@@ -6,7 +6,7 @@ Deliberately exposes search only. Never call Tavily's Research endpoint in loops
 from __future__ import annotations
 
 import threading
-from typing import Any, Literal
+from typing import Any, Callable, Literal
 
 from app.cache import DiskCache, cache_key
 from app.config import Settings
@@ -20,7 +20,8 @@ class SearchError(RuntimeError):
 
 
 class WebSearch:
-    def __init__(self, settings: Settings, tavily_client: Any | None = None):
+    def __init__(self, settings: Settings, tavily_client: Any | None = None,
+                 credit_guard: Callable[[int], bool] | None = None):
         if tavily_client is None:
             settings.require("tavily_api_key")
             from tavily import TavilyClient
@@ -32,6 +33,13 @@ class WebSearch:
         self.live_searches = 0
         self.cached_searches = 0
         self._count_lock = threading.Lock()  # searches may run in parallel threads
+        # credit_guard(credits) -> False when the daily Tavily budget is spent (cache hits are never charged)
+        self._credit_guard = credit_guard
+
+    def _check_budget(self, credits: int) -> None:
+        if self._credit_guard is not None and not self._credit_guard(credits):
+            raise SearchError("Lantern's daily web-search budget for this demo is used up. It resets at "
+                              "midnight UTC; answers already looked up today still work.")
 
     def search(
         self,
@@ -53,6 +61,7 @@ class WebSearch:
             return hit
 
         extra = {"include_domains": list(include_domains)} if include_domains else {}
+        self._check_budget(_CREDITS[depth])
         try:
             resp = self._client.search(
                 query, search_depth=depth, max_results=max_results, include_usage=True, **extra
@@ -94,6 +103,7 @@ class WebSearch:
         if use_cache and (hit := self._cache.get(key)) is not None:
             self.cached_searches += 1
             return hit
+        self._check_budget(2 * -(-len(urls) // 5))
         try:
             resp = self._client.extract(urls, extract_depth="advanced", format="markdown", query=query,
                                         chunks_per_source=chunks_per_source, include_usage=True)

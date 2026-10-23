@@ -17,7 +17,7 @@ param(
 $ErrorActionPreference = "Stop"
 $sa = "lantern-run@$Project.iam.gserviceaccount.com"
 
-$envs = & ".venv\Scripts\python.exe" -c "from app.config import load_settings; s=load_settings('.env'); print(','.join([f'TOKEN_FACTORY_BASE_URL={s.token_factory_base_url}', f'MODEL_FAST={s.model_fast}', f'MODEL_BALANCED={s.model_balanced}', f'MODEL_REASONING={s.model_reasoning}', 'DATA_DIR=/data', 'CACHE_ENABLED=false', 'COOKIE_SECURE=true', 'GUEST_TTL_DAYS=7', 'GUEST_ULTRA_PER_DAY=10', 'PUBLIC_BASE_URL=$PublicUrl']))"
+$envs = & ".venv\Scripts\python.exe" -c "from app.config import load_settings; s=load_settings('.env'); print(','.join([f'TOKEN_FACTORY_BASE_URL={s.token_factory_base_url}', f'MODEL_FAST={s.model_fast}', f'MODEL_BALANCED={s.model_balanced}', f'MODEL_REASONING={s.model_reasoning}', 'DATA_DIR=/data', 'CACHE_ENABLED=false', 'COOKIE_SECURE=true', 'GUEST_TTL_DAYS=7', 'GUEST_ULTRA_PER_DAY=10', 'GUEST_MESSAGES_PER_DAY=30', 'USER_MESSAGES_PER_DAY=100', 'SITE_MESSAGES_PER_DAY=300', 'SITE_TAVILY_CREDITS_PER_DAY=60', 'PUBLIC_BASE_URL=$PublicUrl']))"
 
 $deployArgs = @(
     "run", "deploy", "lantern", "--project", $Project, "--source", ".", "--region", $Region, "--quiet",

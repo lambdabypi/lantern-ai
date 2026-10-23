@@ -22,8 +22,11 @@ class DailyQuota:
     def _today(self) -> str:
         return datetime.fromtimestamp(self.clock(), tz=timezone.utc).date().isoformat()
 
+    def _path(self, user_id: str) -> Path:
+        return user_dir(self.data_dir, user_id) / "usage.json"
+
     def _load(self, user_id: str) -> tuple[Path, dict]:
-        path = user_dir(self.data_dir, user_id) / "usage.json"
+        path = self._path(user_id)
         try:
             data = json.loads(path.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError):
@@ -35,16 +38,33 @@ class DailyQuota:
     def used(self, user_id: str, kind: str) -> int:
         return int(self._load(user_id)[1]["counts"].get(kind, 0))
 
-    def try_consume(self, user_id: str, kind: str, limit: int) -> bool:
-        """Count one use of `kind` if today's total is below `limit`. Resets at midnight UTC."""
+    def try_consume(self, user_id: str, kind: str, limit: int | None, amount: int = 1) -> bool:
+        """Count `amount` uses of `kind` if that keeps today's total within `limit` (None = unlimited,
+        0 = none allowed). Resets at midnight UTC."""
         with self._lock:
             path, data = self._load(user_id)
             count = int(data["counts"].get(kind, 0))
-            if count >= limit:
+            if limit is not None and count + amount > limit:
                 return False
-            data["counts"][kind] = count + 1
+            data["counts"][kind] = count + amount
             path.parent.mkdir(parents=True, exist_ok=True)
             tmp = path.with_suffix(".tmp")
             tmp.write_text(json.dumps(data), encoding="utf-8")
             os.replace(tmp, path)
             return True
+
+
+class SiteQuota(DailyQuota):
+    """Site-wide daily counters (all players together), stored in data/site_usage.json.
+    A backstop so a public demo can't run through the Token Factory or Tavily budget in a day."""
+
+    SITE = "site"
+
+    def _path(self, user_id: str) -> Path:
+        return self.data_dir / "site_usage.json"
+
+    def try_consume(self, kind: str, limit: int | None, amount: int = 1) -> bool:  # type: ignore[override]
+        return super().try_consume(self.SITE, kind, limit, amount)
+
+    def used(self, kind: str) -> int:  # type: ignore[override]
+        return super().used(self.SITE, kind)

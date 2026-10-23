@@ -31,6 +31,10 @@ class Settings:
     cookie_secure: bool = False      # true behind HTTPS in production
     guest_ttl_days: int = 7          # guest accounts and their data are deleted after this
     guest_ultra_per_day: int = 10    # "Think harder" (Ultra) turns per guest per day
+    guest_messages_per_day: int = 30     # chat messages per guest per day (0 = unlimited)
+    user_messages_per_day: int = 100     # chat messages per signed-in player per day (0 = unlimited)
+    site_messages_per_day: int = 300     # all players together, per day (0 = unlimited)
+    site_tavily_credits_per_day: int = 60  # Tavily credits the whole site may spend per day (0 = unlimited)
     steam_api_key: str = ""          # optional: Steam Web API key for importing public Steam libraries
     model_balanced: str = ""         # Nemotron Super, writes answers from sources; empty = use MODEL_FAST
     public_base_url: str = ""        # e.g. https://lantern.example.com (Steam sign-in return address)
@@ -83,6 +87,10 @@ def load_settings(env_file: str | Path | None = ".env") -> Settings:
         cookie_secure=_as_bool(get("COOKIE_SECURE", "false")),
         guest_ttl_days=_as_int("GUEST_TTL_DAYS", get("GUEST_TTL_DAYS", "7")),
         guest_ultra_per_day=_as_int("GUEST_ULTRA_PER_DAY", get("GUEST_ULTRA_PER_DAY", "10")),
+        guest_messages_per_day=_as_int("GUEST_MESSAGES_PER_DAY", get("GUEST_MESSAGES_PER_DAY", "30")),
+        user_messages_per_day=_as_int("USER_MESSAGES_PER_DAY", get("USER_MESSAGES_PER_DAY", "100")),
+        site_messages_per_day=_as_int("SITE_MESSAGES_PER_DAY", get("SITE_MESSAGES_PER_DAY", "300")),
+        site_tavily_credits_per_day=_as_int("SITE_TAVILY_CREDITS_PER_DAY", get("SITE_TAVILY_CREDITS_PER_DAY", "60")),
         steam_api_key=get("STEAM_API_KEY"),
         public_base_url=get("PUBLIC_BASE_URL").rstrip("/"),
         model_balanced=get("MODEL_BALANCED"),
