@@ -13,7 +13,7 @@ from urllib.parse import quote
 
 import httpx
 
-from fastapi import Depends, FastAPI, HTTPException, Request, Response
+from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Request, Response
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Response as RawResponse
 from pydantic import BaseModel, Field
 
@@ -24,6 +24,7 @@ from app.auth import steam_openid
 from app.auth.sessions import COOKIE_NAME, SessionSigner
 from app.config import Settings, load_settings
 from app.llm.router import ModelRouter
+from app.memory.extractor import MemoryExtractor
 from app.memory.history import HistoryStore
 from app.memory.store import KINDS, MemoryStore, MemoryStoreError
 from app.steam_import import import_steam_library
@@ -93,18 +94,23 @@ class MeResponse(BaseModel):
 
 
 def create_app(loop: AgentLoop | None = None, settings: Settings | None = None,
-               steam: SteamClient | None = None, openid_http: httpx.Client | None = None) -> FastAPI:
+               steam: SteamClient | None = None, openid_http: httpx.Client | None = None,
+               extractor: MemoryExtractor | None = None) -> FastAPI:
     settings = settings or load_settings()
     settings.require_secret_key()
     memory = MemoryStore(settings.data_dir)
     history_store = HistoryStore(settings.data_dir)
     if loop is None:
+        router = ModelRouter(settings)
         search = WebSearch(settings)
         knowledge = GameKnowledge(memory, search, settings.data_dir)
         tools = (make_game_tools(knowledge) + builtin_tools(settings, search)
                  + make_profile_tools(memory, knowledge.cached_sources))
-        loop = AgentLoop(ModelRouter(settings), ToolRegistry(settings.data_dir, tools),
-                         profile_context=memory.context_for_prompt)
+        # Thinking off for the chat model: 2-10x faster in a live comparison and still used the calculator
+        # for arithmetic. Saving memories is the extractor's job, so it no longer depends on this model.
+        loop = AgentLoop(router, ToolRegistry(settings.data_dir, tools),
+                         profile_context=memory.context_for_prompt, plan_thinking=False)
+        extractor = extractor or MemoryExtractor(router, memory, knowledge.cached_sources)
 
     steam_client = steam or (SteamClient(settings.steam_api_key) if settings.steam_api_key else None)
     accounts = AccountStore(settings.data_dir, guest_ttl_days=settings.guest_ttl_days)
@@ -241,7 +247,8 @@ def create_app(loop: AgentLoop | None = None, settings: Settings | None = None,
 
     # ---- chat -------------------------------------------------------------------------------
     @app.post("/api/chat", response_model=ChatResponse)
-    def chat(req: ChatRequest, account: Account = Depends(current_account)) -> ChatResponse:
+    def chat(req: ChatRequest, background: BackgroundTasks,
+             account: Account = Depends(current_account)) -> ChatResponse:
         message = req.message.strip()
         if not message:
             raise HTTPException(status_code=422, detail="Message is empty.")
@@ -257,6 +264,8 @@ def create_app(loop: AgentLoop | None = None, settings: Settings | None = None,
         turn: TurnResult = loop.run_turn(user_id, message, history, escalate=req.escalate)
         if turn.stop_reason == "done":
             history_store.append(user_id, turn.history_messages(message))
+        if extractor is not None:  # saves games/progress/creators after the reply is sent: no extra wait
+            background.add_task(extractor.run, user_id, message)
         return ChatResponse(
             answer=turn.answer,
             stop_reason=turn.stop_reason,
