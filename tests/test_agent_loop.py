@@ -192,3 +192,27 @@ def test_answers_after_tools_are_capped(settings):
     loop, llm = make_loop(settings, [[tool_call("calculator", {"expression": "1+1"})], "2"])
     loop.run_turn("demo", "1+1?")
     assert llm.calls[0]["max_tokens"] == 4096 and llm.calls[1]["max_tokens"] == 900
+
+
+def test_answers_from_tool_results_use_the_answer_tier(settings):
+    from dataclasses import replace
+    from app.llm.router import Tier
+    s = replace(settings, model_balanced="super-test")
+    llm = ScriptedLLM([[tool_call("calculator", {"expression": "2+2"})], "4", [tool_call("calculator", {"expression": "2+2"})], "4"])
+    router = ModelRouter(s, client=TokenFactoryClient(s, openai_client=llm))
+    loop = AgentLoop(router, ToolRegistry(s.data_dir, builtin_tools(s, WebSearch(s, tavily_client=FakeTavily()))),
+                     answer_tier=Tier.BALANCED)
+    turn = loop.run_turn("demo", "2+2?")
+    assert [c["model"] for c in llm.calls] == ["nano-test", "super-test"] and turn.tier == "balanced"
+    loop.run_turn("demo", "2+2?", escalate=True)
+    assert [c["model"] for c in llm.calls[2:]] == ["ultra-test", "ultra-test"]  # "Think harder" stays on Ultra
+
+
+def test_answer_tier_falls_back_to_fast_when_super_is_not_configured(settings):
+    from app.llm.router import Tier
+    llm = ScriptedLLM([[tool_call("calculator", {"expression": "2+2"})], "4"])
+    router = ModelRouter(settings, client=TokenFactoryClient(settings, openai_client=llm))
+    loop = AgentLoop(router, ToolRegistry(settings.data_dir, builtin_tools(settings, WebSearch(settings, tavily_client=FakeTavily()))),
+                     answer_tier=Tier.BALANCED)
+    loop.run_turn("demo", "2+2?")
+    assert [c["model"] for c in llm.calls] == ["nano-test", "nano-test"]

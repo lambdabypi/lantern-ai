@@ -32,6 +32,7 @@ class Settings:
     guest_ttl_days: int = 7          # guest accounts and their data are deleted after this
     guest_ultra_per_day: int = 10    # "Think harder" (Ultra) turns per guest per day
     steam_api_key: str = ""          # optional: Steam Web API key for importing public Steam libraries
+    model_balanced: str = ""         # Nemotron Super, writes answers from sources; empty = use MODEL_FAST
     public_base_url: str = ""        # e.g. https://lantern.example.com (Steam sign-in return address)
 
     def require_secret_key(self) -> None:
@@ -84,6 +85,7 @@ def load_settings(env_file: str | Path | None = ".env") -> Settings:
         guest_ultra_per_day=_as_int("GUEST_ULTRA_PER_DAY", get("GUEST_ULTRA_PER_DAY", "10")),
         steam_api_key=get("STEAM_API_KEY"),
         public_base_url=get("PUBLIC_BASE_URL").rstrip("/"),
+        model_balanced=get("MODEL_BALANCED"),
     )
 
 

@@ -14,10 +14,11 @@ from app.llm.client import ChatResult, LLMError, TokenFactoryClient
 
 class Tier(str, Enum):
     FAST = "fast"            # Nemotron Nano: the default for everyday calls
+    BALANCED = "balanced"    # Nemotron Super: writing answers from looked-up sources (falls back to Nano)
     REASONING = "reasoning"  # Nemotron Ultra: multi-step planning and heavy reasoning only
 
 
-_TIER_ENV = {Tier.FAST: "MODEL_FAST", Tier.REASONING: "MODEL_REASONING"}
+_TIER_ENV = {Tier.FAST: "MODEL_FAST", Tier.BALANCED: "MODEL_BALANCED", Tier.REASONING: "MODEL_REASONING"}
 
 
 class ModelRouter:
@@ -27,7 +28,8 @@ class ModelRouter:
         client: TokenFactoryClient | None = None,
         usage_log: Path | None = None,
     ):
-        self.models = {Tier.FAST: settings.model_fast, Tier.REASONING: settings.model_reasoning}
+        self.models = {Tier.FAST: settings.model_fast, Tier.REASONING: settings.model_reasoning,
+                       Tier.BALANCED: settings.model_balanced or settings.model_fast}
         self.client = client or TokenFactoryClient(settings)
         self.usage_log = usage_log or settings.data_dir / "logs" / "llm_usage.jsonl"
         self._totals: dict[str, dict[str, int]] = {}

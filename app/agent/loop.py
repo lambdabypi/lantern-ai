@@ -123,6 +123,8 @@ class AgentLoop:
         profile_context: Callable[[str], str] | None = None,
         answer_thinking: bool | None = False,
         plan_thinking: bool | None = None,
+        planner: Callable[[str, str, list], Any] | None = None,
+        answer_tier: Tier = Tier.FAST,
     ):
         self.router = router
         self.registry = registry
@@ -133,6 +135,11 @@ class AgentLoop:
         # ask_game and returned nothing. Tool choice keeps the model's default thinking.
         self.answer_thinking = answer_thinking
         self.plan_thinking = plan_thinking  # thinking for the first call (choosing tools); None = model default
+        # planner(user_id, message, history) -> Plan(tool, args, note): decides lookups before the model answers
+        self.planner = planner
+        # Model for answers written from tool results. Live, Super (thinking off) was both the fastest and the
+        # most faithful to the passages; Nano invented a charm that doesn't exist.
+        self.answer_tier = answer_tier
 
     def system_prompt(self, user_id: str | None = None) -> str:
         """Identity, the player's profile, and capabilities listed from the tools actually registered."""
@@ -145,6 +152,9 @@ class AgentLoop:
                 .replace("{capabilities}", capabilities).replace("{profile}", profile))
 
     def _complete(self, messages, tier, tools, thinking, turn, on_delta=None):
+        if tier is not Tier.REASONING and turn.tool_calls:  # writing from looked-up results
+            tier = self.answer_tier
+        turn.tier = tier.value
         max_tokens = self.limits.max_answer_tokens if turn.tool_calls else self.limits.max_completion_tokens
         stream = {"on_delta": on_delta} if on_delta else {}
         r = self.router.complete(messages, tier, purpose="agent:turn", tools=tools,
@@ -176,6 +186,21 @@ class AgentLoop:
         ]
         turn = TurnResult(answer="", stop_reason="done", tier=tier.value)
         tools = self.registry.schemas()
+
+        if self.planner is not None:
+            plan = self.planner(user_id, user_message, history or [])
+            if plan.tool:  # the app runs the lookup itself instead of hoping the model calls it
+                if on_event:
+                    on_event({"type": "status", "text": self.registry.status_for(plan.tool, plan.args)})
+                result = self.registry.call(user_id, plan.tool, plan.args, CallMeta(tier=tier.value, thinking="planner"))
+                turn.tool_calls.append(ToolCallRecord(plan.tool, result.status, result.duration_ms))
+                call_id = "planned_1"
+                messages.append({"role": "assistant", "content": "", "tool_calls": [{
+                    "id": call_id, "type": "function",
+                    "function": {"name": plan.tool, "arguments": json.dumps(plan.args)}}]})
+                messages.append({"role": "tool", "tool_call_id": call_id, "content": result.content})
+            elif plan.note:  # for the model only; saved history keeps the player's own words
+                messages[-1] = {"role": "user", "content": f"{user_message}\n\n{plan.note}"}
 
         while True:
             if turn.total_tokens >= limits.max_tokens_per_turn:
