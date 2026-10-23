@@ -144,7 +144,8 @@ Already done and reused: skeleton, Token Factory client, router (thinking switch
 | G1 | 23 Oct | ✅ Pivot docs, PyYAML and httpx, `STEAM_API_KEY` setting, gamer research sprint (`research/findings-gamers.md`) |
 | G2 | 23 Oct | ✅ Memory store (games, creators, profile files), agent profile tools, persisted chat history, and the "Your gaming profile" page (view, edit, delete, export) |
 | G3 | 23 Oct | ✅ Game knowledge: source discovery plus `ask_game`. Domain-restricted search over up to 3 readings of the question (as asked, the model's alternative, and an automatic broader one), interleaved; advanced extract of the best page per reading; cited and spoiler-safe answers; ambiguity rule. Verified live on Warframe, Elden Ring and Witcher 3 |
-| G3b | 24 Oct | Memory extractor: a cheap Nano pass (thinking off) after each turn that saves games and progress the main turn missed (live: about 1 in 3 turns that mention progress don't call save_game) |
+| G3b | 23 Oct | ✅ Memory extractor (background, after each reply; platforms only if named). Chat model runs with thinking off (2–10× faster), answers are never blank, and no game facts without ask_game |
+| G4b | 23 Oct | ✅ Sign in through Steam (OpenID 2.0, server-side verification, state cookie); library imported on first sign-in. Verified live with Shreyas's account (24 games). Still to do: Steam's official button image; set `PUBLIC_BASE_URL` on deploy |
 | G4 | 23 Oct | ✅ Steam import: client (`app/tools/steam.py`), import into memory (`app/steam_import.py`: top 25 played games, achievements for the 5 most recent, never overwrites player-given status, progress or platform), `POST /api/steam/import`, and an "Import from Steam" form. Verified live on Shreyas's profile (27 games, 24 imported) |
 | G5 | 25–26 Oct | "What's new for me" briefing; demo guest seeded with a fake profile |
 | G6 | 26–27 Oct | Deploy on a Nebius CPU VM (Docker with a restart policy, `CACHE_ENABLED=false`); README rewrite |
