@@ -77,7 +77,9 @@ def test_ask_uses_the_games_sources_extract_and_ranks_wiki_pages_first(settings)
 
     out = gk.ask("alice", "Warframe", QUESTION)
 
-    assert tav.search_calls[-1] == (QUESTION, ["warframe.fandom.com", "wiki.warframe.com", "warframe.com"])
+    sources = ["warframe.fandom.com", "wiki.warframe.com", "warframe.com"]
+    assert (QUESTION, sources) in tav.search_calls and ("farm Orokin Cells", sources) in tav.search_calls
+    assert out["searches"] == [QUESTION, "farm Orokin Cells"]
     assert [p["url"] for p in out["passages"]][-1] == "https://warframe.fandom.com/f/p/123"  # forum last
     guide = out["passages"][0]
     assert guide["text"].startswith("### Saturn") and guide["depth"] == "page extract"
@@ -102,7 +104,7 @@ def test_players_own_sources_win(settings):
     gk, store, tav = make(settings, **warframe_fake())
     store.upsert("alice", "game", "Warframe", {"sources": ["wiki.warframe.com"]}, source="steam")
     gk.ask("alice", "Warframe", QUESTION)
-    assert tav.search_calls == [(QUESTION, ["wiki.warframe.com"])]  # no discovery searches at all
+    assert tav.search_calls == [(QUESTION, ["wiki.warframe.com"]), ("farm Orokin Cells", ["wiki.warframe.com"])]  # no discovery
     assert store.get("alice", "game", "warframe").meta["source"] == "steam"
 
 
@@ -152,3 +154,53 @@ def test_saving_a_game_after_asking_attaches_known_sources(settings):
     reg = ToolRegistry(settings.data_dir, make_profile_tools(store, gk.cached_sources))
     reg.call("alice", "save_game", {"title": "Warframe", "progress": "Saturn"})
     assert store.get("alice", "game", "warframe").meta["sources"][0] == "warframe.fandom.com"
+
+
+GRIFFIN_Q = "griffin contract in White Orchard"
+CONTRACT_HITS = [r("https://witcher.fandom.com/wiki/Contract:_The_Griffin_from_the_Highlands", "Contract: Griffin", "contract text"),
+                 r("https://witcher.fandom.com/wiki/Witcher_contracts", "Contracts", "list of contracts")]
+MAIN_QUEST_HITS = [r("https://witcher.fandom.com/wiki/The_Beast_of_White_Orchard", "The Beast of White Orchard", "main quest griffin"),
+                   r("https://witcher.fandom.com/wiki/Contract:_The_Griffin_from_the_Highlands", "dup", "dup")]
+
+
+def witcher_fake(**extra):
+    return {"searches": {"The Witcher 3 wiki": [r("https://witcher.fandom.com/wiki/The_Witcher_3")],
+                         "The Witcher 3 official site patch notes": [r("https://www.thewitcher.com/en/witcher3")],
+                         GRIFFIN_Q: CONTRACT_HITS, "griffin White Orchard": MAIN_QUEST_HITS,
+                         "Beast of White Orchard main quest": MAIN_QUEST_HITS},
+            "extracts": {h["url"]: "page: " + h["title"] for h in CONTRACT_HITS + MAIN_QUEST_HITS[:1]}, **extra}
+
+
+def test_broaden_drops_narrowing_words():
+    from app.tools.game_knowledge import broaden
+    assert broaden(GRIFFIN_Q) == "griffin White Orchard"
+    assert broaden("where to farm Orokin Cells Saturn") == "farm Orokin Cells Saturn"
+    assert broaden("best guide") == ""  # too little left to search on
+
+
+def test_both_readings_reach_the_model_and_both_get_read_in_depth(settings):
+    gk, _, tav = make(settings, **witcher_fake())
+    out = gk.ask("alice", "The Witcher 3", GRIFFIN_Q)
+    urls = [p["url"] for p in out["passages"]]
+    assert urls[:2] == [CONTRACT_HITS[0]["url"], MAIN_QUEST_HITS[0]["url"]]   # interleaved, deduped
+    assert len(urls) == len(set(urls))
+    extracted = tav.extract_calls[0][0]
+    assert MAIN_QUEST_HITS[0]["url"] in extracted and CONTRACT_HITS[0]["url"] in extracted
+    assert "cover both or ask which" in out["instructions"]
+
+
+def test_model_alternative_is_added_and_the_broad_search_is_kept(settings):
+    gk, _, _ = make(settings, **witcher_fake())
+    out = gk.ask("alice", "The Witcher 3", GRIFFIN_Q, alternative="Beast of White Orchard main quest")
+    assert out["searches"] == [GRIFFIN_Q, "Beast of White Orchard main quest", "griffin White Orchard"]
+    same = gk.ask("alice", "The Witcher 3", GRIFFIN_Q, alternative=GRIFFIN_Q.upper())  # a mere rewording
+    assert same["searches"] == [GRIFFIN_Q, "griffin White Orchard"]
+
+
+def test_the_and_no_the_share_cached_sources(settings):
+    gk, _, tav = make(settings, **witcher_fake())
+    gk.ask("alice", "The Witcher 3", GRIFFIN_Q)
+    before = len(tav.search_calls)
+    gk.ask("alice", "Witcher 3", GRIFFIN_Q)
+    discovery = [q for q, _ in tav.search_calls[before:] if "wiki" in q or "official" in q]
+    assert discovery == []  # "Witcher 3" reused "The Witcher 3"'s sources
