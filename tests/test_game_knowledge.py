@@ -241,3 +241,50 @@ def test_slow_page_reads_fall_back_to_snippets_and_are_not_shared(settings, monk
     out = gk.ask("alice", "Warframe", QUESTION)
     assert all(p["depth"] == "search snippet" for p in out["passages"])
     assert not (settings.data_dir / "shared_cache" / "ask_game").exists()  # incomplete: not pinned for a day
+
+
+def test_prewarm_finds_sources_once_and_attaches_them(settings):
+    gk, store, tav = make(settings, **warframe_fake())
+    store.upsert("alice", "game", "Warframe", {"status": "playing"}, source="steam")
+    assert gk.prewarm("alice", ["Warframe", "Warframe", ""]) == 1
+    assert store.get("alice", "game", "warframe").meta["sources"][0] == "warframe.fandom.com"
+    assert store.get("alice", "game", "warframe").meta["source"] == "steam"      # label untouched
+    searches = len(tav.search_calls)
+    gk.prewarm("bob", ["Warframe"])                                              # known game: no new searches
+    assert len(tav.search_calls) == searches
+
+
+def test_prewarm_skips_bad_titles_and_respects_the_limit(settings):
+    gk, _, tav = make(settings, **warframe_fake())
+    assert gk.prewarm("alice", ["!!!", "Warframe"]) == 1
+    assert gk.prewarm("alice", [f"Game {i}" for i in range(40)], limit=3) == 3
+
+
+@pytest.mark.parametrize("title,wiki,official,expected", [
+    ("Albion Online",
+     [r("https://en.wikipedia.org/wiki/Albion_Online"), r("https://yogscast.fandom.com/wiki/Albion"),
+      r("https://wiki.albiononline.com/wiki/Main_Page")],
+     [r("https://albiononline.com/en/update")],
+     ["wiki.albiononline.com", "albiononline.com"]),
+    ("Call of Duty®",
+     [r("https://callofduty.fandom.com/wiki/Call_of_Duty")],
+     [r("https://phonecall.app/x"), r("https://www.callofduty.com/patchnotes")],
+     ["callofduty.fandom.com", "callofduty.com"]),
+    ("AdventureQuest 3D",
+     [r("https://en.wikipedia.org/wiki/AdventureQuest_3D")],
+     [],
+     ["en.wikipedia.org"]),                      # last resort only
+    ("Albion Online",
+     [r("https://yogscast.fandom.com/wiki/Albion")], [], []),   # unrelated fandom wiki is never used
+])
+def test_source_picking_regressions(title, wiki, official, expected):
+    assert pick_sources(title, wiki, official) == expected
+
+
+def test_games_with_no_sources_are_not_rediscovered_every_time(settings):
+    gk, _, tav = make(settings, searches={}, extracts={})
+    gk.ask("alice", "Obscure Game", "how do I jump")
+    discovery = lambda: [q for q, _ in tav.search_calls if q.startswith("Obscure Game ")]  # noqa: E731
+    first = len(discovery())
+    gk.ask("alice", "Obscure Game", "how do I run")
+    assert first == 2 + 1 and len(discovery()) == first + 1  # 2 discovery + 1 general-web fallback, then fallback only

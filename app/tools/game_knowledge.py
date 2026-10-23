@@ -66,12 +66,22 @@ def _blocked(host: str) -> bool:
     return any(host == b or host.endswith("." + b) for b in BLOCKED_HOSTS)
 
 
-def _title_keys(title: str) -> list[str]:
-    """Strings a game's own domains tend to contain: 'eldenring', plus significant words."""
-    words = re.findall(r"[a-z0-9]+", title.lower())
-    keys = ["".join(words)] + [w for w in words if len(w) >= 4 and w not in {"game", "edition", "remastered"}]
-    return [k for k in keys if k]
+# Words too common to identify a game's domain on their own ("call" matched phonecall.app for Call of Duty).
+_COMMON_WORDS = {"game", "games", "edition", "remastered", "call", "duty", "online", "world", "worlds", "legends",
+                 "battle", "heroes", "story", "simulator", "royale", "war", "wars", "league", "chronicles", "saga",
+                 "definitive", "complete", "deluxe", "ultimate", "collection", "party", "craft", "life", "city",
+                 "unleashed", "rising", "origins", "shadow", "shadows", "dark", "light", "dead", "space",
+                 "epic", "prologue", "anniversary", "director", "cut"}
 
+
+def _title_keys(title: str) -> list[str]:
+    """Strings a game's own domains contain: the joined title ('callofduty'), each joined part of a title with a
+    subtitle ('Middle-earth: Shadow of War' -> 'shadowofwar'), and distinctive words ('raji', not 'call')."""
+    words = re.findall(r"[a-z0-9]+", title.lower())
+    parts = ["".join(re.findall(r"[a-z0-9]+", part)) for part in re.split(r"[:–—]| - ", title.lower())]
+    distinctive = [w for w in words if len(w) >= 4 and w not in _COMMON_WORDS]
+    return list(dict.fromkeys(k for k in ["".join(words), *parts, *distinctive]
+                              if len(k) >= 4 and k not in _COMMON_WORDS))
 
 # Words that narrow a search to one reading ("griffin contract") without naming the thing itself.
 _NARROWING = {"a", "an", "the", "to", "in", "on", "of", "for", "and", "or", "is", "are", "do", "does", "i", "im",
@@ -106,25 +116,32 @@ def _low_value(url: str) -> bool:
     return any(p in url for p in LOW_VALUE_PATHS)
 
 
+def _is_wiki(host: str) -> bool:
+    return any(w in host for w in WIKI_HINTS) and "wikipedia.org" not in host
+
+
 def pick_sources(title: str, wiki_results: list[dict], official_results: list[dict]) -> list[str]:
-    """Choose up to 2 wiki domains and 1 official domain from discovery search results."""
+    """Choose up to 2 wiki domains and 1 official domain from discovery search results.
+
+    A game's own wiki ranks first only when its domain names the game (stops "yogscast.fandom.com" for
+    Albion Online); Wikipedia is a last resort, since it covers games but not how to play them.
+    """
     keys = _title_keys(title)
-    matches = lambda h: any(k in h.replace("-", "").replace(".", "") or k in h for k in keys)  # noqa: E731
+    matches = lambda h: any(k in h.replace("-", "").replace(".", "") for k in keys)  # noqa: E731
 
     hosts = [h for h in dict.fromkeys(host_of(r["url"]) for r in wiki_results) if h and not _blocked(h)]
-    wikis = [h for h in hosts if any(w in h for w in WIKI_HINTS) and matches(h)]
-    if not wikis:  # e.g. Path of Exile -> poewiki.net: trust wiki-looking hosts from a "<title> wiki" search
-        wikis = [h for h in hosts if any(w in h for w in WIKI_HINTS)]
+    wikis = [h for h in hosts if _is_wiki(h) and matches(h)]
+    if not wikis:  # e.g. Path of Exile -> poewiki.net: no exact name match, but the search was "<title> wiki"
+        wikis = [h for h in hosts if _is_wiki(h) and not h.endswith(".fandom.com")][:1]
     if not wikis:
-        wikis = hosts
+        wikis = [h for h in hosts if "wikipedia.org" in h][:1]
     sources = wikis[:MAX_WIKIS]
 
     for h in dict.fromkeys(host_of(r["url"]) for r in official_results):
-        if h and not _blocked(h) and h not in sources and not any(w in h for w in WIKI_HINTS) and matches(h):
+        if h and not _blocked(h) and h not in sources and not _is_wiki(h) and "wikipedia.org" not in h and matches(h):
             sources.append(h)
             break
     return sources
-
 
 class GameKnowledge:
     def __init__(self, store: MemoryStore, search: WebSearch, data_dir: Path):
@@ -162,17 +179,28 @@ class GameKnowledge:
         if item and item.meta.get("sources"):
             return slug, item.meta["sources"], "your profile"
         cached = self._read_cache().get(_canon(slug))
-        if cached and cached.get("sources"):
-            sources, origin = cached["sources"], "cache"
+        if cached is not None:  # includes "nothing found": don't pay to rediscover on every question
+            sources, origin = cached.get("sources") or [], "cache"
         else:
             sources, origin = self.discover(title), "discovered"
-            if sources:
-                self._write_cache(_canon(slug), title, sources)
+            self._write_cache(_canon(slug), title, sources)
         if item and sources:  # make them visible (and editable) on the player's profile
             self.store.upsert(user_id, "game", title, {"sources": sources}, source=item.meta.get("source", "chat"))
         return slug, sources, origin
 
     # ---- answering -------------------------------------------------------------------------
+    def prewarm(self, user_id: str, titles: list[str], limit: int = 25) -> int:
+        """Find sources for games ahead of time (runs in the background), so the first question about a
+        game skips discovery. Already-known games cost nothing. Returns how many were looked at."""
+        done = 0
+        for title in list(dict.fromkeys(t for t in titles if t))[:limit]:
+            try:
+                self.sources_for(user_id, title)
+            except (MemoryStoreError, SearchError, ValueError):
+                continue  # one bad title mustn't stop the rest
+            done += 1
+        return done
+
     def cached_sources(self, title: str) -> list[str]:
         """Sources already known for a game (no searching), used when the player saves it."""
         try:

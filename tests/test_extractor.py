@@ -88,3 +88,12 @@ def test_platforms_must_actually_be_named(settings):
     ex.run("alice", "I'm on Saturn in Warframe. Where should I farm Orokin Cells?")
     assert "platform" not in store.get("alice", "game", "warframe").meta
     assert store.get("alice", "profile") is None
+
+
+def test_extractor_asks_for_sources_for_newly_saved_games(settings):
+    seen = []
+    llm_reply = json.dumps({"games": [{"title": "Hades", "status": "playing"}], "creators": [], "platforms": []})
+    ex, _, _ = extractor_with(settings, [llm_reply])
+    ex.on_games_saved = lambda uid, titles: seen.append((uid, titles))
+    ex.run("alice", "I just started Hades")
+    assert seen == [("alice", ["Hades"])]

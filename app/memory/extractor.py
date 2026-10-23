@@ -37,10 +37,12 @@ MAX_ITEMS = 5
 
 class MemoryExtractor:
     def __init__(self, router: ModelRouter, store: MemoryStore,
-                 known_sources: Callable[[str], list[str]] | None = None):
+                 known_sources: Callable[[str], list[str]] | None = None,
+                 on_games_saved: Callable[[str, list[str]], Any] | None = None):
         self.router = router
         self.store = store
         self.known_sources = known_sources
+        self.on_games_saved = on_games_saved  # e.g. find wiki sources for newly mentioned games
 
     def run(self, user_id: str, message: str) -> list[str]:
         """Extract and save; returns what was saved (e.g. ['game:warframe']). Never raises: it runs in the
@@ -79,6 +81,10 @@ class MemoryExtractor:
             if isinstance(c, dict) and str(c.get("name", "")).strip():
                 platforms = [str(p) for p in c.get("platforms") or [] if p]
                 saved += self._save(user_id, "creator", str(c["name"]).strip(), {"platforms": platforms} if platforms else {})
+        titles = [str(g["title"]).strip() for g in (data.get("games") or [])[:MAX_ITEMS]
+                  if isinstance(g, dict) and str(g.get("title", "")).strip()]
+        if titles and self.on_games_saved and any(s.startswith("game:") for s in saved):
+            self.on_games_saved(user_id, titles)
         platforms = [str(p) for p in data.get("platforms") or [] if stated(p)][:MAX_ITEMS]
         if platforms:
             existing = self.store.get(user_id, "profile")

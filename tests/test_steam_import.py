@@ -101,3 +101,24 @@ def test_import_requires_sign_in(settings):
     loop, _ = make_loop(settings, [])
     c = TestClient(create_app(loop=loop, settings=settings, steam=FakeSteam()))
     assert c.post("/api/steam/import", json={"profile": "someone"}).status_code == 401
+
+
+def test_import_endpoint_prewarms_sources_for_new_games(settings):
+    class Recorder:
+        def __init__(self):
+            self.calls = []
+
+        def prewarm(self, user_id, titles):
+            self.calls.append((user_id, sorted(titles)))
+
+        def cached_sources(self, title):
+            return []
+
+    rec = Recorder()
+    loop, _ = make_loop(settings, [])
+    c = TestClient(create_app(loop=loop, settings=settings, steam=FakeSteam(), knowledge=rec))
+    uid = c.post("/api/auth/guest").json()["user_id"]
+    c.post("/api/steam/import", json={"profile": "someone"})
+    assert rec.calls == [(uid, ["The Witcher 3: Wild Hunt", "Warframe"])]
+    c.post("/api/memory/game", json={"name": "Hades"})
+    assert rec.calls[-1] == (uid, ["Hades"])

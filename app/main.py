@@ -101,7 +101,7 @@ class MeResponse(BaseModel):
 
 def create_app(loop: AgentLoop | None = None, settings: Settings | None = None,
                steam: SteamClient | None = None, openid_http: httpx.Client | None = None,
-               extractor: MemoryExtractor | None = None) -> FastAPI:
+               extractor: MemoryExtractor | None = None, knowledge: GameKnowledge | None = None) -> FastAPI:
     settings = settings or load_settings()
     settings.require_secret_key()
     memory = MemoryStore(settings.data_dir)
@@ -109,7 +109,7 @@ def create_app(loop: AgentLoop | None = None, settings: Settings | None = None,
     if loop is None:
         router = ModelRouter(settings)
         search = WebSearch(settings)
-        knowledge = GameKnowledge(memory, search, settings.data_dir)
+        knowledge = knowledge or GameKnowledge(memory, search, settings.data_dir)
         tools = (make_game_tools(knowledge) + builtin_tools(settings, search)
                  + make_profile_tools(memory, knowledge.cached_sources))
         # Thinking off for the chat model: 2-10x faster in a live comparison and still used the calculator
@@ -119,7 +119,8 @@ def create_app(loop: AgentLoop | None = None, settings: Settings | None = None,
         loop = AgentLoop(router, ToolRegistry(settings.data_dir, tools),
                          profile_context=memory.context_for_prompt, plan_thinking=False,
                          planner=LookupPlanner(router, memory.context_for_prompt), answer_tier=Tier.BALANCED)
-        extractor = extractor or MemoryExtractor(router, memory, knowledge.cached_sources)
+        extractor = extractor or MemoryExtractor(router, memory, knowledge.cached_sources,
+                                                 on_games_saved=knowledge.prewarm)
 
     steam_client = steam or (SteamClient(settings.steam_api_key) if settings.steam_api_key else None)
     accounts = AccountStore(settings.data_dir, guest_ttl_days=settings.guest_ttl_days)
@@ -200,7 +201,7 @@ def create_app(loop: AgentLoop | None = None, settings: Settings | None = None,
         return response
 
     @app.get("/auth/steam/callback", include_in_schema=False)
-    def steam_callback(request: Request) -> RedirectResponse:
+    def steam_callback(request: Request, background: BackgroundTasks) -> RedirectResponse:
         def fail(message: str) -> RedirectResponse:
             r = RedirectResponse("/?auth_error=" + quote(message), status_code=303)
             r.delete_cookie(STEAM_STATE_COOKIE, path="/auth/steam")
@@ -222,6 +223,7 @@ def create_app(loop: AgentLoop | None = None, settings: Settings | None = None,
         if created and steam_client:
             try:  # first sign-in: bring their library in straight away
                 import_steam_library(memory, steam_client, account.user_id, steam_id)
+                prewarm_later(background, account.user_id, unsourced_games(account.user_id))
             except SteamError:
                 pass  # e.g. private game details; they can import later from My games
         response = RedirectResponse("/", status_code=303)
@@ -353,8 +355,11 @@ def create_app(loop: AgentLoop | None = None, settings: Settings | None = None,
                 "creators": [c.summary() for c in memory.list(uid, "creator")]}
 
     @app.post("/api/memory/{kind}")
-    def create_memory(kind: str, req: MemoryCreate, account: Account = Depends(current_account)) -> dict:
+    def create_memory(kind: str, req: MemoryCreate, background: BackgroundTasks,
+                      account: Account = Depends(current_account)) -> dict:
         item = memory.upsert(account.user_id, check_kind(kind), req.name, req.fields, note=req.note, source="user")
+        if kind == "game":
+            prewarm_later(background, account.user_id, [item.meta.get("title", req.name)])
         return item.summary()
 
     @app.get("/api/memory/{kind}/{slug}")
@@ -375,14 +380,24 @@ def create_app(loop: AgentLoop | None = None, settings: Settings | None = None,
             raise HTTPException(status_code=404, detail="Not found.")
         return {"ok": True}
 
+    def unsourced_games(user_id: str) -> list[str]:
+        return [g.meta.get("title", g.slug) for g in memory.list(user_id, "game") if not g.meta.get("sources")]
+
+    def prewarm_later(background: BackgroundTasks, user_id: str, titles: list[str]) -> None:
+        """Find wiki sources for these games after the response is sent (first questions get faster)."""
+        if knowledge is not None and titles:
+            background.add_task(knowledge.prewarm, user_id, titles)
+
     @app.post("/api/steam/import")
-    def steam_import(req: SteamImportRequest, account: Account = Depends(current_account)) -> dict:
+    def steam_import(req: SteamImportRequest, background: BackgroundTasks,
+                     account: Account = Depends(current_account)) -> dict:
         if steam_client is None:
             raise HTTPException(status_code=503, detail="Steam import isn't set up on this server (no STEAM_API_KEY).")
         try:
             result = import_steam_library(memory, steam_client, account.user_id, req.profile)
         except SteamError as e:
             raise HTTPException(status_code=422, detail=str(e)) from None
+        prewarm_later(background, account.user_id, unsourced_games(account.user_id))
         return asdict(result)
 
     @app.get("/api/export")
