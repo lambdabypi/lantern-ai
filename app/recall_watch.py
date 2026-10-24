@@ -248,20 +248,24 @@ class RecallWatch:
                 feed = []
                 notes.append(f"Household products weren't checked: {e}")
             decisions = self._load(user_id, "matches.json")
+            known = len(decisions)
             items.extend(self._product_entry(user_id, p, feed, decisions) for p in products)
-            _write_json(self._user_path(user_id, "matches.json"), decisions)
+            if len(decisions) != known:  # writes to the bucket are slow (upload + rename): only when something changed
+                _write_json(self._user_path(user_id, "matches.json"), decisions)
 
         # "New" means it appeared after Lantern started watching that item: recalls found on an item's first
         # check are its baseline, not news.
         today = date.today().isoformat()
         recent = (date.today() - timedelta(days=NEW_DAYS)).isoformat()
+        known = len(seen)
         for item in items:
             prefix = f"{item['kind']}:{item['slug']}|"
             baseline = not any(k.startswith(prefix) for k in seen)
             for r in item["recalls"]:
                 first = seen.setdefault(prefix + r["id"], "baseline" if baseline else today)
                 r["new"] = r["status"] == "open" and first != "baseline" and first >= recent
-        _write_json(self._user_path(user_id, "seen.json"), seen)
+        if len(seen) != known:
+            _write_json(self._user_path(user_id, "seen.json"), seen)
         pending = self._add_plain(items, write_plain) if self.plain_summaries else 0
         open_recalls = [r for i in items for r in i["recalls"] if r["status"] == "open"]
         report = {
@@ -270,7 +274,8 @@ class RecallWatch:
             "urgent": sum(1 for r in open_recalls if r["severity"]),
             "note": " ".join(notes) or None, "vin_check_url": NHTSA_VIN_CHECK, "plain_pending": pending,
         }
-        _write_json(self._user_path(user_id, "latest.json"), report)
+        if write_plain:  # a full check (daily run, a new item, the plain-English pass); page loads only read
+            _write_json(self._user_path(user_id, "latest.json"), report)
         return report
 
     # ---- plain English, shared per recall ---------------------------------------------------------

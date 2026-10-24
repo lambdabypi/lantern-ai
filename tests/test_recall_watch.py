@@ -271,3 +271,15 @@ def test_nhtsa_model_list_fetched_once_per_day(settings):
     for uid in ("alice", "bob"):
         w.save_vehicle(uid, "Honda", "Civic", 2018)
     assert sum(1 for c in client.calls if c[0] == "models") == 1
+
+
+def test_opening_the_app_again_writes_nothing(settings, monkeypatch):
+    import app.recall_watch as rw
+    w, store, _, _ = make(settings, [verdicts(("26669", True))])
+    store.upsert("alice", "vehicle", "civic", {"make": "Honda", "model": "Civic", "year": 2018})
+    store.upsert("alice", "product", "Voomf crib mattress", {"brand": "Voomf", "product": "crib mattress"})
+    w.check("alice")
+    writes = []
+    monkeypatch.setattr(rw, "_write_json", lambda path, value: writes.append(path.name))
+    w.check("alice", write_plain=False)
+    assert writes == []                                # bucket writes are slow; nothing changed, so none
