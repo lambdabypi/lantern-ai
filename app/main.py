@@ -494,7 +494,7 @@ def create_app(loop: AgentLoop | None = None, settings: Settings | None = None, 
         log.info("recall watch run: %s", result)
         return result
 
-    # ---- push notifications ("Alert me on this phone") --------------------------------------
+    # ---- push notifications ("Alerts on this device") --------------------------------------
     def need_push() -> Push:
         if push is None:
             raise HTTPException(status_code=503, detail="Notifications aren't set up on this server.")

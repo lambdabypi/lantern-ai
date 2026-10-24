@@ -1,4 +1,4 @@
-"""Browser push notifications ("Alert me on this phone"): free, no phone number, no third-party account.
+"""Browser push notifications ("Alerts on this device"): free, no phone number, no third-party account.
 
 Works on Android and desktop browsers, and on iPhone (iOS 16.4+) once Lantern is added to the Home Screen.
 Subscriptions live in data/users/<id>/push.json with the recall ids already announced, so a recall is

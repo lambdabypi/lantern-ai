@@ -11,6 +11,9 @@
 <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Lantern">
+<script>
+  try { const t = localStorage.getItem("theme"); if (t === "light" || t === "dark") document.documentElement.dataset.theme = t; } catch {}
+</script>
 <style>
   :root {
     --bg: #f6f3ec; --surface: #ffffff; --text: #1b1f1d; --muted: #59625d; --border: #ddd8cc;
@@ -23,7 +26,7 @@
     --night1: #08110e; --night2: #12241e; --cream: #f6ead2;
   }
   @media (prefers-color-scheme: dark) {
-    :root {
+    :root:not([data-theme="light"]) {
       --bg: #0f1513; --surface: #18201d; --text: #ebeee9; --muted: #a3ada8; --border: #2f3a35;
       --accent: #7fb8a4; --accent-text: #0e1d18; --accent-soft: #22302b;
       --amber: #ffc56b; --amber-bg: #2c2312;
@@ -31,6 +34,14 @@
       --orange: #ffb27a; --orange-bg: #35200f;
       --ok: #7fd3a6; --ok-bg: #12281d; --neutral-bg: #1e2724; --shadow: 0 8px 24px rgba(0,0,0,.25);
     }
+  }
+  :root[data-theme="dark"] {
+      --bg: #0f1513; --surface: #18201d; --text: #ebeee9; --muted: #a3ada8; --border: #2f3a35;
+      --accent: #7fb8a4; --accent-text: #0e1d18; --accent-soft: #22302b;
+      --amber: #ffc56b; --amber-bg: #2c2312;
+      --danger: #ff9b8c; --danger-bg: #3a1714; --danger-fill: #b42318;
+      --orange: #ffb27a; --orange-bg: #35200f;
+      --ok: #7fd3a6; --ok-bg: #12281d; --neutral-bg: #1e2724; --shadow: 0 8px 24px rgba(0,0,0,.25);
   }
   /* Text follows the phone's text-size setting (iOS Dynamic Type) */
   html { font: -apple-system-body; -webkit-text-size-adjust: 100%; interpolate-size: allow-keywords; }
@@ -374,7 +385,8 @@
   </header>
   <div class="menu" id="menu" hidden>
     <button type="button" id="mKeep" hidden>Keep my list (free account)</button>
-    <button type="button" id="mAlerts">Alerts on this phone</button>
+    <button type="button" id="mAlerts">Alerts on this device</button>
+    <button type="button" id="mTheme">Appearance: Auto</button>
     <button type="button" id="mNewChat">Start a new chat</button>
     <a href="/api/export" download>Download my data</a>
     <button type="button" id="mLogout">Sign out</button>
@@ -835,6 +847,19 @@ $("mNewChat").addEventListener("click", async () => { closeMenu(); await api("/a
 $("mAlerts").addEventListener("click", () => { closeMenu(); showTab("home"); enableAlerts(); });
 $("mKeep").addEventListener("click", () => { closeMenu(); openKeep(); });
 
+// ---- appearance: Auto (follow the device), Light or Dark; remembered in this browser ----------------
+const THEMES = ["auto", "light", "dark"];
+function applyTheme(theme) {
+  if (theme === "auto") delete document.documentElement.dataset.theme; else document.documentElement.dataset.theme = theme;
+  $("mTheme").textContent = "Appearance: " + theme.charAt(0).toUpperCase() + theme.slice(1);
+}
+applyTheme(stored("theme") || "auto");
+$("mTheme").addEventListener("click", () => {
+  const next = THEMES[(THEMES.indexOf(stored("theme") || "auto") + 1) % THEMES.length];
+  store("theme", next === "auto" ? undefined : next);
+  transition(() => applyTheme(next));
+});
+
 // ---- keep my list (guest -> account) -----------------------------------------------------------
 function openKeep() { $("keepError").textContent = ""; $("keepDialog").showModal(); }
 $("keepClose").addEventListener("click", () => $("keepDialog").close());
@@ -1208,7 +1233,7 @@ async function renderCallouts() {
   const pushOk = "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
   if (info.available && !info.enabled && stored("alertsDismissed") !== "1") {
     const c = el("div", "card callout glow");
-    c.appendChild(el("h3", "", "Get an alert on this phone"));
+    c.appendChild(el("h3", "", "Get alerts on this device"));
     c.appendChild(el("p", "hint", "Lantern sends a notification when a new recall affects your things. No phone number needed."));
     if (pushOk) {
       const row = el("div", "row");
