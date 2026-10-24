@@ -54,8 +54,8 @@ For each numbered notice, write:
 - "todo": one sentence, at most 30 words: what the owner should do now. If the notice says not to drive, or to park
   outside, or to stop using the product, say that first. Mention that the fix is free only if the notice says so.
 
-Use only facts in the notice. Don't add causes, injuries or advice it doesn't state (if it says "entrapment",
-don't add "suffocation"). Reply with only JSON:
+Use only facts in the notice (title, what, risk and remedy all count). Don't add causes, injuries or advice that
+none of them states, and don't leave out a danger the notice names, such as suffocation, fire or death. Reply with only JSON:
 {{"items": [{{"id": "notice id", "title": "...", "what": "...", "todo": "..."}}]}}"""
 
 CONFIRM_PROMPT = """You check whether official product recalls cover something a person owns.
@@ -298,7 +298,7 @@ class RecallWatch:
 
     def _write_plain(self, recalls: dict[str, dict[str, Any]]) -> dict[str, dict[str, str]]:
         listing = "\n\n".join(
-            f"[{key}] {r.get('title', '')}\nWhat: {r.get('summary', '')[:700]}\nRisk: {r.get('consequence', '')[:300]}\n"
+            f"[{key}] {r.get('title', '')}\nWhat: {r.get('summary', '')[:700]}\nRisk: {r.get('consequence', '')[:900]}\n"
             f"Remedy: {r.get('remedy', '')[:400]}" for key, r in recalls.items())
         try:
             res = self.router.complete(
