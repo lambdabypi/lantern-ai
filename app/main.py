@@ -33,6 +33,7 @@ from app.llm.router import ModelRouter, Tier
 from app.memory.extractor import MemoryExtractor
 from app.memory.history import HistoryStore
 from app.memory.store import KINDS, RECALL_STATUSES, MemoryStore, MemoryStoreError
+from app.demo import load_demo_household
 from app.push import Push, PushError
 from app.recall_watch import RecallWatch
 from app.steam_import import import_steam_library
@@ -57,6 +58,7 @@ def _setup_logging() -> None:
         app_log.setLevel(logging.INFO)
         app_log.propagate = False
 WEB_DIR = Path(__file__).parent / "web"
+ICONS = {"icon-192.png", "icon-512.png", "maskable-512.png", "apple-touch-icon.png"}
 MAX_HISTORY_MESSAGES = 20  # recent messages sent to the model each turn
 USER_SESSION_S = 14 * 86400
 STEAM_STATE_COOKIE = "pai_steam_state"
@@ -231,7 +233,24 @@ def create_app(loop: AgentLoop | None = None, settings: Settings | None = None,
     # ---- pages ------------------------------------------------------------------------------
     @app.get("/", include_in_schema=False)
     def index() -> FileResponse:
-        return FileResponse(WEB_DIR / "index.html")
+        return FileResponse(WEB_DIR / "index.html", headers={"Cache-Control": "no-cache"})
+
+    # ---- installable app (PWA): manifest, service worker, icons --------------------------------
+    @app.get("/manifest.webmanifest", include_in_schema=False)
+    def manifest() -> FileResponse:
+        return FileResponse(WEB_DIR / "manifest.webmanifest", media_type="application/manifest+json")
+
+    @app.get("/sw.js", include_in_schema=False)
+    def service_worker() -> FileResponse:
+        return FileResponse(WEB_DIR / "sw.js", media_type="application/javascript",
+                            headers={"Cache-Control": "no-cache", "Service-Worker-Allowed": "/"})
+
+    @app.get("/icons/{name}", include_in_schema=False)
+    def icon(name: str) -> FileResponse:
+        if name not in ICONS:
+            raise HTTPException(status_code=404, detail="Not found.")
+        return FileResponse(WEB_DIR / "icons" / name, media_type="image/png",
+                            headers={"Cache-Control": "public, max-age=86400"})
 
     # ---- auth -------------------------------------------------------------------------------
     @app.post("/api/auth/guest", response_model=MeResponse)
@@ -535,6 +554,11 @@ def create_app(loop: AgentLoop | None = None, settings: Settings | None = None,
         w = need_watch()
         item = w.save_product(account.user_id, req.product, req.brand, req.model, source="user")
         return {"item": item.summary(), "recalls": w.check(account.user_id)}
+
+    @app.post("/api/demo")
+    def demo(account: Account = Depends(current_account)) -> dict:
+        """Fill an empty account with a made-up household (real recall data, no real people)."""
+        return load_demo_household(memory, need_watch(), account.user_id)
 
     @app.post("/api/recalls/status")
     def recall_status(req: RecallStatusUpdate, account: Account = Depends(current_account)) -> dict:

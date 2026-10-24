@@ -4,204 +4,316 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Lantern</title>
+<meta name="description" content="Lantern knows what you own and watches official U.S. safety recalls for it, every day.">
+<meta name="theme-color" content="#12201b">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" href="/icons/icon-192.png">
+<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Lantern">
 <style>
   :root {
-    --bg: #f7f7f5; --surface: #ffffff; --text: #1d1d1b; --muted: #6b6b66;
-    --border: #e3e3df; --accent: #2f5d50; --accent-text: #ffffff; --user: #e8efe9; --warn: #8a5a00; --warn-bg: #fff6e0;
+    --bg: #f6f4ef; --surface: #ffffff; --text: #1b1f1d; --muted: #66706b; --border: #e2ded4;
+    --accent: #2f5d50; --accent-text: #ffffff; --amber: #c27a12; --amber-bg: #fdf3e2;
+    --danger: #b42318; --danger-bg: #fdecea; --orange: #b54708; --orange-bg: #fff1e3;
+    --ok: #1f7a4d; --ok-bg: #e7f4ec; --user: #e5eee9; --shadow: 0 1px 2px rgba(0,0,0,.04), 0 4px 16px rgba(0,0,0,.05);
   }
   @media (prefers-color-scheme: dark) {
     :root {
-      --bg: #161716; --surface: #1f201f; --text: #ececea; --muted: #9a9a95;
-      --border: #333431; --accent: #7fb8a4; --accent-text: #10201b; --user: #26332e; --warn: #f0c060; --warn-bg: #2d2610;
+      --bg: #101614; --surface: #19211e; --text: #ebeee9; --muted: #9aa49f; --border: #2c3632;
+      --accent: #7fb8a4; --accent-text: #0e1d18; --amber: #ffbe5a; --amber-bg: #2c2312;
+      --danger: #ff8a7a; --danger-bg: #3a1714; --orange: #ffb27a; --orange-bg: #35200f;
+      --ok: #7fd3a6; --ok-bg: #12281d; --user: #22302b; --shadow: none;
     }
   }
   * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
   body { margin: 0; background: var(--bg); color: var(--text);
-         font: 16px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
-  main { max-width: 720px; margin: 0 auto; min-height: 100dvh; display: flex; flex-direction: column; padding: 0 16px; }
-  header { display: flex; align-items: baseline; justify-content: space-between; padding: 20px 0 12px; }
-  h1 { font-size: 1.1rem; margin: 0; }
-  header button { background: none; border: none; color: var(--muted); cursor: pointer; font: inherit; font-size: .9rem; }
-  #log { flex: 1; display: flex; flex-direction: column; gap: 12px; padding-bottom: 16px; }
-  .msg { padding: 10px 14px; border-radius: 12px; white-space: pre-wrap; overflow-wrap: anywhere; max-width: 90%; }
-  .user { align-self: flex-end; background: var(--user); }
-  .bot { align-self: flex-start; background: var(--surface); border: 1px solid var(--border); }
-  .bot.stopped { background: var(--warn-bg); color: var(--warn); border-color: transparent; }
-  .meta { font-size: .8rem; color: var(--muted); margin-top: 6px; white-space: normal; }
-  .empty { color: var(--muted); text-align: center; margin: auto 0; }
-  form { position: sticky; bottom: 0; background: var(--bg); padding: 12px 0 calc(20px + env(safe-area-inset-bottom));
-         display: grid; gap: 8px; }
-  .row { display: flex; gap: 8px; }
-  textarea { flex: 1; resize: none; min-height: 48px; max-height: 160px; padding: 12px; border-radius: 12px;
-             border: 1px solid var(--border); background: var(--surface); color: var(--text); font: inherit; }
-  textarea:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
-  button.send { padding: 0 18px; border: none; border-radius: 12px; background: var(--accent);
-                color: var(--accent-text); font: inherit; font-weight: 600; cursor: pointer; }
-  button.send:disabled { opacity: .5; cursor: progress; }
-  label { font-size: .85rem; color: var(--muted); display: flex; gap: 6px; align-items: center; }
+         font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
   [hidden] { display: none !important; }
-  .who { font-size: .85rem; color: var(--muted); display: flex; gap: 12px; align-items: baseline; }
-  .notice { font-size: .85rem; color: var(--muted); background: var(--surface); border: 1px solid var(--border);
-            border-radius: 10px; padding: 8px 12px; margin-bottom: 8px; }
-  #auth { margin: auto 0; display: grid; gap: 16px; max-width: 380px; width: 100%; align-self: center; }
-  #auth h2 { margin: 0; font-size: 1.4rem; }
-  #auth p { margin: 0; color: var(--muted); }
-  #auth input { padding: 12px; border-radius: 10px; border: 1px solid var(--border); background: var(--surface);
-                color: var(--text); font: inherit; width: 100%; }
-  .big { padding: 14px; border: none; border-radius: 12px; background: var(--accent); color: var(--accent-text);
-         font: inherit; font-weight: 600; cursor: pointer; }
-  .ghost { padding: 12px; border-radius: 12px; border: 1px solid var(--border); background: none; color: var(--text);
-           font: inherit; cursor: pointer; }
-  .divider { text-align: center; color: var(--muted); font-size: .85rem; }
-  .error { color: var(--warn); font-size: .9rem; min-height: 1.2em; }
-  #chat { flex: 1; display: flex; flex-direction: column; }
-  nav.tabs { display: flex; gap: 4px; margin-bottom: 12px; border-bottom: 1px solid var(--border); }
-  nav.tabs button { background: none; border: none; padding: 8px 12px; font: inherit; color: var(--muted);
-                    cursor: pointer; border-bottom: 2px solid transparent; }
-  nav.tabs button.active { color: var(--text); border-bottom-color: var(--accent); font-weight: 600; }
-  #games h2 { font-size: 1rem; margin: 20px 0 8px; }
-  .hint { color: var(--muted); font-size: .9rem; margin: 0 0 8px; }
-  .cards { display: grid; gap: 8px; }
-  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 10px 14px; }
-  .card .top { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
-  .card .title { font-weight: 600; }
-  .chip { font-size: .75rem; padding: 2px 8px; border-radius: 999px; background: var(--user); white-space: nowrap; }
-  .card .line { font-size: .9rem; margin-top: 2px; }
-  .card .sub { font-size: .8rem; color: var(--muted); margin-top: 4px; }
-  .card .notes { font-size: .85rem; color: var(--muted); white-space: pre-wrap; margin-top: 6px; }
-  .card .actions { display: flex; gap: 12px; margin-top: 6px; }
-  .link { background: none; border: none; padding: 0; color: var(--accent); font: inherit; font-size: .85rem; cursor: pointer; }
-  .link.danger { color: var(--warn); }
-  .inline-form { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
-  .inline-form input, .inline-form select { flex: 1 1 160px; padding: 10px; border-radius: 10px; border: 1px solid var(--border);
-                                            background: var(--surface); color: var(--text); font: inherit; }
-  .empty-list { color: var(--muted); font-size: .9rem; }
-  dialog { border: 1px solid var(--border); border-radius: 14px; background: var(--bg); color: var(--text);
-           width: min(640px, calc(100vw - 32px)); padding: 16px; }
-  dialog textarea { width: 100%; font: 13px/1.5 ui-monospace, Consolas, monospace; padding: 10px; border-radius: 10px;
-                    border: 1px solid var(--border); background: var(--surface); color: var(--text); }
+  a { color: var(--accent); }
+  button { font: inherit; color: inherit; }
+  main { max-width: 640px; margin: 0 auto; min-height: 100dvh; padding: 0 16px calc(88px + env(safe-area-inset-bottom)); }
+  .bar { display: flex; align-items: center; justify-content: space-between; padding: calc(14px + env(safe-area-inset-top)) 0 10px; }
+  .brand { display: flex; gap: 8px; align-items: center; font-weight: 700; font-size: 1.1rem; }
+  .brand img { width: 28px; height: 28px; border-radius: 8px; }
+  .iconbtn { background: none; border: 1px solid var(--border); border-radius: 999px; min-width: 40px; height: 40px;
+             padding: 0 12px; cursor: pointer; color: var(--text); }
+  .menu { position: absolute; right: 16px; top: 60px; background: var(--surface); border: 1px solid var(--border);
+          border-radius: 12px; box-shadow: var(--shadow); display: grid; min-width: 220px; z-index: 10; overflow: hidden; }
+  .menu button, .menu a { background: none; border: none; text-align: left; padding: 12px 16px; cursor: pointer;
+                          text-decoration: none; color: var(--text); }
+  .menu button:hover, .menu a:hover { background: var(--bg); }
+  h1 { font-size: 1.7rem; line-height: 1.2; margin: 24px 0 8px; }
+  h2 { font-size: 1.05rem; margin: 22px 0 8px; }
+  p.lead { color: var(--muted); margin: 0 0 20px; }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 16px; box-shadow: var(--shadow); }
+  .stack { display: grid; gap: 12px; }
+  .seg { display: flex; background: var(--bg); border-radius: 10px; padding: 3px; gap: 3px; margin-bottom: 12px; }
+  .seg button { flex: 1; border: none; background: none; padding: 8px; border-radius: 8px; cursor: pointer; color: var(--muted); }
+  .seg button.on { background: var(--surface); color: var(--text); font-weight: 600; box-shadow: var(--shadow); }
+  input, select, textarea { width: 100%; padding: 12px 14px; border-radius: 12px; border: 1px solid var(--border);
+         background: var(--surface); color: var(--text); font: inherit; font-size: 16px; }
+  input:focus, textarea:focus, select:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+  .grid3 { display: grid; grid-template-columns: 90px 1fr 1fr; gap: 8px; }
+  .primary { width: 100%; padding: 14px; border: none; border-radius: 12px; background: var(--accent);
+             color: var(--accent-text); font-weight: 650; cursor: pointer; font-size: 1rem; }
+  .primary:disabled { opacity: .6; cursor: progress; }
+  .secondary { width: 100%; padding: 13px; border-radius: 12px; border: 1px solid var(--border); background: var(--surface);
+               cursor: pointer; font-weight: 600; }
+  .textbtn { background: none; border: none; padding: 0; color: var(--accent); cursor: pointer; font-size: .9rem; }
+  .textbtn.danger { color: var(--danger); }
+  .hint { color: var(--muted); font-size: .88rem; margin: 6px 0 0; }
+  .error { color: var(--danger); font-size: .9rem; min-height: 1.3em; margin-top: 8px; }
+  .or { text-align: center; color: var(--muted); font-size: .85rem; margin: 14px 0; }
+  details.account summary { cursor: pointer; color: var(--muted); font-size: .92rem; margin-top: 18px; }
+  .trust { display: grid; gap: 6px; margin-top: 22px; color: var(--muted); font-size: .88rem; }
+  .trust div::before { content: "✓ "; color: var(--ok); font-weight: 700; }
+
+  /* home */
+  .status { border-radius: 16px; padding: 16px; display: flex; gap: 12px; align-items: flex-start; margin-top: 8px; }
+  .status .big { font-size: 1.15rem; font-weight: 700; }
+  .status.danger { background: var(--danger-bg); color: var(--danger); }
+  .status.warn { background: var(--amber-bg); color: var(--amber); }
+  .status.ok { background: var(--ok-bg); color: var(--ok); }
+  .status .sub { color: var(--text); opacity: .8; font-size: .92rem; margin-top: 2px; }
+  .status .dot { font-size: 1.4rem; line-height: 1; }
+  .recall { border-left: 5px solid var(--amber); }
+  .recall.park_it { border-left-color: var(--danger); }
+  .recall.park_outside { border-left-color: var(--orange); }
+  .recall.possible { border-left-color: var(--border); }
+  .badges { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 6px; }
+  .badge { font-size: .75rem; font-weight: 700; padding: 3px 9px; border-radius: 999px; background: var(--amber-bg); color: var(--amber);
+           white-space: nowrap; flex: none; }
+  .badge.park_it { background: var(--danger-bg); color: var(--danger); }
+  .badge.park_outside { background: var(--orange-bg); color: var(--orange); }
+  .badge.new { background: var(--accent); color: var(--accent-text); }
+  .badge.possible { background: var(--bg); color: var(--muted); }
+  .recall .item { font-weight: 700; }
+  .recall .what { margin-top: 2px; }
+  .recall .risk { color: var(--muted); font-size: .92rem; margin-top: 6px; }
+  .rlist { margin-top: 10px; border-top: 1px solid var(--border); }
+  .rrow { border-bottom: 1px solid var(--border); }
+  .rrow summary { cursor: pointer; display: flex; gap: 8px; align-items: center; padding: 11px 0; list-style: none; }
+  .rrow summary::-webkit-details-marker { display: none; }
+  .rrow summary::after { content: "›"; margin-left: auto; color: var(--muted); font-size: 1.2rem; transition: transform .15s; }
+  .rrow[open] summary::after { transform: rotate(90deg); }
+  .rrow .rtitle { font-weight: 600; }
+  .rrow .rdate { color: var(--muted); font-size: .85rem; }
+  .rrow .badge { font-size: .7rem; }
+  .rrow .fix { padding-bottom: 12px; }
+  .recall > .hint { margin-top: 10px; }
+  .recall .fix { margin-top: 8px; font-size: .92rem; display: grid; gap: 6px; }
+  .actions { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
+  .chipbtn { border: 1px solid var(--border); background: var(--surface); border-radius: 999px; padding: 8px 14px;
+             cursor: pointer; font-size: .9rem; }
+  .chipbtn.good { border-color: var(--ok); color: var(--ok); }
+  .sharerow { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
+  .sharerow a, .sharerow button { font-size: .88rem; }
+  .callout { display: flex; gap: 12px; align-items: center; justify-content: space-between; }
+  .callout .text { font-size: .93rem; }
+  .callout button { flex: none; width: auto; padding: 10px 14px; }
+  details.done summary { cursor: pointer; color: var(--muted); margin: 18px 0 8px; }
+  .muted { color: var(--muted); }
+
+  /* my stuff */
+  .thing .top { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
+  .thing .name { font-weight: 700; }
+  .pill { font-size: .78rem; padding: 2px 8px; border-radius: 999px; background: var(--user); white-space: nowrap; }
+  .pill.bad { background: var(--danger-bg); color: var(--danger); }
+  .thing .sub { color: var(--muted); font-size: .85rem; margin-top: 4px; }
+  .thing .row { display: flex; gap: 16px; margin-top: 8px; }
+
+  /* ask */
+  #log { display: flex; flex-direction: column; gap: 12px; padding: 8px 0 16px; min-height: 40dvh; }
+  .msg { padding: 10px 14px; border-radius: 14px; overflow-wrap: anywhere; max-width: 92%; }
+  .msg.user { align-self: flex-end; background: var(--user); white-space: pre-wrap; }
+  .msg.bot { align-self: flex-start; background: var(--surface); border: 1px solid var(--border); }
   .msg.status { color: var(--muted); font-style: italic; }
-  .msg.rich { white-space: normal; }
-  .msg.rich p { margin: 0 0 8px; }
-  .msg.rich p:last-child, .msg.rich ul:last-child { margin-bottom: 0; }
-  .msg.rich ul { margin: 0 0 8px; padding-left: 20px; }
-  .msg.rich li { margin: 2px 0; }
-  .msg a { color: var(--accent); }
-  .msg a.cite { font-size: .8rem; white-space: nowrap; text-decoration: none; padding: 0 4px; margin-left: 2px;
+  .msg.stopped { background: var(--amber-bg); color: var(--amber); border-color: transparent; }
+  .msg p { margin: 0 0 8px; } .msg p:last-child, .msg ul:last-child { margin-bottom: 0; }
+  .msg ul { margin: 0 0 8px; padding-left: 20px; } .msg li { margin: 2px 0; }
+  .msg a.cite { font-size: .8rem; white-space: nowrap; text-decoration: none; padding: 0 5px; margin-left: 2px;
                 border-radius: 6px; background: var(--user); }
-  details.briefing { background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
-                     padding: 10px 14px; margin-bottom: 12px; }
-  details.briefing summary { cursor: pointer; }
-  details.briefing .sub { font-size: .8rem; color: var(--muted); font-weight: normal; }
-  .briefing h4 { margin: 10px 0 4px; font-size: .95rem; }
-  .briefing ul { margin: 0; padding-left: 18px; }
-  .briefing li { margin: 4px 0; font-size: .9rem; }
-  .briefing .when { font-size: .75rem; color: var(--muted); margin-left: 4px; }
-  details.spoiler { margin-top: 6px; background: var(--warn-bg); border-radius: 8px; padding: 6px 10px; }
-  details.spoiler summary { cursor: pointer; color: var(--warn); font-size: .85rem; }
-  a.ghost { text-decoration: none; display: inline-block; margin-top: 16px; }
-  a.steam { margin-top: 0; text-align: center; color: var(--text); font-weight: 600; }
+  .meta { font-size: .75rem; color: var(--muted); margin-top: 6px; }
+  .suggest { display: flex; gap: 8px; flex-wrap: wrap; margin: 4px 0 12px; }
+  .composer { position: sticky; bottom: calc(72px + env(safe-area-inset-bottom)); background: var(--bg); padding: 8px 0; }
+  .composer .row { display: flex; gap: 8px; align-items: flex-end; }
+  .composer textarea { resize: none; min-height: 48px; max-height: 140px; }
+  .round { flex: none; width: 48px; height: 48px; border-radius: 50%; border: none; cursor: pointer;
+           background: var(--accent); color: var(--accent-text); font-size: 1.1rem; }
+  .round.mic { background: var(--surface); color: var(--text); border: 1px solid var(--border); }
+  .round.mic.live { background: var(--danger); color: #fff; border-color: transparent; animation: pulse 1.2s infinite; }
+  @keyframes pulse { 50% { box-shadow: 0 0 0 8px rgba(180,35,24,.15); } }
+  @media (prefers-reduced-motion: reduce) { .round.mic.live { animation: none; } }
+  .toggles { display: flex; gap: 16px; flex-wrap: wrap; font-size: .85rem; color: var(--muted); margin-top: 6px; }
+  .toggles label { display: flex; gap: 6px; align-items: center; cursor: pointer; }
+  .toggles input { width: auto; }
+
+  /* tab bar */
+  nav.tabbar { position: fixed; left: 0; right: 0; bottom: 0; background: var(--surface); border-top: 1px solid var(--border);
+               display: flex; justify-content: center; padding-bottom: env(safe-area-inset-bottom); z-index: 5; }
+  nav.tabbar .in { display: flex; max-width: 640px; width: 100%; }
+  nav.tabbar button { flex: 1; background: none; border: none; padding: 10px 0 12px; cursor: pointer; color: var(--muted);
+                      font-size: .78rem; display: grid; justify-items: center; gap: 2px; position: relative; }
+  nav.tabbar button .ic { font-size: 1.3rem; line-height: 1.2; }
+  nav.tabbar button.on { color: var(--accent); font-weight: 700; }
+  .count { position: absolute; top: 6px; left: calc(50% + 6px); background: var(--danger); color: #fff; border-radius: 999px;
+           font-size: .7rem; font-weight: 700; min-width: 18px; padding: 0 5px; line-height: 18px; }
+  dialog { border: 1px solid var(--border); border-radius: 16px; background: var(--bg); color: var(--text);
+           width: min(640px, calc(100vw - 32px)); padding: 16px; }
+  dialog textarea { font: 13px/1.5 ui-monospace, Consolas, monospace; }
+  .toast { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(84px + env(safe-area-inset-bottom));
+           background: var(--text); color: var(--bg); padding: 10px 16px; border-radius: 12px; font-size: .9rem; z-index: 20; }
 </style>
 </head>
 <body>
 <main>
-  <header>
-    <h1>Lantern</h1>
-    <div class="who" id="who" hidden>
-      <span id="whoName"></span>
-      <button type="button" id="reset">New chat</button>
-      <button type="button" id="logout">Sign out</button>
+  <header class="bar">
+    <div class="brand"><img src="/icons/icon-192.png" alt=""><span>Lantern</span></div>
+    <div id="topActions" hidden>
+      <button type="button" class="iconbtn" id="menuBtn" aria-haspopup="true" aria-expanded="false" aria-label="Menu">☰</button>
     </div>
   </header>
+  <div class="menu" id="menu" hidden>
+    <button type="button" id="mAlerts">🔔 Alerts on this phone</button>
+    <button type="button" id="mNewChat">💬 New chat</button>
+    <a href="/api/export" download>⬇ Download my data</a>
+    <button type="button" id="mLogout">↩ Sign out</button>
+  </div>
 
-  <section id="auth" hidden>
-    <h2>Ask anything about your games</h2>
-    <p>Answers from each game's own wiki and patch notes, cited and spoiler-safe for where you're up to. Everything it remembers is yours to see and edit.</p>
-    <button type="button" class="big" id="guestBtn">Try it as a guest</button>
-    <a class="ghost steam" href="/auth/steam/start" id="steamSignIn">Sign in through Steam</a>
-    <div class="divider">or use an account</div>
-    <form id="authForm" autocomplete="on">
-      <div style="display:grid; gap:8px">
-        <input id="username" name="username" placeholder="Username" autocomplete="username" maxlength="64" required>
-        <input id="password" name="password" type="password" placeholder="Password (8+ characters)"
-               autocomplete="current-password" maxlength="256" required>
-        <div class="row">
-          <button type="submit" class="ghost" id="loginBtn" style="flex:1">Sign in</button>
-          <button type="button" class="ghost" id="registerBtn" style="flex:1">Create account</button>
+  <!-- ===== welcome (signed out) ===== -->
+  <section id="welcome" hidden>
+    <h1>Is anything you own under a safety recall?</h1>
+    <p class="lead">About 1 in 5 cars in the U.S. has a safety recall that was never fixed. Lantern checks the official
+      lists for your car and household products every day, tells you in plain words, and helps you get the free fix.</p>
+    <div class="card">
+      <form id="startForm" novalidate>
+        <div class="seg" role="tablist">
+          <button type="button" class="on" data-mode="ymm" role="tab">Year, make, model</button>
+          <button type="button" data-mode="vin" role="tab">VIN</button>
         </div>
-      </div>
-    </form>
-    <div class="error" id="authError" role="alert"></div>
-  </section>
-
-  <nav class="tabs" id="tabs" hidden>
-    <button type="button" data-tab="chat" class="active">Chat</button>
-    <button type="button" data-tab="games">My games</button>
-  </nav>
-
-  <section id="chat" hidden>
-    <div class="notice" id="guestNotice" hidden></div>
-    <details class="briefing" id="briefing" hidden>
-      <summary><strong>What's new for your games</strong> <span class="sub" id="briefingMeta"></span></summary>
-      <div id="briefingBody"></div>
-      <button type="button" class="link" id="briefingRefresh">Refresh</button>
+        <div id="startYmm" class="grid3">
+          <input id="sYear" inputmode="numeric" maxlength="4" placeholder="Year" aria-label="Year">
+          <input id="sMake" placeholder="Make" aria-label="Make" autocapitalize="words">
+          <input id="sModel" placeholder="Model" aria-label="Model" autocapitalize="words">
+        </div>
+        <div id="startVin" hidden>
+          <input id="sVin" maxlength="20" placeholder="17-character VIN" aria-label="VIN" autocapitalize="characters" spellcheck="false">
+          <p class="hint">On your registration or insurance card, or the dashboard by the windscreen.</p>
+        </div>
+        <div style="height:12px"></div>
+        <button class="primary" id="startBtn" type="submit">Check my car</button>
+        <div class="error" id="startError" role="alert"></div>
+      </form>
+      <div class="or">or</div>
+      <button class="secondary" id="demoBtn" type="button">See a demo household</button>
+    </div>
+    <div class="trust">
+      <div>Official data from NHTSA and the CPSC, checked daily</div>
+      <div>No sign-up needed. No phone number, no email</div>
+      <div>Everything it remembers is a file you can see, edit and delete</div>
+    </div>
+    <details class="account">
+      <summary>Have an account? Sign in</summary>
+      <form id="authForm" class="stack" style="margin-top:10px" autocomplete="on">
+        <input id="username" placeholder="Username" autocomplete="username" maxlength="64" required>
+        <input id="password" type="password" placeholder="Password (8+ characters)" autocomplete="current-password" maxlength="256" required>
+        <div style="display:flex; gap:8px">
+          <button type="submit" class="secondary">Sign in</button>
+          <button type="button" class="secondary" id="registerBtn">Create account</button>
+        </div>
+        <div class="error" id="authError" role="alert"></div>
+      </form>
     </details>
-    <section id="log" aria-live="polite"><p class="empty" id="empty">Tell me what you're playing, or ask anything about a game.</p></section>
-    <form id="form">
-      <div class="row">
-        <textarea id="msg" placeholder="Message" rows="1" required maxlength="4000" aria-label="Message"></textarea>
-        <button class="send" id="send" type="submit">Send</button>
-      </div>
-      <label><input type="checkbox" id="escalate"> Think harder (Nemotron Ultra)<span id="ultraLeft"></span></label>
-    </form>
   </section>
 
-  <section id="games" hidden>
-    <p class="hint">Everything I remember about you is here, as plain files you can edit or delete.</p>
-    <form class="inline-form" id="steamForm" hidden>
-      <input id="steamProfile" placeholder="Steam profile URL or custom name" maxlength="200" required aria-label="Steam profile">
-      <button class="ghost" type="submit" id="steamBtn">Import from Steam</button>
-    </form>
-    <div class="hint" id="steamMsg" role="status"></div>
-    <h2>Games</h2>
-    <div class="cards" id="gameList"></div>
-    <form class="inline-form" id="addGame">
-      <input id="newGame" placeholder="Add a game…" maxlength="200" required aria-label="Game title">
-      <select id="newStatus" aria-label="Status">
-        <option value="playing">Playing</option><option value="backlog">Backlog</option>
-        <option value="finished">Finished</option><option value="dropped">Dropped</option>
-      </select>
-      <input id="newProgress" placeholder="Where you're up to (optional)" maxlength="300" aria-label="Progress">
-      <button class="ghost" type="submit">Add</button>
-    </form>
+  <!-- ===== home: what needs attention ===== -->
+  <section id="home" hidden>
+    <div id="statusBox"></div>
+    <div class="stack" id="callouts" style="margin-top:12px"></div>
+    <div class="stack" id="attention" style="margin-top:12px"></div>
+    <details class="done" id="doneBox" hidden><summary id="doneSummary"></summary><div class="stack" id="doneList"></div></details>
+    <p class="hint" id="homeNote"></p>
+  </section>
 
-    <h2>Creators you follow</h2>
-    <div class="cards" id="creatorList"></div>
-    <form class="inline-form" id="addCreator">
-      <input id="newCreator" placeholder="Add a streamer or creator…" maxlength="200" required aria-label="Creator name">
-      <input id="newPlatforms" placeholder="Platforms, e.g. twitch, youtube" maxlength="200" aria-label="Platforms">
-      <button class="ghost" type="submit">Add</button>
-    </form>
+  <!-- ===== my stuff ===== -->
+  <section id="stuff" hidden>
+    <h2>Cars</h2>
+    <div class="stack" id="carList"></div>
+    <div class="card" style="margin-top:12px">
+      <form id="addCar" novalidate>
+        <div class="seg"><button type="button" class="on" data-mode="ymm">Year, make, model</button><button type="button" data-mode="vin">VIN</button></div>
+        <div class="grid3" data-part="ymm">
+          <input name="year" inputmode="numeric" maxlength="4" placeholder="Year" aria-label="Year">
+          <input name="make" placeholder="Make" aria-label="Make" autocapitalize="words">
+          <input name="model" placeholder="Model" aria-label="Model" autocapitalize="words">
+        </div>
+        <div data-part="vin" hidden><input name="vin" maxlength="20" placeholder="17-character VIN" aria-label="VIN" autocapitalize="characters" spellcheck="false"></div>
+        <div style="height:10px"></div>
+        <button class="primary" type="submit">Add car</button>
+        <div class="error" role="alert"></div>
+      </form>
+    </div>
+    <h2>Household products</h2>
+    <div class="stack" id="productList"></div>
+    <div class="card" style="margin-top:12px">
+      <form id="addProduct" class="stack" novalidate>
+        <input name="product" placeholder="What is it? (crib, stroller, space heater…)" maxlength="80" aria-label="Product">
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px">
+          <input name="brand" placeholder="Brand" maxlength="60" aria-label="Brand">
+          <input name="model" placeholder="Model (optional)" maxlength="60" aria-label="Model">
+        </div>
+        <button class="primary" type="submit">Add product</button>
+        <div class="error" role="alert"></div>
+      </form>
+      <p class="hint">Child car seats and tires aren't checked yet.</p>
+    </div>
+    <p class="hint" style="margin-top:20px">Everything Lantern remembers is here as plain files.
+      <a href="/api/export" download>Download everything</a>.</p>
+  </section>
 
-    <h2>Profile</h2>
-    <div class="cards" id="profileBox"></div>
-    <a class="ghost" href="/api/export" download>Download everything (zip)</a>
+  <!-- ===== ask ===== -->
+  <section id="ask" hidden>
+    <div id="log" aria-live="polite"></div>
+    <div class="suggest" id="suggest"></div>
+    <form class="composer" id="chatForm">
+      <div class="row">
+        <button type="button" class="round mic" id="micBtn" aria-label="Speak" title="Speak" hidden>🎤</button>
+        <textarea id="msg" rows="1" maxlength="4000" placeholder="Ask about your car or things…" aria-label="Message"></textarea>
+        <button class="round" id="sendBtn" type="submit" aria-label="Send">➤</button>
+      </div>
+      <div class="toggles">
+        <label id="speakToggle" hidden><input type="checkbox" id="speakAnswers"> Read answers aloud</label>
+        <label><input type="checkbox" id="escalate"> Think harder<span id="ultraLeft"></span></label>
+      </div>
+      <p class="hint" id="voiceNote" hidden>Voice uses your browser's own speech service (in Chrome that's Google's).</p>
+    </form>
   </section>
 
   <dialog id="editor">
     <h3 id="edTitle" style="margin-top:0"></h3>
-    <p class="hint">This is the actual file I keep. Edit the values after the colons, or the notes below the second ---.</p>
-    <textarea id="edText" rows="14" spellcheck="false" aria-label="Memory file"></textarea>
+    <p class="hint">This is the actual file Lantern keeps. Edit the values after the colons, or the notes below the second ---.</p>
+    <textarea id="edText" rows="14" spellcheck="false" aria-label="File"></textarea>
     <div class="error" id="edError" role="alert"></div>
-    <div class="row"><button type="button" class="send" id="edSave">Save</button>
-      <button type="button" class="ghost" id="edCancel">Cancel</button></div>
+    <div style="display:flex; gap:8px"><button type="button" class="primary" id="edSave">Save</button>
+      <button type="button" class="secondary" id="edCancel">Cancel</button></div>
   </dialog>
 </main>
+
+<nav class="tabbar" id="tabbar" hidden>
+  <div class="in">
+    <button type="button" data-tab="home"><span class="ic">🏠</span>Home<span class="count" id="homeCount" hidden></span></button>
+    <button type="button" data-tab="stuff"><span class="ic">🧰</span>My stuff</button>
+    <button type="button" data-tab="ask"><span class="ic">💬</span>Ask</button>
+  </div>
+</nav>
+
 <script>
 const $ = (id) => document.getElementById(id);
-const log = $("log"), form = $("form"), input = $("msg"), send = $("send"), escalate = $("escalate");
-const EMPTY_CHAT = "Tell me what you're playing, or ask anything about a game.";
+let me = null, report = null, pushInfo = null, installPrompt = null;
 
+// ---- helpers --------------------------------------------------------------------------------
 async function api(path, options = {}) {
   const res = await fetch(path, {
     method: options.method || "GET",
@@ -212,196 +324,521 @@ async function api(path, options = {}) {
   try { data = await res.json(); } catch { /* empty body */ }
   return { res, data };
 }
-
 function detail(data, fallback) {
-  if (!data) return fallback;
-  if (typeof data.detail === "string") return data.detail;
-  if (Array.isArray(data.detail)) return "Please check the fields and try again.";
+  if (data && typeof data.detail === "string") return data.detail;
+  if (data && Array.isArray(data.detail)) return "Please check the fields and try again.";
   return fallback;
 }
-
 function el(tag, cls, text) {
   const node = document.createElement(tag);
   if (cls) node.className = cls;
-  if (text !== undefined) node.textContent = text;
+  if (text !== undefined && text !== null) node.textContent = text;
   return node;
 }
-
-// ---- signed-in / signed-out views ----------------------------------------------------------
-function showAuth(message = "") {
-  $("auth").hidden = false; $("chat").hidden = true; $("games").hidden = true;
-  $("who").hidden = true; $("tabs").hidden = true;
-  $("authError").textContent = message;
-}
-
-function showTab(name) {
-  $("chat").hidden = name !== "chat";
-  $("games").hidden = name !== "games";
-  document.querySelectorAll("#tabs button").forEach(b => b.classList.toggle("active", b.dataset.tab === name));
-  if (name === "games") loadProfile(); else input.focus();
-}
-
-function showChat(me) {
-  $("auth").hidden = true; $("who").hidden = false; $("tabs").hidden = false;
-  $("whoName").textContent = me.kind === "guest" ? "Guest" : (me.display_name || me.user_id);
-  const notice = $("guestNotice");
-  if (me.kind === "guest") {
-    const when = new Date(me.expires_ts * 1000).toLocaleDateString(undefined, { day: "numeric", month: "short" });
-    notice.textContent = `You're a guest. Your chats and data are deleted on ${when}. Create an account to keep them.`;
-    notice.hidden = false;
-  } else {
-    notice.hidden = true;
-  }
-  $("ultraLeft").textContent = me.ultra_left_today === null ? "" : ` · ${me.ultra_left_today} left today`;
-  $("steamForm").hidden = !me.steam_enabled;
-  showTab("chat");
-  loadBriefing();
-}
-
-async function refreshMe() {
-  const { res, data } = await api("/api/me");
-  if (res.ok) { showChat(data); loadHistory(); } else showAuth();
-}
-
-async function signIn(path, body) {
-  $("authError").textContent = "";
-  const { res, data } = await api(path, { method: "POST", body });
-  if (res.ok) { resetLog(); showChat(data); loadHistory(); }
-  else showAuth(detail(data, `Couldn't sign in (error ${res.status}).`));
-}
-
-$("guestBtn").addEventListener("click", () => signIn("/api/auth/guest"));
-$("authForm").addEventListener("submit", (e) => {
-  e.preventDefault();
-  signIn("/api/auth/login", { username: $("username").value, password: $("password").value });
-});
-$("registerBtn").addEventListener("click", () => {
-  if (!$("authForm").reportValidity()) return;
-  signIn("/api/auth/register", { username: $("username").value, password: $("password").value });
-});
-$("logout").addEventListener("click", async () => {
-  await api("/api/auth/logout", { method: "POST" });
-  resetLog();
-  showAuth();
-});
-document.querySelectorAll("#tabs button").forEach(b => b.addEventListener("click", () => showTab(b.dataset.tab)));
-
-// ---- chat ------------------------------------------------------------------------------------
-function resetLog(text = EMPTY_CHAT) {
-  log.replaceChildren(el("p", "empty", text));
-  log.firstChild.id = "empty";
-}
-
-// ---- answer rendering: a safe Markdown subset, built from DOM nodes (never innerHTML) ----------
-// Supports **bold**, bullet/numbered lists, "### headings", and links: [text](url), 【url】 citations
-// and bare URLs. Links show just the site name and open in a new tab.
-const INLINE = /\[([^\]\n]{1,200})\]\((https?:\/\/[^\s)]+)\)|【\s*(https?:\/\/[^\s】]+)\s*】|(https?:\/\/[^\s<>()【】\]]+)|\*\*([^*\n]+)\*\*/g;
-
-function siteName(url) {
-  try { return new URL(url).hostname.replace(/^www\./, ""); } catch { return "link"; }
-}
-
-function link(url, label, cite) {
-  const a = document.createElement("a");
-  a.href = url;
-  a.target = "_blank";
-  a.rel = "noopener noreferrer";
-  a.textContent = label;
-  if (cite) a.className = "cite";
+function link(url, label, cls) {
+  const a = el("a", cls || "", label);
+  a.href = url; a.target = "_blank"; a.rel = "noopener noreferrer";
   return a;
 }
+function button(label, cls, onClick) {
+  const b = el("button", cls, label);
+  b.type = "button";
+  b.addEventListener("click", onClick);
+  return b;
+}
+function toast(text) {
+  const t = el("div", "toast", text);
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 2600);
+}
+function store(key, value) { try { value === undefined ? localStorage.removeItem(key) : localStorage.setItem(key, value); } catch {} }
+function stored(key) { try { return localStorage.getItem(key); } catch { return null; } }
+function sentence(text, max = 220) {
+  const t = (text || "").replace(/\s+/g, " ").trim();
+  if (t.length <= max) return t;
+  const cut = t.slice(0, max);
+  return cut.slice(0, Math.max(cut.lastIndexOf(". ") + 1, cut.lastIndexOf(" "))) + "…";
+}
 
+// ---- views ----------------------------------------------------------------------------------
+const TABS = ["home", "stuff", "ask"];
+function showWelcome(message = "") {
+  me = null;
+  ["home", "stuff", "ask"].forEach(t => $(t).hidden = true);
+  $("welcome").hidden = false; $("tabbar").hidden = true; $("topActions").hidden = true;
+  $("authError").textContent = message;
+}
+function showTab(name) {
+  if (!TABS.includes(name)) name = "home";
+  TABS.forEach(t => $(t).hidden = t !== name);
+  document.querySelectorAll("#tabbar button").forEach(b => b.classList.toggle("on", b.dataset.tab === name));
+  if (location.hash !== "#" + name) history.replaceState(null, "", "#" + name);
+  if (name === "stuff") loadStuff();
+  if (name === "ask") { loadHistory(); setTimeout(() => $("msg").focus(), 50); }
+  window.scrollTo(0, 0);
+}
+function showApp(data) {
+  me = data;
+  $("welcome").hidden = true; $("tabbar").hidden = false; $("topActions").hidden = false;
+  $("ultraLeft").textContent = me.ultra_left_today === null ? "" : ` (${me.ultra_left_today} left today)`;
+  const want = (location.hash || "#home").slice(1);
+  showTab(want === "attention" ? "home" : want);
+  loadRecalls();
+}
+async function refreshMe() {
+  const { res, data } = await api("/api/me");
+  if (res.ok) showApp(data); else showWelcome();
+}
+document.querySelectorAll("#tabbar button").forEach(b => b.addEventListener("click", () => showTab(b.dataset.tab)));
+window.addEventListener("hashchange", () => { if (me) showTab(location.hash.slice(1).replace("attention", "home")); });
+
+// ---- menu -----------------------------------------------------------------------------------
+$("menuBtn").addEventListener("click", (e) => {
+  e.stopPropagation();
+  const open = $("menu").hidden;
+  $("menu").hidden = !open; $("menuBtn").setAttribute("aria-expanded", String(open));
+});
+document.addEventListener("click", () => { $("menu").hidden = true; });
+$("mLogout").addEventListener("click", async () => { await api("/api/auth/logout", { method: "POST" }); $("log").replaceChildren(); showWelcome(); });
+$("mNewChat").addEventListener("click", async () => { await api("/api/reset", { method: "POST" }); $("log").replaceChildren(); showTab("ask"); });
+$("mAlerts").addEventListener("click", () => { showTab("home"); enableAlerts(); });
+
+// ---- welcome: start with a car, or the demo ------------------------------------------------
+function segmented(form) {
+  form.querySelectorAll(".seg button").forEach(b => b.addEventListener("click", () => {
+    form.querySelectorAll(".seg button").forEach(x => x.classList.toggle("on", x === b));
+    form.dataset.mode = b.dataset.mode;
+    form.querySelectorAll("[data-part]").forEach(p => p.hidden = p.dataset.part !== b.dataset.mode);
+  }));
+  form.dataset.mode = "ymm";
+}
+segmented($("addCar"));
+document.querySelectorAll("#startForm .seg button").forEach(b => b.addEventListener("click", () => {
+  document.querySelectorAll("#startForm .seg button").forEach(x => x.classList.toggle("on", x === b));
+  $("startYmm").hidden = b.dataset.mode !== "ymm"; $("startVin").hidden = b.dataset.mode !== "vin";
+  $("startForm").dataset.mode = b.dataset.mode;
+}));
+
+async function ensureSession() {
+  if (me) return true;
+  const { res, data } = await api("/api/me");
+  if (res.ok) { me = data; return true; }
+  const g = await api("/api/auth/guest", { method: "POST" });
+  if (!g.res.ok) throw new Error(detail(g.data, "Couldn't start a session."));
+  me = g.data;
+  return true;
+}
+function carBody(mode, vin, year, make, model) {
+  if (mode === "vin") return { vin: vin.trim() };
+  return { year: parseInt(year, 10) || null, make: make.trim(), model: model.trim() };
+}
+function carProblem(body) {
+  if ("vin" in body) return body.vin ? "" : "Enter the 17-character VIN.";
+  if (!body.year || !body.make || !body.model) return "Enter the year, make and model (for example 2018 Honda Civic).";
+  return "";
+}
+$("startForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const body = carBody($("startForm").dataset.mode || "ymm", $("sVin").value, $("sYear").value, $("sMake").value, $("sModel").value);
+  const problem = carProblem(body);
+  $("startError").textContent = problem;
+  if (problem) return;
+  $("startBtn").disabled = true; $("startBtn").textContent = "Checking official recall lists…";
+  try {
+    await ensureSession();
+    const { res, data } = await api("/api/vehicles", { method: "POST", body });
+    if (!res.ok) throw new Error(detail(data, "Couldn't add that car."));
+    location.hash = "#home";
+    showApp(me); renderRecalls(data.recalls);
+  } catch (err) {
+    $("startError").textContent = err.message;
+  } finally {
+    $("startBtn").disabled = false; $("startBtn").textContent = "Check my car";
+  }
+});
+$("demoBtn").addEventListener("click", async () => {
+  $("demoBtn").disabled = true; $("demoBtn").textContent = "Loading the demo household…";
+  try {
+    if (me) { await api("/api/auth/logout", { method: "POST" }); me = null; }
+    await ensureSession();
+    const { res, data } = await api("/api/demo", { method: "POST" });
+    if (!res.ok) throw new Error(detail(data, "Couldn't load the demo."));
+    store("demo", "1");
+    location.hash = "#home";
+    showApp(me); renderRecalls(data);
+  } catch (err) {
+    $("startError").textContent = err.message;
+  } finally {
+    $("demoBtn").disabled = false; $("demoBtn").textContent = "See a demo household";
+  }
+});
+async function signIn(path) {
+  $("authError").textContent = "";
+  const { res, data } = await api(path, { method: "POST", body: { username: $("username").value, password: $("password").value } });
+  if (res.ok) { store("demo"); showApp(data); } else $("authError").textContent = detail(data, `Couldn't sign in (error ${res.status}).`);
+}
+$("authForm").addEventListener("submit", (e) => { e.preventDefault(); signIn("/api/auth/login"); });
+$("registerBtn").addEventListener("click", () => { if ($("authForm").reportValidity()) signIn("/api/auth/register"); });
+
+// ---- home: what needs attention -------------------------------------------------------------
+const BADGE = { park_it: "Do not drive", park_outside: "Park outside" };
+async function loadRecalls() {
+  const { res, data } = await api("/api/recalls");
+  if (res.status === 401) { showWelcome("Your session ended. Start again or sign in."); return; }
+  if (res.ok) renderRecalls(data);
+  else $("homeNote").textContent = detail(data, "Couldn't check recalls right now.");
+}
+function flatten(r) {
+  const out = [];
+  for (const item of r.items) for (const rc of item.recalls) out.push({ item, rc });
+  const order = { park_it: 0, park_outside: 1, "": 2 };
+  return out.sort((a, b) => (order[a.rc.severity] - order[b.rc.severity]) || String(b.rc.date || "").localeCompare(String(a.rc.date || "")));
+}
+function renderRecalls(r) {
+  report = r;
+  const all = flatten(r);
+  const open = all.filter(x => x.rc.status === "open"), done = all.filter(x => x.rc.status !== "open");
+  const urgent = open.filter(x => x.rc.severity);
+  const box = $("statusBox");
+  box.replaceChildren();
+  const s = el("div", "status");
+  if (!r.items.length) {
+    s.classList.add("warn");
+    s.append(el("div", "dot", "＋"), el("div"));
+    s.lastChild.append(el("div", "big", "Add the things you own"),
+                       el("div", "sub", "Add your car (or a VIN) and household products, and Lantern will watch them every day."));
+    const go = button("Add a car or product", "primary", () => showTab("stuff"));
+    go.style.marginTop = "10px"; s.lastChild.appendChild(go);
+  } else if (urgent.length) {
+    const first = urgent[0];
+    s.classList.add("danger");
+    s.append(el("div", "dot", "⚠"), el("div"));
+    s.lastChild.append(el("div", "big", first.rc.severity === "park_it" ? `Don't drive the ${first.item.name} until it's repaired`
+                                                                         : `Park the ${first.item.name} outside until it's repaired`),
+                       el("div", "sub", `${open.length} open recall${open.length === 1 ? "" : "s"} in total. Repairs are free.`));
+  } else if (open.length) {
+    s.classList.add("warn");
+    s.append(el("div", "dot", "●"), el("div"));
+    s.lastChild.append(el("div", "big", `${open.length} recall${open.length === 1 ? "" : "s"} may affect your things`),
+                       el("div", "sub", "Nothing urgent. The fixes are free."));
+  } else {
+    s.classList.add("ok");
+    s.append(el("div", "dot", "✓"), el("div"));
+    s.lastChild.append(el("div", "big", "All clear"),
+                       el("div", "sub", `No open recalls for your ${r.items.length} thing${r.items.length === 1 ? "" : "s"}. Lantern checks again every day.`));
+  }
+  box.appendChild(s);
+  $("attention").replaceChildren(...groupByItem(open).map(g => itemCard(g.item, g.recalls)));
+  $("doneBox").hidden = !done.length;
+  $("doneSummary").textContent = `Fixed or not yours (${done.length})`;
+  $("doneList").replaceChildren(...done.map(x => doneCard(x.item, x.rc)));
+  const notes = [r.note, stored("demo") ? "Demo household: made-up people, real recall data." : ""].filter(Boolean);
+  $("homeNote").textContent = notes.join(" ");
+  const count = $("homeCount");
+  count.hidden = !open.length; count.textContent = open.length;
+  renderCallouts();
+  if (!$("stuff").hidden) loadStuff();   // keep the per-item counts in step
+}
+const SEVERITY = { park_it: 0, park_outside: 1, "": 2 };
+function groupByItem(open) {
+  const groups = new Map();
+  for (const x of open) {
+    const key = x.item.kind + ":" + x.item.slug;
+    if (!groups.has(key)) groups.set(key, { item: x.item, recalls: [] });
+    groups.get(key).recalls.push(x.rc);
+  }
+  return [...groups.values()].sort((a, b) =>
+    (SEVERITY[a.recalls[0].severity] - SEVERITY[b.recalls[0].severity]) || (b.recalls.length - a.recalls.length));
+}
+// NHTSA summaries open with "<Maker> is recalling certain 2004-2006 ... vehicles." Keep the part that says what's wrong.
+function plainSummary(text) {
+  const t = (text || "").replace(/\s+/g, " ").trim();
+  const rest = t.replace(/^[^.]*\bis recalling\b[^.]*\.\s*/i, "");
+  return rest.length > 20 ? rest : t;
+}
+function isPossible(item, rc) { return item.kind === "product" && rc.confirmed === false; }
+function badgeFor(item, rc) {
+  if (isPossible(item, rc)) return el("span", "badge possible", "Possible match");
+  return el("span", "badge " + rc.severity, BADGE[rc.severity] || (item.kind === "vehicle" ? "Recall" : "Product recall"));
+}
+function itemCard(item, recalls) {
+  const top = recalls[0];
+  const c = el("article", "card recall " + (isPossible(item, top) ? "possible" : top.severity));
+  const badges = el("div", "badges");
+  badges.appendChild(badgeFor(item, top));
+  if (recalls.some(r => r.new)) badges.appendChild(el("span", "badge new", "New"));
+  c.appendChild(badges);
+  c.appendChild(el("div", "item", item.name));
+  const headline = top.consequence ? sentence(top.consequence, 150) : sentence(item.kind === "vehicle" ? plainSummary(top.summary) : top.title, 150);
+  c.appendChild(el("div", "what", headline));
+  c.appendChild(el("div", "risk", recalls.length === 1 ? "1 open recall. The fix is free." : `${recalls.length} open recalls. The fixes are free.`));
+  const list = el("div", "rlist");
+  recalls.forEach(rc => list.appendChild(recallRow(item, rc)));
+  c.appendChild(list);
+  if (item.kind === "vehicle") {
+    const v = el("div", "hint");
+    v.append("Repairs are free at any authorized dealer for this brand, even if you bought it used. Not sure if yours was already done? ",
+             link("https://www.nhtsa.gov/recalls", "Check your VIN"));
+    c.appendChild(v);
+  }
+  return c;
+}
+function recallRow(item, rc) {
+  const d = el("details", "rrow");
+  const s = el("summary");
+  if (rc.severity || isPossible(item, rc)) s.appendChild(badgeFor(item, rc));
+  s.appendChild(el("span", "rtitle", item.kind === "vehicle" ? rc.title : sentence(rc.title.replace(/\s+Recalled\b.*$/i, ""), 70)));
+  if (rc.date) s.appendChild(el("span", "rdate", rc.date.slice(0, 4)));
+  d.appendChild(s);
+  const fix = el("div", "fix");
+  fix.appendChild(el("div", "", item.kind === "vehicle" ? sentence(plainSummary(rc.summary), 320) : sentence(rc.summary, 320)));
+  if (rc.consequence) fix.appendChild(el("div", "", "Risk: " + sentence(rc.consequence, 240)));
+  if (rc.remedy) fix.appendChild(el("div", "", "Fix: " + sentence(rc.remedy, 320)));
+  if (item.kind === "product" && rc.contact) fix.appendChild(el("div", "muted", sentence(rc.contact, 240)));
+  if (isPossible(item, rc) && rc.why) fix.appendChild(el("div", "muted", "Why it may match: " + rc.why));
+  const off = el("div"); off.appendChild(link(rc.url, item.kind === "vehicle" ? "Official NHTSA notice" : "Official CPSC notice")); fix.appendChild(off);
+  const actions = el("div", "actions");
+  actions.append(button("✓ It's fixed", "chipbtn good", () => setStatus(item, rc, "fixed")),
+                 button("Not mine", "chipbtn", () => setStatus(item, rc, "not_mine")),
+                 button("Share", "chipbtn", () => share(item, rc, d)));
+  fix.appendChild(actions);
+  d.appendChild(fix);
+  return d;
+}
+function doneCard(item, rc) {
+  const c = el("div", "card");
+  c.appendChild(el("div", "", `${item.name}: ${rc.title}`));
+  c.appendChild(el("div", "hint", rc.status === "fixed" ? "Marked fixed" : "Marked not yours"));
+  c.appendChild(button("Undo", "textbtn", () => setStatus(item, rc, "open")));
+  return c;
+}
+async function setStatus(item, rc, status) {
+  const { res, data } = await api("/api/recalls/status", { method: "POST", body: { kind: item.kind, slug: item.slug, recall_id: rc.id, status } });
+  if (!res.ok) { toast(detail(data, "Couldn't update that.")); return; }
+  renderRecalls(data);
+  toast(status === "fixed" ? "Marked fixed. Nice." : status === "open" ? "Moved back to open." : "Hidden from your list.");
+}
+function shareText(item, rc) {
+  const parts = [`Safety recall: ${item.name}`, item.kind === "vehicle" ? rc.title : sentence(rc.title, 120)];
+  if (rc.consequence) parts.push("Risk: " + sentence(rc.consequence, 160));
+  parts.push(item.kind === "vehicle" ? "The repair is free at any authorized dealer for the brand." : "Fix: " + sentence(rc.remedy, 160));
+  parts.push(rc.url);
+  return parts.join("\n");
+}
+async function share(item, rc, card) {
+  const text = shareText(item, rc);
+  if (navigator.share) {
+    try { await navigator.share({ title: "Safety recall: " + item.name, text }); return; } catch (e) { if (e.name === "AbortError") return; }
+  }
+  let row = card.querySelector(".sharerow");
+  if (row) { row.remove(); return; }
+  row = el("div", "sharerow");
+  row.append(link("https://wa.me/?text=" + encodeURIComponent(text), "WhatsApp", "chipbtn"),
+             link("sms:?&body=" + encodeURIComponent(text), "Text message", "chipbtn"),
+             button("Copy", "chipbtn", async () => { try { await navigator.clipboard.writeText(text); toast("Copied"); } catch { toast("Couldn't copy"); } }));
+  card.appendChild(row);
+}
+
+// ---- callouts: alerts and install --------------------------------------------------------------
+const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
+const standalone = window.matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
+window.addEventListener("beforeinstallprompt", (e) => { e.preventDefault(); installPrompt = e; renderCallouts(); });
+async function loadPushInfo() {
+  if (pushInfo) return pushInfo;
+  const { res, data } = await api("/api/push");
+  pushInfo = res.ok ? data : { available: false };
+  return pushInfo;
+}
+async function renderCallouts() {
+  const box = $("callouts");
+  box.replaceChildren();
+  if (!report || !report.items.length) return;
+  const info = await loadPushInfo();
+  const pushOk = "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
+  if (info.available && !info.enabled && stored("alertsDismissed") !== "1") {
+    const c = el("div", "card callout");
+    if (pushOk) {
+      c.append(el("div", "text", "🔔 Get an alert on this phone when a new recall affects your things."),
+               button("Turn on", "primary", enableAlerts));
+    } else if (isIOS && !standalone) {
+      c.append(el("div", "text", "🔔 For alerts on iPhone: tap Share ⬆, then \"Add to Home Screen\", then open Lantern from your Home Screen."));
+    }
+    if (c.childNodes.length) {
+      c.appendChild(button("✕", "textbtn", () => { store("alertsDismissed", "1"); renderCallouts(); }));
+      box.appendChild(c);
+    }
+  }
+  if (installPrompt && !standalone) {
+    const c = el("div", "card callout");
+    c.append(el("div", "text", "📲 Install Lantern as an app on this device."),
+             button("Install", "secondary", async () => { installPrompt.prompt(); installPrompt = null; renderCallouts(); }));
+    box.appendChild(c);
+  }
+}
+function urlKey(b64) {
+  const pad = "=".repeat((4 - b64.length % 4) % 4);
+  const raw = atob((b64 + pad).replace(/-/g, "+").replace(/_/g, "/"));
+  return Uint8Array.from(raw, c => c.charCodeAt(0));
+}
+async function enableAlerts() {
+  const info = await loadPushInfo();
+  if (!info.available) { toast("Alerts aren't set up on this server."); return; }
+  if (!("serviceWorker" in navigator) || !("PushManager" in window)) {
+    toast(isIOS ? "On iPhone, add Lantern to your Home Screen first." : "This browser can't show alerts.");
+    return;
+  }
+  try {
+    const permission = await Notification.requestPermission();
+    if (permission !== "granted") { toast("Alerts are off. You can allow them in your browser settings."); return; }
+    const reg = await navigator.serviceWorker.ready;
+    const sub = (await reg.pushManager.getSubscription()) ||
+                (await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlKey(info.public_key) }));
+    const { res, data } = await api("/api/push/subscribe", { method: "POST", body: sub.toJSON() });
+    if (!res.ok) throw new Error(detail(data, "Couldn't turn on alerts."));
+    pushInfo = { ...info, enabled: true };
+    toast("Alerts are on. Lantern sent a test notification.");
+    renderCallouts();
+  } catch (err) {
+    toast(err.message || "Couldn't turn on alerts.");
+  }
+}
+
+// ---- my stuff -----------------------------------------------------------------------------------
+async function loadStuff() {
+  const { res, data } = await api("/api/profile");
+  if (res.status === 401) { showWelcome("Your session ended."); return; }
+  if (!res.ok) return;
+  const openFor = {};
+  for (const item of (report ? report.items : [])) openFor[item.kind + ":" + item.slug] = item.recalls.filter(r => r.status === "open").length;
+  $("carList").replaceChildren(...(data.vehicles.length ? data.vehicles.map(v => thing("vehicle", v, openFor["vehicle:" + v.slug],
+      [v.vin ? "VIN on file" : "", v.trim].filter(Boolean).join(" · ")))
+    : [el("p", "hint", "No cars yet.")]));
+  $("productList").replaceChildren(...(data.products.length ? data.products.map(p => thing("product", p, openFor["product:" + p.slug],
+      [p.brand, p.model ? "model " + p.model : ""].filter(Boolean).join(" · ")))
+    : [el("p", "hint", "No products yet.")]));
+}
+function thing(kind, item, openCount, sub) {
+  const c = el("div", "card thing");
+  const top = el("div", "top");
+  top.appendChild(el("span", "name", item.name || item.slug));
+  top.appendChild(el("span", "pill" + (openCount ? " bad" : ""), openCount ? `${openCount} open recall${openCount === 1 ? "" : "s"}` : "No open recalls"));
+  c.appendChild(top);
+  if (sub) c.appendChild(el("div", "sub", sub));
+  if (item.notes) c.appendChild(el("div", "sub", item.notes.split("\n").slice(-2).map(n => n.replace(/^-\s*/, "")).join(" · ")));
+  const row = el("div", "row");
+  row.append(button("Edit file", "textbtn", () => openEditor(kind, item.slug, item.name || item.slug)),
+             button("Remove", "textbtn danger", () => removeThing(kind, item.slug, item.name || item.slug)));
+  c.appendChild(row);
+  return c;
+}
+async function removeThing(kind, slug, name) {
+  if (!confirm(`Stop watching "${name}" and delete its file?`)) return;
+  const { res, data } = await api(`/api/memory/${kind}/${encodeURIComponent(slug)}`, { method: "DELETE" });
+  if (!res.ok) toast(detail(data, "Couldn't remove it."));
+  await loadRecalls(); loadStuff();
+}
+$("addCar").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const f = e.target, err = f.querySelector(".error"), btn = f.querySelector("button[type=submit]");
+  const body = carBody(f.dataset.mode, f.vin.value, f.year.value, f.make.value, f.model.value);
+  err.textContent = carProblem(body);
+  if (err.textContent) return;
+  btn.disabled = true; btn.textContent = "Checking official recall lists…";
+  const { res, data } = await api("/api/vehicles", { method: "POST", body });
+  btn.disabled = false; btn.textContent = "Add car";
+  if (!res.ok) { err.textContent = detail(data, "Couldn't add that car."); return; }
+  f.reset(); renderRecalls(data.recalls); loadStuff();
+  const n = data.recalls.items.find(i => i.slug === data.item.slug);
+  const open = n ? n.recalls.filter(r => r.status === "open").length : 0;
+  toast(open ? `${data.item.name}: ${open} open recall${open === 1 ? "" : "s"}. See Home.` : `${data.item.name}: no open recalls.`);
+});
+$("addProduct").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const f = e.target, err = f.querySelector(".error"), btn = f.querySelector("button[type=submit]");
+  if (!f.product.value.trim()) { err.textContent = "Say what it is, for example: crib, stroller, space heater."; return; }
+  err.textContent = "";
+  btn.disabled = true; btn.textContent = "Checking official recall lists…";
+  const { res, data } = await api("/api/products", { method: "POST", body: { product: f.product.value, brand: f.brand.value, model: f.model.value } });
+  btn.disabled = false; btn.textContent = "Add product";
+  if (!res.ok) { err.textContent = detail(data, "Couldn't add that product."); return; }
+  f.reset(); renderRecalls(data.recalls); loadStuff();
+  toast(`Watching ${data.item.name}.`);
+});
+
+let editing = null;
+async function openEditor(kind, slug, title) {
+  const { res, data } = await api(`/api/memory/${kind}/${encodeURIComponent(slug)}`);
+  if (!res.ok) { toast(detail(data, "Couldn't open that file.")); return; }
+  editing = { kind, slug };
+  $("edTitle").textContent = title; $("edText").value = data.text; $("edError").textContent = "";
+  $("editor").showModal();
+}
+$("edCancel").addEventListener("click", () => $("editor").close());
+$("edSave").addEventListener("click", async () => {
+  const { res, data } = await api(`/api/memory/${editing.kind}/${encodeURIComponent(editing.slug)}`, { method: "PUT", body: { text: $("edText").value } });
+  if (!res.ok) { $("edError").textContent = detail(data, "Couldn't save."); return; }
+  $("editor").close(); await loadRecalls(); loadStuff();
+});
+
+// ---- ask: chat, with voice ------------------------------------------------------------------------
+const INLINE = /\[([^\]\n]{1,200})\]\((https?:\/\/[^\s)]+)\)|(https?:\/\/[^\s<>()\]]+)|\*\*([^*\n]+)\*\*/g;
+function siteName(url) { try { return new URL(url).hostname.replace(/^www\./, ""); } catch { return "link"; } }
 function inline(parent, text) {
   let last = 0;
   for (const m of text.matchAll(INLINE)) {
     if (m.index > last) parent.appendChild(document.createTextNode(text.slice(last, m.index)));
-    if (m[2]) parent.appendChild(link(m[2], m[1], false));
-    else if (m[3]) parent.appendChild(link(m[3], siteName(m[3]), true));
-    else if (m[4]) {
-      const url = m[4].replace(/[.,;:!?]+$/, "");   // keep sentence punctuation out of the link
-      parent.appendChild(link(url, siteName(url), true));
-      parent.appendChild(document.createTextNode(m[4].slice(url.length)));
-    } else if (m[5]) parent.appendChild(el("strong", "", m[5]));
+    if (m[2]) parent.appendChild(link(m[2], m[1]));
+    else if (m[3]) {
+      const url = m[3].replace(/[.,;:!?]+$/, "");
+      parent.appendChild(link(url, siteName(url), "cite"));
+      parent.appendChild(document.createTextNode(m[3].slice(url.length)));
+    } else if (m[4]) parent.appendChild(el("strong", "", m[4]));
     last = m.index + m[0].length;
   }
   if (last < text.length) parent.appendChild(document.createTextNode(text.slice(last)));
 }
-
-function rich(parent, text) {
+function renderAnswer(container, text) {
+  container.replaceChildren();
   let list = null;
   for (const raw of text.split("\n")) {
     const line = raw.trimEnd();
     const bullet = line.match(/^\s*(?:[-*•]|\d+[.)])\s+(.*)$/);
     if (bullet) {
-      if (!list) { list = document.createElement("ul"); parent.appendChild(list); }
-      const li = document.createElement("li");
-      inline(li, bullet[1]);
-      list.appendChild(li);
+      if (!list) { list = el("ul"); container.appendChild(list); }
+      const li = el("li"); inline(li, bullet[1]); list.appendChild(li);
       continue;
     }
     list = null;
     if (!line.trim()) continue;
     const heading = line.match(/^\s*#{1,6}\s+(.*)$/);
-    const p = document.createElement("p");
-    if (heading) { const s = el("strong"); inline(s, heading[1]); p.appendChild(s); }
-    else inline(p, line);
-    parent.appendChild(p);
+    const p = el("p");
+    if (heading) { const s = el("strong"); inline(s, heading[1]); p.appendChild(s); } else inline(p, line);
+    container.appendChild(p);
   }
 }
-
-// Lines starting with "Spoiler:" are hidden behind a click.
-function renderAnswer(container, text) {
-  container.replaceChildren();
-  container.classList.add("rich");
-  const normal = [], spoilers = [];
-  for (const line of text.split("\n")) {
-    const m = line.match(/^\s*\**spoiler:?\**\s*(.*)$/i);
-    if (m) spoilers.push(m[1]); else normal.push(line);
-  }
-  rich(container, normal.join("\n").trim());
-  if (spoilers.length) {
-    const d = el("details", "spoiler");
-    d.appendChild(el("summary", "", "Spoiler beyond your progress (tap to reveal)"));
-    const body = el("div");
-    rich(body, spoilers.join("\n"));
-    d.appendChild(body);
-    container.appendChild(d);
-  }
-}
-
 function add(text, cls) {
-  $("empty")?.remove();
   const div = el("div", "msg " + cls);
   if (cls === "bot") renderAnswer(div, text); else div.textContent = text;
-  log.appendChild(div);
+  $("log").appendChild(div);
   div.scrollIntoView({ block: "end" });
+  $("suggest").hidden = true;
   return div;
 }
-
+const SUGGESTIONS = ["Is my car safe to drive?", "We also have a baby crib and a stroller", "What does my most urgent recall mean?", "How do I get a recall fixed?"];
+function renderSuggestions() {
+  $("suggest").replaceChildren(...SUGGESTIONS.map(s => button(s, "chipbtn", () => { $("msg").value = s; $("chatForm").requestSubmit(); })));
+  $("suggest").hidden = !!$("log").children.length;
+}
+let historyLoaded = false;
 async function loadHistory() {
+  if (historyLoaded) return;
+  historyLoaded = true;
   const { res, data } = await api("/api/history");
-  if (!res.ok || !data.length || log.querySelector(".msg")) return;
-  data.forEach(m => add(m.content, m.role === "user" ? "user" : "bot"));
+  if (res.ok && data.length && !$("log").children.length) data.forEach(m => add(m.content, m.role === "user" ? "user" : "bot"));
+  renderSuggestions();
 }
-
-function meta(data) {
-  const parts = data.tool_calls.map(c => `${c.name} ${c.status === "ok" ? "✓" : "(" + c.status + ")"}`);
-  const model = data.model ? data.model.split("/").pop() : data.tier;
-  if (data.tokens) parts.push(`${data.tokens.toLocaleString()} tokens`);
-  if (model) parts.push(model);
-  return el("div", "meta", parts.join(" · "));
-}
-
-function setStatus(el, text) {
-  el.classList.add("status");
-  el.textContent = text;
-  el.scrollIntoView({ block: "end" });
-}
-
-// Read server-sent events from a fetch response: calls onEvent for each {"type": ...} message.
 async function readEvents(res, onEvent) {
-  const reader = res.body.getReader();
-  const decoder = new TextDecoder();
+  const reader = res.body.getReader(), decoder = new TextDecoder();
   let buffer = "";
   for (;;) {
     const { value, done } = await reader.read();
@@ -415,244 +852,93 @@ async function readEvents(res, onEvent) {
     }
   }
 }
-
-form.addEventListener("submit", async (e) => {
+$("chatForm").addEventListener("submit", async (e) => {
   e.preventDefault();
-  const message = input.value.trim();
+  const message = $("msg").value.trim();
   if (!message) return;
+  stopListening();
   add(message, "user");
-  input.value = "";
-  send.disabled = true;
+  $("msg").value = "";
+  $("sendBtn").disabled = true;
   const pending = add("", "bot");
-  setStatus(pending, "Thinking…");
+  pending.classList.add("status"); pending.textContent = "Thinking…";
   let text = "";
   try {
-    const res = await fetch("/api/chat/stream", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ message, escalate: escalate.checked }),
-    });
-    if (res.status === 401) { pending.remove(); showAuth("Your session ended. Sign in again."); return; }
-    if (!res.ok) {
-      let data = null;
-      try { data = await res.json(); } catch { /* not JSON */ }
-      throw new Error(detail(data, `Server error ${res.status}`));
-    }
-    let failure = null;
+    const res = await fetch("/api/chat/stream", { method: "POST", headers: { "Content-Type": "application/json" },
+                                                  body: JSON.stringify({ message, escalate: $("escalate").checked }) });
+    if (res.status === 401) { pending.remove(); showWelcome("Your session ended."); return; }
+    if (!res.ok) { let d = null; try { d = await res.json(); } catch {} throw new Error(detail(d, `Server error ${res.status}`)); }
+    let failure = null, answer = "";
     await readEvents(res, (ev) => {
-      if (ev.type === "status") {
-        text = "";                       // anything said before a lookup is replaced by the result
-        setStatus(pending, ev.text);
-      } else if (ev.type === "delta") {
+      if (ev.type === "status") { text = ""; pending.classList.add("status"); pending.textContent = ev.text; }
+      else if (ev.type === "delta") {
         text += ev.text;
-        if (text.trim()) {
-          pending.classList.remove("status");
-          pending.textContent = text;
-          pending.scrollIntoView({ block: "end" });
-        }
+        if (text.trim()) { pending.classList.remove("status"); pending.textContent = text; pending.scrollIntoView({ block: "end" }); }
       } else if (ev.type === "done") {
-        pending.classList.remove("status");
-        renderAnswer(pending, ev.answer);
+        pending.classList.remove("status"); answer = ev.answer; renderAnswer(pending, ev.answer);
         if (ev.stop_reason !== "done") pending.classList.add("stopped");
-        pending.appendChild(meta(ev));
-      } else if (ev.type === "error") {
-        failure = ev.text;
-      }
+        const model = ev.model ? ev.model.split("/").pop() : "";
+        if (model) pending.appendChild(el("div", "meta", model));
+      } else if (ev.type === "error") failure = ev.text;
     });
     if (failure) throw new Error(failure);
-    if (escalate.checked) refreshUltra();
+    if (answer) speak(answer);
+    loadRecalls();   // the message may have added things to watch
   } catch (err) {
-    pending.classList.remove("status");
+    pending.classList.remove("status"); pending.classList.add("stopped");
     pending.textContent = `Something went wrong: ${err.message}`;
-    pending.classList.add("stopped");
   } finally {
-    send.disabled = false;
-    input.focus();
+    $("sendBtn").disabled = false;
   }
 });
+$("msg").addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); $("chatForm").requestSubmit(); } });
 
-async function refreshUltra() {
-  const { res, data } = await api("/api/me");
-  if (res.ok) $("ultraLeft").textContent = data.ultra_left_today === null ? "" : ` · ${data.ultra_left_today} left today`;
+// Voice: the browser's own speech recognition and speech synthesis (no extra service from Lantern).
+const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+let recognizer = null;
+if (Recognition) {
+  $("micBtn").hidden = false;
+  $("micBtn").addEventListener("click", () => recognizer ? stopListening() : startListening());
 }
-
-input.addEventListener("keydown", (e) => {
-  if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); form.requestSubmit(); }
-});
-
-$("reset").addEventListener("click", async () => {
-  await api("/api/reset", { method: "POST" });
-  resetLog("New chat started. I still remember your games (see My games).");
-});
-
-// ---- my games (visible memory) -------------------------------------------------------------
-const SOURCE_LABEL = { chat: "from chat", steam: "from Steam", user: "added by you" };
-
-function card(item, kind, titleText, lines) {
-  const c = el("div", "card");
-  const top = el("div", "top");
-  top.appendChild(el("span", "title", titleText));
-  if (item.status) top.appendChild(el("span", "chip", item.status));
-  c.appendChild(top);
-  lines.filter(Boolean).forEach(l => c.appendChild(el("div", "line", l)));
-  const sub = [SOURCE_LABEL[item.source] || item.source, item.updated ? `updated ${item.updated}` : ""].filter(Boolean);
-  c.appendChild(el("div", "sub", sub.join(" · ")));
-  if (item.notes) c.appendChild(el("div", "notes", item.notes));
-  const actions = el("div", "actions");
-  const edit = el("button", "link", "Edit");
-  edit.type = "button";
-  edit.addEventListener("click", () => openEditor(kind, item.slug, titleText));
-  actions.appendChild(edit);
-  if (kind !== "profile") {
-    const del = el("button", "link danger", "Delete");
-    del.type = "button";
-    del.addEventListener("click", () => removeItem(kind, item.slug, titleText));
-    actions.appendChild(del);
-  }
-  c.appendChild(actions);
-  return c;
+if ("speechSynthesis" in window) {
+  $("speakToggle").hidden = false;
+  $("speakAnswers").checked = stored("speak") === "1";
+  $("speakAnswers").addEventListener("change", () => { store("speak", $("speakAnswers").checked ? "1" : undefined);
+                                                       if (!$("speakAnswers").checked) speechSynthesis.cancel(); });
 }
-
-async function loadProfile() {
-  const { res, data } = await api("/api/profile");
-  if (res.status === 401) { showAuth("Your session ended. Sign in again."); return; }
-  if (!res.ok) return;
-  const games = $("gameList"), creators = $("creatorList"), profile = $("profileBox");
-  games.replaceChildren(...(data.games.length ? data.games.map(g => card(g, "game", g.title || g.slug, [
-      g.progress ? `Progress: ${g.progress}` : "",
-      [g.platform, g.playtime_hours ? `${g.playtime_hours} h played` : "", g.achievements].filter(Boolean).join(" · ")]))
-    : [el("p", "empty-list", "No games yet. Tell me in chat what you're playing, or add one below.")]));
-  creators.replaceChildren(...(data.creators.length ? data.creators.map(c => card(c, "creator", c.name || c.slug, [
-      (c.platforms || []).join(", ")]))
-    : [el("p", "empty-list", "No creators yet.")]));
-  const p = data.profile;
-  if (p) {
-    profile.replaceChildren(card(p, "profile", "Your profile", [
-      p.platforms ? `Platforms: ${p.platforms.join(", ")}` : "",
-      p.play_style ? `Play style: ${p.play_style}` : "",
-      p.steam_id ? `Steam: ${p.steam_id}` : "",
-      `Spoilers: ${p.spoiler_preference || "strict"}`]));
-  } else {
-    const startBtn = el("button", "link", "Set up your profile (platforms, spoiler preference)");
-    startBtn.type = "button";
-    startBtn.addEventListener("click", async () => {
-      await api("/api/memory/profile", { method: "POST", body: { name: "profile", fields: { spoiler_preference: "strict" } } });
-      openEditor("profile", "profile", "Your profile");
-    });
-    profile.replaceChildren(startBtn);
-  }
-}
-
-let editing = null;
-async function openEditor(kind, slug, title) {
-  const { res, data } = await api(`/api/memory/${kind}/${encodeURIComponent(slug)}`);
-  if (!res.ok) { alert(detail(data, "Couldn't open that file.")); return; }
-  editing = { kind, slug };
-  $("edTitle").textContent = title;
-  $("edText").value = data.text;
-  $("edError").textContent = "";
-  $("editor").showModal();
-}
-$("edCancel").addEventListener("click", () => $("editor").close());
-$("edSave").addEventListener("click", async () => {
-  const { res, data } = await api(`/api/memory/${editing.kind}/${encodeURIComponent(editing.slug)}`,
-                                  { method: "PUT", body: { text: $("edText").value } });
-  if (!res.ok) { $("edError").textContent = detail(data, "Couldn't save."); return; }
-  $("editor").close();
-  loadProfile();
-});
-
-async function removeItem(kind, slug, title) {
-  if (!confirm(`Delete "${title}" from my memory? This can't be undone.`)) return;
-  const { res, data } = await api(`/api/memory/${kind}/${encodeURIComponent(slug)}`, { method: "DELETE" });
-  if (!res.ok) alert(detail(data, "Couldn't delete."));
-  loadProfile();
-}
-
-$("addGame").addEventListener("submit", async (e) => {
-  e.preventDefault();
-  const fields = { status: $("newStatus").value };
-  if ($("newProgress").value.trim()) fields.progress = $("newProgress").value.trim();
-  const { res, data } = await api("/api/memory/game", { method: "POST", body: { name: $("newGame").value, fields } });
-  if (!res.ok) { alert(detail(data, "Couldn't add that game.")); return; }
-  $("addGame").reset();
-  loadProfile();
-});
-
-$("addCreator").addEventListener("submit", async (e) => {
-  e.preventDefault();
-  const platforms = $("newPlatforms").value.split(",").map(s => s.trim()).filter(Boolean);
-  const { res, data } = await api("/api/memory/creator",
-                                  { method: "POST", body: { name: $("newCreator").value, fields: platforms.length ? { platforms } : {} } });
-  if (!res.ok) { alert(detail(data, "Couldn't add that creator.")); return; }
-  $("addCreator").reset();
-  loadProfile();
-});
-
-$("steamForm").addEventListener("submit", async (e) => {
-  e.preventDefault();
-  $("steamBtn").disabled = true;
-  $("steamMsg").textContent = "Importing from Steam…";
-  try {
-    const { res, data } = await api("/api/steam/import", { method: "POST", body: { profile: $("steamProfile").value } });
-    $("steamMsg").textContent = res.ok
-      ? `Imported ${data.imported} new and updated ${data.updated} games (your ${data.total_owned}-game library; most played first).`
-      : detail(data, "Steam import failed.");
-    if (res.ok) loadProfile();
-  } finally {
-    $("steamBtn").disabled = false;
-  }
-});
-
-// ---- "What's new for your games" ---------------------------------------------------------
-function renderBriefing(b) {
-  const box = $("briefing"), body = $("briefingBody");
-  const items = b.games.reduce((n, g) => n + g.items.length, 0);
-  $("briefingMeta").textContent = b.games.length ? `· ${items} update${items === 1 ? "" : "s"} · ${b.date}` : "";
-  body.replaceChildren();
-  if (!b.games.length) {
-    body.appendChild(el("p", "hint", "Mark games as Playing on My games (or import from Steam) to get a daily briefing."));
-  }
-  for (const g of b.games) {
-    body.appendChild(el("h4", "", g.title));
-    if (!g.items.length) { body.appendChild(el("p", "hint", "Nothing new this week.")); continue; }
-    const ul = el("ul");
-    for (const it of g.items) {
-      const li = el("li");
-      li.appendChild(el("strong", "", it.headline));
-      if (it.summary) li.appendChild(document.createTextNode(" — " + it.summary));
-      if (it.date) li.appendChild(el("span", "when", it.date));
-      li.appendChild(link(it.url, siteName(it.url), true));
-      ul.appendChild(li);
+function startListening() {
+  $("voiceNote").hidden = stored("voiceNoted") === "1";
+  store("voiceNoted", "1");
+  recognizer = new Recognition();
+  recognizer.lang = "en-US"; recognizer.interimResults = true; recognizer.continuous = false;
+  let finalText = "";
+  recognizer.onresult = (e) => {
+    let interim = "";
+    for (let i = e.resultIndex; i < e.results.length; i++) {
+      if (e.results[i].isFinal) finalText += e.results[i][0].transcript; else interim += e.results[i][0].transcript;
     }
-    body.appendChild(ul);
-  }
-  if (b.note) body.appendChild(el("p", "hint", b.note));
-  box.hidden = false;
-  box.open = items > 0 && !sessionStorageGet("briefingClosed");
+    $("msg").value = (finalText + interim).trim();
+  };
+  recognizer.onerror = (e) => { if (e.error !== "no-speech" && e.error !== "aborted") toast("Voice didn't work: " + e.error); };
+  recognizer.onend = () => {
+    $("micBtn").classList.remove("live"); recognizer = null;
+    if (finalText.trim()) { $("speakAnswers").checked = true; store("speak", "1"); $("chatForm").requestSubmit(); }
+  };
+  try { recognizer.start(); $("micBtn").classList.add("live"); } catch { recognizer = null; }
+}
+function stopListening() { if (recognizer) { try { recognizer.stop(); } catch {} } }
+function speak(text) {
+  if (!("speechSynthesis" in window) || !$("speakAnswers").checked) return;
+  const plain = text.replace(/https?:\/\/\S+/g, "").replace(/\*\*/g, "").replace(/^\s*[-*•]\s+/gm, "").trim();
+  speechSynthesis.cancel();
+  const u = new SpeechSynthesisUtterance(plain.slice(0, 1200));
+  u.lang = "en-US";
+  speechSynthesis.speak(u);
 }
 
-function sessionStorageGet(key) { try { return sessionStorage.getItem(key); } catch { return null; } }
-$("briefing").addEventListener("toggle", () => {
-  try { if (!$("briefing").open) sessionStorage.setItem("briefingClosed", "1"); } catch { /* private mode */ }
-});
-
-async function loadBriefing(refresh = false) {
-  $("briefing").hidden = false;
-  $("briefingMeta").textContent = "· checking the news…";
-  const { res, data } = await api(refresh ? "/api/briefing/refresh" : "/api/briefing", { method: refresh ? "POST" : "GET" });
-  if (res.ok) renderBriefing(data); else $("briefingMeta").textContent = "· couldn't load right now";
-}
-$("briefingRefresh").addEventListener("click", () => loadBriefing(true));
-
-// Errors from the Steam sign-in redirect arrive as ?auth_error=...
-const authError = new URLSearchParams(location.search).get("auth_error");
-if (authError) {
-  history.replaceState(null, "", "/");
-  showAuth(authError);
-} else {
-  refreshMe();
-}
+// ---- start ------------------------------------------------------------------------------------------
+if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => {});
+refreshMe();
 </script>
 </body>
 </html>
