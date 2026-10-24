@@ -132,7 +132,7 @@
   @keyframes kindle { 0% { color: color-mix(in srgb, var(--text) 16%, var(--bg)); text-shadow: none; }
                       40% { color: #e8962c; text-shadow: 0 0 24px rgba(255,165,55,.9), 0 0 3px #fff2cf; transform: translateY(-2px); }
                       100% { color: var(--text); text-shadow: 0 0 0 transparent; transform: none; } }
-  #splash .tag { margin: 14px 0 0; color: var(--muted); font-size: clamp(.95rem, 3.6vw, 1.1rem); opacity: 0; animation: fadeup .9s 1.55s forwards; }
+  #splash .tag { margin: 14px 0 0; color: var(--muted); font-size: clamp(.95rem, 3.6vw, 1.1rem); opacity: 0; animation: fadeup .8s 1.1s forwards; }
   @keyframes fadeup { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
   /* a wide, low horizon of lantern light: only its warm edge and a faint teal rim show */
   #splash .floor { position: absolute; z-index: 1; left: 50%; bottom: calc(26vh - 150vmax); width: 150vmax; aspect-ratio: 1; border-radius: 50%;
@@ -152,8 +152,8 @@
                      100% { opacity: 0; transform: translate(var(--dx), -38vh) scale(1.1); } }
   #splash .enter { position: absolute; z-index: 2; bottom: calc(26px + env(safe-area-inset-bottom)); left: 0; right: 0; margin: 0 auto; width: max-content;
                    background: none; border: none; cursor: pointer; display: grid; justify-items: center; gap: 2px; min-height: 44px;
-                   color: color-mix(in srgb, #3a2a10 80%, transparent); font-size: .92rem; font-weight: 600; opacity: 0; animation: fadeup .9s 2s forwards; }
-  #splash .enter svg { width: 20px; height: 20px; animation: nudge 1.8s 2.6s ease-in-out infinite; }
+                   color: color-mix(in srgb, #3a2a10 80%, transparent); font-size: .92rem; font-weight: 600; opacity: 0; animation: fadeup .8s 1.3s forwards; }
+  #splash .enter svg { width: 20px; height: 20px; animation: nudge 1.8s 2s ease-in-out infinite; }
   @keyframes nudge { 50% { transform: translateY(-5px); } }
   #splash.leaving .floor { transform: translateX(-50%) translateY(-80vh) scale(1.6); filter: brightness(1.12); transition-duration: .75s; }
   #splash.leaving .mark { transform: translateY(-14vh); opacity: 0; }
@@ -1234,12 +1234,18 @@ async function loadRecalls() {
   let res, data;
   try { ({ res, data } = await api("/api/recalls")); } catch { res = { ok: false, status: 0 }; }
   if (res.status === 401) { showWelcome("Your session ended. Start again or sign in."); return; }
-  if (res.ok) { renderRecalls(data); return; }
+  if (res.ok) { renderRecalls(data); if (data.plain_pending) loadPlain(); return; }
   const s = el("div", "status warn");
   s.append(el("h1", "", "Couldn't check right now"),
            el("p", "body", detail(data, "Lantern couldn't reach the recall lists just now.") + " Your list is safe."));
   const row = el("div", "actions"); row.appendChild(button("Try again", "primary", loadRecalls)); s.appendChild(row);
   $("statusBox").replaceChildren(s);
+}
+// The official wording shows at once; plain-English summaries are swapped in when Nemotron has written them.
+async function loadPlain() {
+  let res, data;
+  try { ({ res, data } = await api("/api/recalls/plain", { method: "POST" })); } catch { return; }
+  if (res.ok && me && !$("home").hidden) renderRecalls(data);
 }
 function flatten(r) {
   const out = [];

@@ -242,3 +242,16 @@ def test_invented_ids_and_empty_fields_are_dropped(settings):
     store.upsert("alice", "vehicle", "civic", {"make": "Honda", "model": "Civic", "year": 2018})
     assert all(r["plain"] is None for r in w.check("alice")["items"][0]["recalls"])
     assert not (settings.data_dir / "shared_cache" / "recalls" / "plain" / "v-99X999999.json").exists()
+
+
+def test_opening_the_app_never_waits_for_the_model(settings):
+    w, store, _, llm = make(settings, [plain_reply("v-20V314000", "v-18V421000")])
+    w.plain_summaries = True
+    store.upsert("alice", "vehicle", "civic", {"make": "Honda", "model": "Civic", "year": 2018})
+    quick = w.check("alice", write_plain=False)
+    assert not llm.calls and quick["plain_pending"] == 2
+    assert all(r["plain"] is None for r in quick["items"][0]["recalls"])
+    full = w.check("alice")                                                # the page's follow-up request
+    assert len(llm.calls) == 1 and full["plain_pending"] == 0
+    again = w.check("alice", write_plain=False)                            # cached now: shown straight away
+    assert again["plain_pending"] == 0 and all(r["plain"] for r in again["items"][0]["recalls"])

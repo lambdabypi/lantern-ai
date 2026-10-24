@@ -224,8 +224,10 @@ class RecallWatch:
                                  note=note, source="user")
 
     # ---- per user -----------------------------------------------------------------------------
-    def check(self, user_id: str) -> dict[str, Any]:
-        """Every recall that may affect the user's things, with their status. Errors are reported, not raised."""
+    def check(self, user_id: str, write_plain: bool = True) -> dict[str, Any]:
+        """Every recall that may affect the user's things, with their status. Errors are reported, not raised.
+        write_plain=False only attaches plain summaries already written (no model call), so opening the app stays
+        fast; "plain_pending" then says how many are still to write, and the caller can ask for them next."""
         notes: list[str] = []
         seen = self._load(user_id, "seen.json")
         items = [self._vehicle_entry(v, notes) for v in self.store.list(user_id, "vehicle")]
@@ -251,23 +253,22 @@ class RecallWatch:
                 first = seen.setdefault(prefix + r["id"], "baseline" if baseline else today)
                 r["new"] = r["status"] == "open" and first != "baseline" and first >= recent
         _write_json(self._user_path(user_id, "seen.json"), seen)
-        if self.plain_summaries:
-            self._add_plain(items)
+        pending = self._add_plain(items, write_plain) if self.plain_summaries else 0
         open_recalls = [r for i in items for r in i["recalls"] if r["status"] == "open"]
         report = {
             "date": today, "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
             "items": items, "open": len(open_recalls),
             "urgent": sum(1 for r in open_recalls if r["severity"]),
-            "note": " ".join(notes) or None, "vin_check_url": NHTSA_VIN_CHECK,
+            "note": " ".join(notes) or None, "vin_check_url": NHTSA_VIN_CHECK, "plain_pending": pending,
         }
         _write_json(self._user_path(user_id, "latest.json"), report)
         return report
 
     # ---- plain English, shared per recall ---------------------------------------------------------
-    def _add_plain(self, items: list[dict[str, Any]]) -> None:
+    def _add_plain(self, items: list[dict[str, Any]], write: bool = True) -> int:
         """Attach a plain-English title / what / todo to each recall, written once per recall for the whole site by
         Nemotron Super (thinking off: it was the most faithful to source text in earlier tests) and cached. Recalls
-        without one keep the official wording; nothing fails if the model call does."""
+        without one keep the official wording; nothing fails if the model call does. Returns how many are missing."""
         folder = self.shared_dir / "plain"
         wanted = []
         for item in items:
@@ -285,8 +286,8 @@ class RecallWatch:
         for _, _, key, r in wanted:
             if len(missing) < MAX_PLAIN_PER_CHECK:
                 missing.setdefault(key, r)
-        if not missing:
-            return
+        if not missing or not write:
+            return len(missing)
         written = self._write_plain(missing)
         for item in items:
             for r in item["recalls"]:
@@ -295,6 +296,7 @@ class RecallWatch:
                     r["plain"] = written[key]
         for key, value in written.items():
             _write_json(folder / f"{key}.json", value)
+        return 0
 
     def _write_plain(self, recalls: dict[str, dict[str, Any]]) -> dict[str, dict[str, str]]:
         listing = "\n\n".join(

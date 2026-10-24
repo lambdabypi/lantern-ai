@@ -13,6 +13,7 @@ from pathlib import Path
 from queue import Queue
 
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import FileResponse, JSONResponse, Response as RawResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
@@ -165,6 +166,7 @@ def create_app(loop: AgentLoop | None = None, settings: Settings | None = None, 
     accounts.cleanup_expired_guests()
 
     app = FastAPI(title="Lantern")
+    app.add_middleware(GZipMiddleware, minimum_size=1024)  # the page is ~120 KB of HTML; ~30 KB compressed
 
     @app.exception_handler(AuthError)
     def auth_error(_: Request, e: AuthError) -> JSONResponse:
@@ -433,7 +435,14 @@ def create_app(loop: AgentLoop | None = None, settings: Settings | None = None, 
 
     @app.get("/api/recalls")
     def recalls(account: Account = Depends(current_account)) -> dict:
-        """Everything that may affect the user's things. Cheap to call: recall data is cached per day."""
+        """Everything that may affect the user's things. Fast: recall data is cached per day, and no model is called
+        here; plain summaries not yet written are counted in "plain_pending" (see below)."""
+        return need_watch().check(account.user_id, write_plain=False)
+
+    @app.post("/api/recalls/plain")
+    def recalls_in_plain_english(account: Account = Depends(current_account)) -> dict:
+        """The same report after Nemotron writes the missing plain-English summaries. The page asks for this after
+        showing the official wording, so nobody waits for the model before seeing their recalls."""
         return need_watch().check(account.user_id)
 
     @app.post("/api/vehicles")
