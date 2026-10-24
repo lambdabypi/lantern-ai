@@ -41,6 +41,17 @@ from app.tools.web_search import WebSearch
 from app.tools.registry import ToolRegistry
 
 log = logging.getLogger(__name__)
+
+
+def _setup_logging() -> None:
+    """Send the app's own INFO logs to stderr (Cloud Run collects them); uvicorn configures only its loggers."""
+    app_log = logging.getLogger("app")
+    if not app_log.handlers:
+        handler = logging.StreamHandler()
+        handler.setFormatter(logging.Formatter("%(levelname)s %(name)s: %(message)s"))
+        app_log.addHandler(handler)
+        app_log.setLevel(logging.INFO)
+        app_log.propagate = False
 WEB_DIR = Path(__file__).parent / "web"
 MAX_HISTORY_MESSAGES = 20  # recent messages sent to the model each turn
 USER_SESSION_S = 14 * 86400
@@ -103,6 +114,7 @@ class MeResponse(BaseModel):
 def create_app(loop: AgentLoop | None = None, settings: Settings | None = None,
                steam: SteamClient | None = None, openid_http: httpx.Client | None = None,
                extractor: MemoryExtractor | None = None, knowledge: GameKnowledge | None = None) -> FastAPI:
+    _setup_logging()
     settings = settings or load_settings()
     settings.require_secret_key()
     memory = MemoryStore(settings.data_dir)
@@ -189,12 +201,12 @@ def create_app(loop: AgentLoop | None = None, settings: Settings | None = None,
         # Only a keyed hash of the address is stored, never the address itself.
         network = hmac.new(settings.app_secret_key.encode(), client_ip(request, settings.trusted_proxy_hops).encode(),
                            "sha256").hexdigest()[:16]
+        # Entry count only (no addresses): shows how many proxies append to the header, i.e. TRUSTED_PROXY_HOPS.
+        log.info("guest sign-up; X-Forwarded-For entries: %d",
+                 len([e for e in request.headers.get("x-forwarded-for", "").split(",") if e.strip()]))
         if not site_quota.try_consume(f"guests:{network}", settings.guests_per_ip_per_day or None):
             raise AuthError("Too many guest accounts from your network today. Sign in through Steam or create "
                             "an account, or try again tomorrow.", status=429)
-        # Entry count only (no addresses): shows how many proxies append to the header, i.e. TRUSTED_PROXY_HOPS.
-        log.info("guest created; X-Forwarded-For entries: %d",
-                 len([e for e in request.headers.get("x-forwarded-for", "").split(",") if e.strip()]))
         return start_session(response, accounts.create_guest())
 
     @app.post("/api/auth/register", response_model=MeResponse)
