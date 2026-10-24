@@ -52,6 +52,7 @@
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--bg); color: var(--text); font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
          font-size: 1rem; line-height: 1.5; height: 100dvh; overflow: hidden; }
+  body.landing::before { opacity: 0; }
   body::before { content: ""; position: fixed; inset: 0 0 auto 0; height: 340px; pointer-events: none; z-index: 0;
                  background: radial-gradient(60% 100% at 50% 0%, rgba(255,190,90,.16), transparent 70%); }
   [hidden] { display: none !important; }
@@ -120,73 +121,154 @@
   @keyframes rise { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
   @keyframes pop { from { opacity: 0; transform: scale(.94); } to { opacity: 1; transform: none; } }
 
-  /* welcome: a lantern in the night, always dark */
-  body.night { background: radial-gradient(120% 70% at 50% 0%, var(--night2), var(--night1) 70%); color: var(--cream); }
-  body.night::before { height: 520px; background: radial-gradient(45% 60% at 50% 18%, rgba(255,190,90,.22), transparent 70%); }
-  body.night .brand { color: var(--cream); }
-  #welcome { color: var(--cream); }
-  #welcome .lead { color: #c9c2b2; font-size: 1.06rem; margin: 0 0 22px; }
-  #welcome h1 { font-size: clamp(1.9rem, 7vw, 2.5rem); text-align: center; text-wrap: balance; }
-  #welcome .lead, #welcome .center { text-align: center; text-wrap: pretty; }
-  #welcome .card { background: rgba(255,250,240,.96); color: #1b1f1d; border-color: transparent;
-                   box-shadow: 0 20px 60px rgba(0,0,0,.45), 0 0 0 1px rgba(255,190,90,.18); }
-  #welcome .card .muted, #welcome .card .hint { color: #59625d; }
-  #welcome .card input { background: #fff; color: #1b1f1d; border-color: #d8d2c4; }
-  #welcome .card .seg { background: #efe9dc; }
-  #welcome .card .seg button[aria-pressed="true"] { background: #fff; color: #1b1f1d; }
-  #welcome .card .seg button { color: #59625d; }
-  #welcome .card .note { background: #f1ece1; color: #3b3f3c; }
-  #welcome .card .secondary { background: #fff; color: #1b1f1d; border-color: #d8d2c4; }
-  #welcome .card .textbtn { color: #2f5d50; }
-  #welcome .card .primary { --accent: #2f5d50; --accent-text: #fff; }
-  #welcome .card .or { color: #59625d; }
-  #welcome a, #welcome .textbtn { color: var(--glow); }
-  #welcome details summary { color: var(--glow); }
-  #welcome label.field { color: #1b1f1d; }
-  #welcome #authForm label.field { color: var(--cream); }
-  #welcome #authForm input { background: rgba(255,255,255,.06); color: var(--cream); border-color: rgba(255,255,255,.18); }
-  #welcome #authForm .secondary { background: rgba(255,255,255,.08); color: var(--cream); border-color: rgba(255,255,255,.18); }
-  #welcome .error { color: #ffb4a8; }
-  .hero { position: relative; height: 210px; display: grid; place-items: center; margin-top: 4px; }
-  .hero .lantern { width: 132px; height: auto; position: relative; z-index: 1; filter: drop-shadow(0 0 30px rgba(255,190,90,.35)); }
-  .hero .pool { position: absolute; bottom: 0; width: 240px; height: 34px; border-radius: 50%;
-                background: radial-gradient(closest-side, rgba(255,190,90,.35), transparent); animation: breathe 4.5s ease-in-out infinite; }
-  .mote { position: absolute; left: 50%; top: 55%; width: 5px; height: 5px; border-radius: 50%; background: #ffd58a;
-          box-shadow: 0 0 10px 2px rgba(255,200,110,.8); opacity: 0;
-          animation: drift var(--d, 6s) ease-in var(--delay, 0s) infinite; }
-  @keyframes drift { 0% { opacity: 0; transform: translate(0, 0) scale(.6); } 15% { opacity: 1; }
-                     100% { opacity: 0; transform: translate(var(--dx, 30px), -150px) scale(1.1); } }
-  .trust { display: grid; gap: 10px; margin: 24px 0 0; padding: 0; list-style: none; color: #c9c2b2; font-size: .96rem; }
-  .trust li { display: flex; gap: 10px; align-items: flex-start; }
-  .trust li::before { content: ""; flex: none; width: 10px; height: 10px; margin-top: .45em; border-radius: 50%;
-                      background: var(--glow); box-shadow: 0 0 10px var(--glow); }
-  .how { display: grid; gap: 12px; margin-top: 8px; counter-reset: how; }
-  .how li { list-style: none; display: grid; grid-template-columns: 38px 1fr; gap: 12px; align-items: start; color: #d9d2c2; }
-  .how li::before { counter-increment: how; content: counter(how); width: 38px; height: 38px; border-radius: 50%; display: grid; place-items: center;
-                    font-weight: 800; color: #1b1405; background: radial-gradient(circle at 35% 30%, #ffe3ad, var(--glow)); box-shadow: 0 0 18px rgba(255,190,90,.45); }
-  #welcome h2 { color: var(--cream); }
-  #welcome .reveal { animation: rise .7s cubic-bezier(.2,.7,.2,1) both; animation-delay: calc(var(--i, 0) * 90ms); }
+  /* ---------- splash: the wordmark is kindled letter by letter; lantern light rises from below ---------- */
+  #splash { position: fixed; inset: 0; z-index: 70; background: var(--bg); overflow: hidden; cursor: pointer; touch-action: none;
+            display: grid; place-items: center; transition: opacity .45s ease; }
+  #splash.gone { opacity: 0; pointer-events: none; }
+  #splash .mark { position: relative; z-index: 2; text-align: center; transform: translateY(-5vh); transition: transform .7s cubic-bezier(.6,0,.3,1), opacity .5s; }
+  #splash .wordmark { margin: 0; font-weight: 500; font-size: clamp(3.4rem, 16vw, 6.4rem); letter-spacing: -.035em; line-height: 1; }
+  #splash .wordmark span { display: inline-block; color: color-mix(in srgb, var(--text) 16%, var(--bg));
+                           animation: kindle 1.3s cubic-bezier(.3,.6,.2,1) forwards; animation-delay: calc(.45s + var(--i) * .12s); }
+  @keyframes kindle { 0% { color: color-mix(in srgb, var(--text) 16%, var(--bg)); text-shadow: none; }
+                      40% { color: #e8962c; text-shadow: 0 0 24px rgba(255,165,55,.9), 0 0 3px #fff2cf; transform: translateY(-2px); }
+                      100% { color: var(--text); text-shadow: 0 0 0 transparent; transform: none; } }
+  #splash .tag { margin: 14px 0 0; color: var(--muted); font-size: clamp(.95rem, 3.6vw, 1.1rem); opacity: 0; animation: fadeup .9s 1.55s forwards; }
+  @keyframes fadeup { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+  /* a wide, low horizon of lantern light: only its warm edge and a faint teal rim show */
+  #splash .floor { position: absolute; z-index: 1; left: 50%; bottom: calc(26vh - 150vmax); width: 150vmax; aspect-ratio: 1; border-radius: 50%;
+                   transform: translateX(-50%); transform-origin: 50% 0%;
+                   background: radial-gradient(closest-side, #fff1d2 0%, #ffd590 62%, rgba(255,176,82,.72) 78%, rgba(248,146,62,.40) 88%,
+                                                rgba(127,184,164,.26) 95%, transparent 100%);
+                   animation: dawn 1.8s .15s cubic-bezier(.2,.7,.2,1) both, flame 5.5s 2s ease-in-out infinite;
+                   transition: transform 1s cubic-bezier(.65,0,.25,1), filter 1s; }
+  #splash .floor::after { content: ""; position: absolute; inset: 1.2%; border-radius: 50%;
+                          border-top: 1.5px solid rgba(255,255,255,.95); filter: blur(.4px); opacity: .85; }
+  @keyframes dawn { from { transform: translateX(-50%) translateY(30%) scale(.9); opacity: 0; } to { transform: translateX(-50%); opacity: 1; } }
+  @keyframes flame { 0%, 100% { filter: brightness(1) saturate(1); } 30% { filter: brightness(1.06) saturate(1.1); }
+                     55% { filter: brightness(.96); } 75% { filter: brightness(1.04) saturate(1.05); } }
+  #splash .ember { position: absolute; z-index: 1; bottom: 20vh; left: var(--x); width: 4px; height: 4px; border-radius: 50%; background: #ffcf7a;
+                   box-shadow: 0 0 8px 2px rgba(255,170,60,.85); opacity: 0; animation: ember var(--d) ease-in var(--delay) infinite; }
+  @keyframes ember { 0% { opacity: 0; transform: translate(0, 0) scale(.6); } 15% { opacity: 1; }
+                     100% { opacity: 0; transform: translate(var(--dx), -38vh) scale(1.1); } }
+  #splash .enter { position: absolute; z-index: 2; bottom: calc(26px + env(safe-area-inset-bottom)); left: 0; right: 0; margin: 0 auto; width: max-content;
+                   background: none; border: none; cursor: pointer; display: grid; justify-items: center; gap: 2px; min-height: 44px;
+                   color: color-mix(in srgb, #3a2a10 80%, transparent); font-size: .92rem; font-weight: 600; opacity: 0; animation: fadeup .9s 2s forwards; }
+  #splash .enter svg { width: 20px; height: 20px; animation: nudge 1.8s 2.6s ease-in-out infinite; }
+  @keyframes nudge { 50% { transform: translateY(-5px); } }
+  #splash.leaving .floor { transform: translateX(-50%) translateY(-80vh) scale(1.6); filter: brightness(1.12); transition-duration: .75s; }
+  #splash.leaving .mark { transform: translateY(-14vh); opacity: 0; }
+  #splash.leaving .enter, #splash.leaving .ember { opacity: 0 !important; transition: opacity .3s; }
+
+  /* ---------- landing: light, glass, a living field of lantern light ---------- */
+  @property --a { syntax: "<angle>"; initial-value: 0deg; inherits: false; }
+  #field { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 0; opacity: 0; transition: opacity .8s ease;
+           pointer-events: none; }
+  body.landing #field { opacity: 1; }
+  body.landing main { background:
+      radial-gradient(60% 45% at 20% 10%, color-mix(in srgb, var(--glow) 28%, transparent), transparent 70%),
+      radial-gradient(55% 40% at 85% 30%, color-mix(in srgb, var(--accent) 18%, transparent), transparent 70%), var(--bg); }
+  main > .bar, main > #scroller, main > nav.tabbar { position: relative; z-index: 1; }
+  #signInBtn { font-weight: 650; }
+  #welcome { padding-bottom: 24px; }
+  .landing-hero { text-align: center; padding: 18px 0 8px; }
+  .eyebrow { display: inline-flex; align-items: center; gap: 8px; padding: 6px 14px; border-radius: 999px; font-size: .85rem; font-weight: 600;
+             color: var(--muted); background: color-mix(in srgb, var(--surface) 62%, transparent); border: 1px solid color-mix(in srgb, var(--surface) 80%, var(--border));
+             backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); }
+  .eyebrow .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ok); box-shadow: 0 0 0 0 var(--ok); animation: beacon 2.4s ease-out infinite; }
+  @keyframes beacon { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--ok) 60%, transparent); } 100% { box-shadow: 0 0 0 10px transparent; } }
+  .landing-hero .mini-lantern { width: 58px; display: block; margin: 18px auto 4px; filter: drop-shadow(0 8px 22px rgba(255,170,60,.45)); animation: float 6s ease-in-out infinite; }
+  @keyframes float { 50% { transform: translateY(-6px); } }
+  #welcome h1 { font-size: clamp(2.1rem, 6.4vw, 3.4rem); line-height: 1.04; letter-spacing: -.035em; font-weight: 800; margin: 14px auto 14px;
+                max-width: 14ch; text-wrap: balance; }
+  .grad { background: linear-gradient(100deg, #b86d0c 0%, #e09a2c 35%, #3d7a68 75%, #2f5d50 100%); -webkit-background-clip: text; background-clip: text;
+          color: transparent; background-size: 200% 100%; animation: sheen 9s ease-in-out infinite; }
+  @keyframes sheen { 50% { background-position: 100% 0; } }
+  .landing-lead { color: var(--muted); font-size: 1.08rem; max-width: 34em; margin: 0 auto 26px; text-wrap: pretty; }
+  .glass { background: color-mix(in srgb, var(--surface) 60%, transparent); border: 1px solid color-mix(in srgb, var(--surface) 85%, transparent);
+           backdrop-filter: blur(22px) saturate(1.4); -webkit-backdrop-filter: blur(22px) saturate(1.4); border-radius: 28px;
+           box-shadow: inset 0 1px 0 color-mix(in srgb, white 70%, transparent), 0 24px 60px rgba(60,45,20,.10); }
+  .composer-card { padding: 16px; max-width: 620px; margin: 0 auto; }
+  .kind-toggle { position: relative; display: inline-flex; padding: 4px; border-radius: 999px; background: color-mix(in srgb, var(--text) 6%, transparent); margin-bottom: 14px; }
+  .kind-toggle button { position: relative; z-index: 1; border: none; background: none; min-height: 40px; padding: 0 18px; border-radius: 999px; cursor: pointer;
+                        color: var(--muted); font-weight: 650; transition: color .25s; display: inline-flex; gap: 8px; align-items: center; }
+  .kind-toggle button svg { width: 18px; height: 18px; }
+  .kind-toggle button[aria-pressed="true"] { color: var(--text); }
+  .kind-toggle .thumb { position: absolute; z-index: 0; top: 4px; bottom: 4px; border-radius: 999px; background: var(--surface);
+                        box-shadow: 0 2px 10px rgba(0,0,0,.08); transition: left .35s cubic-bezier(.3,.7,.2,1), width .35s cubic-bezier(.3,.7,.2,1); }
+  .prompt { position: relative; display: flex; align-items: center; gap: 6px; padding: 6px 6px 6px 22px; border-radius: 999px; background: var(--surface);
+            box-shadow: 0 12px 34px rgba(60,45,20,.12), inset 0 0 0 1px var(--border); }
+  .prompt::before { content: ""; position: absolute; inset: -2px; border-radius: inherit; padding: 2px; pointer-events: none;
+                    background: conic-gradient(from var(--a), #ffbe5a, #f08a3c, #7fb8a4, #2f5d50, #ffbe5a);
+                    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask-composite: exclude;
+                    opacity: 0; transition: opacity .3s; animation: turn 3.5s linear infinite; }
+  .prompt:focus-within::before { opacity: 1; }
+  .prompt::after { content: ""; position: absolute; inset: 0; border-radius: inherit; z-index: -1; opacity: 0; transition: opacity .4s;
+                   box-shadow: 0 0 40px 6px color-mix(in srgb, var(--glow) 45%, transparent); }
+  .prompt:focus-within::after { opacity: 1; }
+  @keyframes turn { to { --a: 360deg; } }
+  .prompt input { border: none; background: transparent; box-shadow: none; padding: 0; min-height: 52px; font-size: max(16px, 1.08rem); flex: 1; min-width: 0; }
+  .prompt input:focus { box-shadow: none; outline: none; }
+  .prompt .sep { width: 1px; align-self: stretch; margin: 10px 4px; background: var(--border); }
+  .prompt .go { flex: none; width: 52px; height: 52px; border-radius: 50%; border: none; cursor: pointer; color: #fff;
+                background: radial-gradient(circle at 30% 25%, #4f8a76, var(--accent-fill, #2f5d50)); box-shadow: 0 8px 20px rgba(47,93,80,.35);
+                display: inline-flex; align-items: center; justify-content: center; transition: transform .15s; }
+  .prompt .go:hover { transform: scale(1.05); } .prompt .go:active { transform: scale(.95); }
+  .prompt .go:disabled { opacity: .6; }
+  .examples { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-top: 14px; }
+  .examples button { border: 1px solid color-mix(in srgb, var(--border) 80%, transparent); background: color-mix(in srgb, var(--surface) 70%, transparent);
+                     border-radius: 999px; padding: 6px 14px; min-height: 38px; font-size: .9rem; color: var(--muted); cursor: pointer; transition: all .2s; }
+  .examples button:hover { color: var(--text); border-color: var(--accent); transform: translateY(-1px); }
+  .examples .lbl { font-size: .85rem; color: var(--muted); align-self: center; }
+  .landing-actions { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; align-items: center; margin-top: 18px; }
+  .ghost-pill { border: 1px solid var(--border); background: color-mix(in srgb, var(--surface) 70%, transparent); border-radius: 999px; min-height: 46px; padding: 0 20px;
+                font-weight: 650; cursor: pointer; display: inline-flex; gap: 8px; align-items: center; transition: transform .15s, box-shadow .2s; }
+  .ghost-pill:hover { transform: translateY(-1px); box-shadow: 0 8px 22px rgba(60,45,20,.10); }
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 14px; margin: 34px 0 0; }
+  .stat { padding: 20px 22px; }
+  .stat .num { font-size: clamp(2.2rem, 7vw, 3rem); font-weight: 800; letter-spacing: -.04em; line-height: 1; }
+  .stat p { margin: 8px 0 6px; }
+  .stat .src { font-size: .8rem; color: var(--muted); }
+  .features { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 14px; margin-top: 14px; }
+  .feature { padding: 20px; transition: transform .25s, box-shadow .25s; }
+  .feature:hover { transform: translateY(-3px); box-shadow: inset 0 1px 0 rgba(255,255,255,.7), 0 30px 60px rgba(60,45,20,.14); }
+  .feature .ic { width: 42px; height: 42px; border-radius: 14px; display: grid; place-items: center; margin-bottom: 12px; color: #fff;
+                 background: linear-gradient(135deg, #f3a43b, #d97a17); box-shadow: 0 8px 18px rgba(217,122,23,.3); }
+  .feature:nth-child(2) .ic { background: linear-gradient(135deg, #5c9c86, #2f5d50); box-shadow: 0 8px 18px rgba(47,93,80,.3); }
+  .feature:nth-child(3) .ic { background: linear-gradient(135deg, #e0603f, #b42318); box-shadow: 0 8px 18px rgba(180,35,24,.25); }
+  .feature .ic svg { width: 22px; height: 22px; }
+  .feature h3 { font-size: 1.02rem; margin-bottom: 4px; }
+  .feature p { margin: 0; color: var(--muted); font-size: .94rem; }
+  .steps-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 18px; margin-top: 30px; counter-reset: st; }
+  .steps-row div { position: relative; padding-top: 44px; }
+  .steps-row div::before { counter-increment: st; content: counter(st); position: absolute; top: 0; left: 0; width: 32px; height: 32px; border-radius: 50%;
+                           display: grid; place-items: center; font-weight: 800; font-size: .9rem; color: #1b1405;
+                           background: radial-gradient(circle at 35% 30%, #ffe3ad, var(--glow)); box-shadow: 0 0 18px color-mix(in srgb, var(--glow) 55%, transparent); }
+  .steps-row div::after { content: ""; position: absolute; top: 16px; left: 40px; right: -10px; height: 1px; background: linear-gradient(90deg, var(--glow), transparent); }
+  .steps-row div:last-child::after { display: none; }
+  .steps-row h3 { font-size: 1rem; margin-bottom: 4px; } .steps-row p { margin: 0; color: var(--muted); font-size: .94rem; }
+  .landing-foot { margin-top: 30px; text-align: center; color: var(--muted); font-size: .88rem; display: grid; gap: 6px; }
+  #welcome .reveal { animation: rise .8s cubic-bezier(.2,.7,.2,1) both; animation-delay: calc(var(--i, 0) * 90ms); }
+  #welcome .error { text-align: center; }
 
   /* loading: the lantern sweeps the official lists */
-  #sweep { position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; padding: 24px;
-           background: radial-gradient(80% 60% at 50% 40%, rgba(18,36,30,.985), rgba(8,17,14,.995)); color: var(--cream);
-           backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+  #sweep { position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; padding: 24px; color: var(--text);
+           background: radial-gradient(70% 55% at 50% 38%, color-mix(in srgb, var(--glow) 22%, var(--bg)), var(--bg) 70%);
            animation: pop .25s ease-out; }
   #sweep .box { width: min(380px, 100%); text-align: center; }
   #sweep .beam-wrap { position: relative; width: 190px; height: 190px; margin: 0 auto 10px; display: grid; place-items: center; }
   #sweep .beam { position: absolute; inset: 0; border-radius: 50%;
-                 background: conic-gradient(from 0deg, rgba(255,190,90,.0) 0deg, rgba(255,190,90,.38) 40deg, rgba(255,190,90,0) 80deg, transparent 360deg);
+                 background: conic-gradient(from 0deg, rgba(255,170,60,0) 0deg, rgba(255,170,60,.45) 40deg, rgba(255,170,60,0) 80deg, transparent 360deg);
                  animation: spin 2.4s linear infinite; mask: radial-gradient(circle, transparent 28%, #000 30%); }
-  #sweep .ring { position: absolute; inset: 0; border-radius: 50%; border: 1px solid rgba(255,190,90,.22); }
+  #sweep .ring { position: absolute; inset: 0; border-radius: 50%; border: 1px solid color-mix(in srgb, var(--glow) 45%, transparent); }
   #sweep .ring.r2 { inset: 30px; } #sweep .ring.r3 { inset: 60px; }
-  #sweep .lantern { width: 64px; position: relative; filter: drop-shadow(0 0 22px rgba(255,190,90,.6)); }
+  #sweep .lantern { width: 64px; position: relative; filter: drop-shadow(0 6px 20px rgba(255,170,60,.55)); }
   @keyframes spin { to { transform: rotate(360deg); } }
   #sweep ol { list-style: none; padding: 0; margin: 14px 0 0; display: grid; gap: 10px; text-align: left; }
-  #sweep li { display: flex; gap: 12px; align-items: center; color: #8d8a80; transition: color .3s; }
-  #sweep li::before { content: ""; flex: none; width: 20px; height: 20px; border-radius: 50%; border: 2px solid #4c5a54; transition: all .3s; }
-  #sweep li.now { color: var(--cream); }
+  #sweep li { display: flex; gap: 12px; align-items: center; color: color-mix(in srgb, var(--muted) 70%, transparent); transition: color .3s; }
+  #sweep li::before { content: ""; flex: none; width: 20px; height: 20px; border-radius: 50%; border: 2px solid var(--border); transition: all .3s; }
+  #sweep li.now { color: var(--text); font-weight: 600; }
   #sweep li.now::before { border-color: var(--glow); border-top-color: transparent; animation: spin .8s linear infinite; }
-  #sweep li.done { color: #c9c2b2; }
+  #sweep li.done { color: var(--muted); }
   #sweep li.done::before { border-color: var(--glow); background: var(--glow) center/12px no-repeat
       url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%231b1405' stroke-width='4'%3E%3Cpath d='M5 12l5 5 9-10'/%3E%3C/svg%3E"); }
 
@@ -332,7 +414,6 @@
     main { max-width: 820px; height: 100%; margin: 0 auto; padding: 0 28px; border-radius: 26px;
            border: 1px solid var(--border); background: color-mix(in srgb, var(--surface) 55%, var(--bg)); box-shadow: 0 24px 70px rgba(30,25,10,.12); overflow: hidden; }
     #scroller { margin: 0 -28px; padding: 4px 28px 24px; }
-    body.night main { background: rgba(255,255,255,.02); border-color: rgba(255,190,90,.14); box-shadow: 0 30px 90px rgba(0,0,0,.5); }
     nav.tabbar button { grid-auto-flow: column; gap: 8px; align-items: center; font-size: .95rem; min-height: 50px; }
     .count { position: static; }
     #toast { bottom: 110px; }
@@ -362,6 +443,25 @@
 </head>
 <body>
 <a class="sr-only" href="#app">Skip to content</a>
+<div id="splash" hidden role="dialog" aria-label="Welcome to Lantern">
+  <div class="floor" aria-hidden="true"></div>
+    <span class="ember" style="--x:46%; --dx:-30px; --d:5.5s; --delay:1.8s"></span>
+    <span class="ember" style="--x:52%; --dx:24px; --d:6.5s; --delay:2.4s"></span>
+    <span class="ember" style="--x:49%; --dx:-8px; --d:5.0s; --delay:3.1s"></span>
+    <span class="ember" style="--x:55%; --dx:40px; --d:7.0s; --delay:3.8s"></span>
+    <span class="ember" style="--x:43%; --dx:-46px; --d:6.2s; --delay:4.4s"></span>
+    <span class="ember" style="--x:50%; --dx:10px; --d:5.8s; --delay:5.2s"></span>
+    <span class="ember" style="--x:57%; --dx:58px; --d:6.8s; --delay:2.9s"></span>
+    <span class="ember" style="--x:41%; --dx:-62px; --d:7.4s; --delay:4.9s"></span>
+  <div class="mark">
+    <h1 class="wordmark" aria-label="lantern"><span style="--i:0">l</span><span style="--i:1">a</span><span style="--i:2">n</span><span style="--i:3">t</span><span style="--i:4">e</span><span style="--i:5">r</span><span style="--i:6">n</span></h1>
+    <p class="tag">a light on what's been recalled</p>
+  </div>
+  <button type="button" class="enter" id="splashEnter">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 14l6-6 6 6"/></svg>
+    <span id="splashHint">Swipe up to enter</span></button>
+</div>
+
 
 <!-- one lantern drawing, reused everywhere -->
 <svg width="0" height="0" style="position:absolute" aria-hidden="true">
@@ -389,8 +489,10 @@
 </svg>
 
 <main id="app">
+  <canvas id="field" aria-hidden="true"></canvas>
   <header class="bar">
     <div class="brand"><svg class="lantern" aria-hidden="true"><use href="#lantern"/></svg><span>Lantern</span></div>
+    <button type="button" class="iconbtn" id="signInBtn" hidden>Sign in</button>
     <div id="topActions" hidden>
       <button type="button" class="iconbtn" id="menuBtn" aria-expanded="false" aria-controls="menu">
         <span aria-hidden="true">☰</span><span>Menu</span></button>
@@ -406,79 +508,87 @@
   </div>
 
   <div id="scroller">
-  <!-- ===== welcome (signed out): a lantern in the night ===== -->
+  <!-- ===== landing (signed out) ===== -->
   <section id="welcome" hidden aria-labelledby="welcomeTitle">
-    <div class="hero" aria-hidden="true">
-      <div class="pool"></div>
-      <span class="mote" style="--dx:-46px; --d:6.5s; --delay:0s"></span>
-      <span class="mote" style="--dx:38px; --d:7.5s; --delay:1.2s"></span>
-      <span class="mote" style="--dx:-18px; --d:5.8s; --delay:2.4s"></span>
-      <span class="mote" style="--dx:60px; --d:8s; --delay:3.1s"></span>
-      <span class="mote" style="--dx:-70px; --d:7s; --delay:4.2s"></span>
-      <span class="mote" style="--dx:12px; --d:6.2s; --delay:5s"></span>
-      <svg class="lantern" viewBox="0 0 120 160"><use href="#lantern"/></svg>
+    <div class="landing-hero">
+      <span class="eyebrow reveal" style="--i:0"><span class="dot" aria-hidden="true"></span>Checks the official U.S. recall lists every day</span>
+      <svg class="mini-lantern lantern reveal" style="--i:1" viewBox="0 0 120 160" aria-hidden="true"><use href="#lantern"/></svg>
+      <h1 id="welcomeTitle" class="reveal" style="--i:2">Is anything you own under a <span class="grad">safety recall?</span></h1>
+      <p class="landing-lead reveal" style="--i:3">Tell Lantern your car or the things in your home. It checks the government's
+        recall lists every day, explains them in plain words, and helps you get the free fix.</p>
     </div>
-    <h1 id="welcomeTitle" class="reveal" style="--i:1">Is anything you own under a safety recall?</h1>
-    <p class="lead reveal" style="--i:2">About 1 in 5 cars on U.S. roads has a safety recall that was never fixed.
-      Lantern checks the U.S. government's official recall lists for your car and household things every day,
-      explains them in plain words, and helps you get them fixed.</p>
-    <div class="card reveal" style="--i:3">
-      <form id="startForm" novalidate>
-        <div class="seg" role="group" aria-label="What do you want to check?">
-          <button type="button" data-kind="vehicle" aria-pressed="true">A car</button>
-          <button type="button" data-kind="product" aria-pressed="false">Baby &amp; home</button>
+
+    <form id="startForm" class="glass composer-card reveal" style="--i:4" novalidate>
+      <div style="text-align:center">
+        <div class="kind-toggle" role="group" aria-label="What do you want to check?">
+          <span class="thumb" aria-hidden="true"></span>
+          <button type="button" data-kind="vehicle" aria-pressed="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 17h14M6 17v2M18 17v2M4 13l2-5a2 2 0 0 1 2-1h8a2 2 0 0 1 2 1l2 5v4H4z"/><circle cx="8" cy="14" r="1"/><circle cx="16" cy="14" r="1"/></svg>
+            A car</button>
+          <button type="button" data-kind="product" aria-pressed="false">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 10h18v8H3zM5 18v2M19 18v2M3 10V6M21 10V6M7 10V7M11 10V7M15 10V7M19 10V7"/></svg>
+            Baby &amp; home</button>
         </div>
-        <div data-part="vehicle">
-          <div class="grid3" id="startYmm">
-            <label class="field">Year<input name="year" inputmode="numeric" maxlength="4" placeholder="2018" autocomplete="off"></label>
-            <label class="field">Make<input name="make" placeholder="Toyota" autocapitalize="words" autocomplete="off"></label>
-            <label class="field">Model<input name="model" placeholder="Camry" autocapitalize="words" autocomplete="off"></label>
-          </div>
-          <div id="startVin" hidden>
-            <label class="field">Car ID number (VIN)<input name="vin" maxlength="20" placeholder="17 letters and numbers" autocapitalize="characters" spellcheck="false" autocomplete="off"></label>
-            <p class="hint">It's on your registration or insurance card, and on the dashboard where it meets the windshield (driver's side).</p>
-          </div>
-          <button type="button" class="textbtn" id="startVinToggle" aria-expanded="false">Use the car's ID number (VIN) instead</button>
-        </div>
-        <div data-part="product" hidden class="stack">
-          <label class="field">What is it?<input name="product" maxlength="80" placeholder="Crib, stroller, high chair, space heater…" autocomplete="off"></label>
-          <div class="grid2">
-            <label class="field">Brand<input name="brand" maxlength="60" placeholder="e.g. Graco" autocomplete="off"></label>
-            <label class="field">Model <span class="muted">(optional)</span><input name="pmodel" maxlength="60" autocomplete="off"></label>
-          </div>
-          <p class="note">Child car seats aren't checked yet. Check them at <a href="https://www.nhtsa.gov/recalls" target="_blank" rel="noopener noreferrer" style="color:#2f5d50">nhtsa.gov/recalls</a>.</p>
-        </div>
-        <div style="height:14px"></div>
-        <button class="primary" id="startBtn" type="submit">Check for recalls</button>
-        <div class="error" id="startError" role="alert"></div>
-      </form>
-      <div class="or">or</div>
-      <button class="secondary" id="demoBtn" type="button">See an example household</button>
+      </div>
+      <div class="prompt" data-part="vehicle">
+        <label class="sr-only" for="carInput">Your car: year, make and model, or the VIN</label>
+        <input id="carInput" name="car" placeholder="2018 Honda Civic, or paste the VIN" autocomplete="off" autocapitalize="words" spellcheck="false">
+        <button class="go" type="submit" aria-label="Check for recalls"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M5 12h13M13 6l6 6-6 6"/></svg></button>
+      </div>
+      <div class="prompt" data-part="product" hidden>
+        <label class="sr-only" for="productInput">What is it?</label>
+        <input id="productInput" name="product" placeholder="What is it? (crib mattress…)" autocomplete="off" maxlength="80">
+        <span class="sep" aria-hidden="true"></span>
+        <label class="sr-only" for="brandInput">Brand</label>
+        <input id="brandInput" name="brand" placeholder="Brand" autocomplete="off" maxlength="60" style="max-width:9em">
+        <button class="go" type="submit" aria-label="Check this product"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M5 12h13M13 6l6 6-6 6"/></svg></button>
+      </div>
+      <div class="examples" id="examples"></div>
+      <div class="error" id="startError" role="alert"></div>
+    </form>
+
+    <div class="landing-actions reveal" style="--i:5">
+      <button class="ghost-pill" id="demoBtn" type="button">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>
+        See an example household</button>
+      <button class="ghost-pill" type="button" data-learn="what">What is a safety recall?</button>
     </div>
-    <ul class="trust reveal" style="--i:4">
-      <li>Uses the U.S. government's official recall lists, checked every day</li>
-      <li>No sign-up, no phone number, no email</li>
-      <li>Lantern never contacts anyone for you</li>
-    </ul>
-    <h2 class="reveal" style="--i:5">How it works</h2>
-    <ol class="how reveal" style="--i:6; padding:0">
-      <li>Tell Lantern what you own: your car, and things like a crib or a space heater.</li>
-      <li>Every day it checks the official lists from NHTSA (cars) and the CPSC (household products).</li>
-      <li>If something is recalled, it tells you what's wrong, what to do, and helps you get the free fix.</li>
-    </ol>
-    <p class="center"><button type="button" class="textbtn" data-learn="what">What is a safety recall?</button></p>
-    <details class="account">
-      <summary>Already have an account? Sign in</summary>
-      <form id="authForm" class="stack" style="margin-top:10px" autocomplete="on">
-        <label class="field">Username<input id="username" autocomplete="username" maxlength="64" required></label>
-        <label class="field">Password<input id="password" type="password" autocomplete="current-password" maxlength="256" required></label>
-        <div class="grid2">
-          <button type="submit" class="secondary">Sign in</button>
-          <button type="button" class="secondary" id="registerBtn">Create account</button>
-        </div>
-        <div class="error" id="authError" role="alert"></div>
-      </form>
-    </details>
+
+    <div class="stats">
+      <div class="glass stat reveal" style="--i:6">
+        <div class="num grad">1 in 5</div>
+        <p>cars on U.S. roads has a safety recall that was never fixed.</p>
+        <a class="src" href="https://www.consumeraffairs.com/news/how-safe-is-your-car-one-in-five-have-an-open-recall-020525.html" target="_blank" rel="noopener noreferrer">CARFAX data, 2025</a>
+      </div>
+      <div class="glass stat reveal" style="--i:7">
+        <div class="num grad">8×</div>
+        <p>more recalled products get fixed when owners are told directly (50% vs 6%).</p>
+        <a class="src" href="https://www.registria.com/2018/08/31/registria-cpsc-request-responses/" target="_blank" rel="noopener noreferrer">CPSC figures</a>
+      </div>
+    </div>
+
+    <div class="features">
+      <div class="glass feature reveal" style="--i:8">
+        <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l8 4v5c0 5-3.5 8-8 9-4.5-1-8-4-8-9V7z"/><path d="M9 12l2 2 4-4"/></svg></div>
+        <h3>Official data</h3><p>Straight from NHTSA (cars) and the CPSC (household products), checked every day.</p></div>
+      <div class="glass feature reveal" style="--i:9">
+        <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l1.8 4.6L18 9l-4.2 1.4L12 15l-1.8-4.6L6 9l4.2-1.4z"/><path d="M19 15l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8z"/></svg></div>
+        <h3>Plain English</h3><p>NVIDIA Nemotron rewrites each notice in everyday words, with the official text one tap away.</p></div>
+      <div class="glass feature reveal" style="--i:10">
+        <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 0 0 5.4-5.4l-2.6 2.6-2.4-.6-.6-2.4z"/></svg></div>
+        <h3>Get it fixed, free</h3><p>Finds a dealer near you and drafts the message. You send it; Lantern never contacts anyone.</p></div>
+    </div>
+
+    <div class="steps-row">
+      <div class="reveal" style="--i:11"><h3>Tell it what you own</h3><p>Your car, and things like a crib or a space heater. No sign-up.</p></div>
+      <div class="reveal" style="--i:12"><h3>It keeps watch</h3><p>Every day it checks the official lists, and alerts you if something changes.</p></div>
+      <div class="reveal" style="--i:13"><h3>You get the fix</h3><p>What's wrong, what to do tonight, and who does the free repair.</p></div>
+    </div>
+
+    <div class="landing-foot">
+      <span>No phone number, no email. Everything Lantern remembers is a file you can see, download or delete.</span>
+      <span>Open source · Built with NVIDIA Nemotron on Nebius Token Factory</span>
+    </div>
   </section>
 
   <!-- ===== home ===== -->
@@ -648,6 +758,17 @@
     </div>
   </dialog>
 
+  <dialog id="signInDialog" aria-labelledby="signInTitle">
+    <div class="dhead"><h2 id="signInTitle">Sign in</h2><button type="button" class="iconbtn" id="signInClose" aria-label="Close">✕</button></div>
+    <form class="dbody" id="authForm" autocomplete="on">
+      <label class="field">Username<input id="username" autocomplete="username" maxlength="64" required></label>
+      <label class="field">Password<input id="password" type="password" autocomplete="current-password" maxlength="256" required></label>
+      <button type="submit" class="primary">Sign in</button>
+      <button type="button" class="secondary" id="registerBtn">Create a free account</button>
+      <div class="error" id="authError" role="alert"></div>
+    </form>
+  </dialog>
+
   <dialog id="keepDialog" aria-labelledby="keepTitle">
     <div class="dhead"><h2 id="keepTitle">Keep your list</h2><button type="button" class="iconbtn" id="keepClose" aria-label="Close">✕</button></div>
     <form class="dbody" id="keepForm">
@@ -765,6 +886,56 @@ function sparks(from) {
   }
 }
 
+// ---- the landing's living light field: a tiny WebGL shader (falls back to the CSS gradient) -------------
+const field = (() => {
+  const canvas = $("field");
+  const gl = !reduceMotion && canvas.getContext("webgl", { premultipliedAlpha: false, antialias: false });
+  if (!gl) return { run() {} };
+  const vs = "attribute vec2 p; void main() { gl_Position = vec4(p, 0.0, 1.0); }";
+  const fs = `precision mediump float;
+    uniform vec2 r; uniform float t; uniform vec3 base; uniform vec3 warm; uniform vec3 cool;
+    float blob(vec2 p, vec2 c, float s) { vec2 d = p - c; return exp(-dot(d, d) / s); }
+    void main() {
+      vec2 uv = gl_FragCoord.xy / r; vec2 p = uv; p.x *= r.x / r.y;
+      float a = r.x / r.y;
+      vec2 c1 = vec2(a * (0.30 + 0.12 * sin(t * 0.21)), 0.78 + 0.08 * cos(t * 0.17));
+      vec2 c2 = vec2(a * (0.78 + 0.10 * cos(t * 0.13)), 0.62 + 0.10 * sin(t * 0.19));
+      vec2 c3 = vec2(a * (0.55 + 0.20 * sin(t * 0.09 + 1.7)), 0.25 + 0.08 * sin(t * 0.23));
+      float flick = 0.92 + 0.08 * sin(t * 2.3) * sin(t * 1.7);
+      vec3 col = base;
+      col = mix(col, warm, blob(p, c1, 0.10) * 0.55 * flick);
+      col = mix(col, cool, blob(p, c2, 0.13) * 0.32);
+      col = mix(col, warm * 0.96 + vec3(0.04, 0.0, 0.0), blob(p, c3, 0.08) * 0.30);
+      float g = fract(sin(dot(gl_FragCoord.xy, vec2(12.9898, 78.233))) * 43758.5453);
+      gl_FragColor = vec4(col + (g - 0.5) * 0.018, 1.0);
+    }`;
+  const sh = (type, src) => { const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s); return s; };
+  const prog = gl.createProgram();
+  gl.attachShader(prog, sh(gl.VERTEX_SHADER, vs)); gl.attachShader(prog, sh(gl.FRAGMENT_SHADER, fs)); gl.linkProgram(prog);
+  if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) return { run() {} };
+  gl.useProgram(prog);
+  gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer());
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
+  const loc = gl.getAttribLocation(prog, "p");
+  gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+  const U = (n) => gl.getUniformLocation(prog, n);
+  const rgb = (v) => { const c = document.createElement("canvas").getContext("2d"); c.fillStyle = v; const h = c.fillStyle;
+                       return h.startsWith("#") ? [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16) / 255) : [0.96, 0.95, 0.92]; };
+  let raf = 0, t0 = performance.now();
+  function frame(now) {
+    const scale = 0.5;                                     // half resolution: soft light doesn't need more
+    const w = Math.max(1, Math.round(canvas.clientWidth * scale)), h = Math.max(1, Math.round(canvas.clientHeight * scale));
+    if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; gl.viewport(0, 0, w, h); }
+    const css = getComputedStyle(document.documentElement);
+    gl.uniform2f(U("r"), w, h); gl.uniform1f(U("t"), (now - t0) / 1000);
+    gl.uniform3fv(U("base"), rgb(css.getPropertyValue("--bg").trim()));
+    gl.uniform3fv(U("warm"), [1.0, 0.76, 0.42]); gl.uniform3fv(U("cool"), rgb(css.getPropertyValue("--accent").trim()));
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+    raf = requestAnimationFrame(frame);
+  }
+  return { run(on) { cancelAnimationFrame(raf); if (on) raf = requestAnimationFrame(frame); } };
+})();
+
 // ---- the loading sweep: what Lantern is doing while it checks --------------------------------
 const STEPS = {
   vehicle: ["Looking up your car", "Asking NHTSA for its recalls", "Writing plain-English summaries with NVIDIA Nemotron"],
@@ -789,19 +960,21 @@ function startSweep(kind) {
 
 // ---- views ----------------------------------------------------------------------------------
 const TABS = ["home", "stuff", "ask", "learn"];
-function setNight(on) { document.body.classList.toggle("night", on); }
+function setLanding(on) { document.body.classList.toggle("landing", on); $("signInBtn").hidden = !on; field.run(on); }
 function showWelcome(message = "") {
   me = null;
+  requestAnimationFrame(moveThumb);
   TABS.forEach(t => $(t).hidden = true);
   $("welcome").hidden = false; $("tabbar").hidden = true; $("topActions").hidden = true;
-  setNight(true);
+  setLanding(true);
   $("authError").textContent = message;
+  if (message) $("startError").textContent = message;
 }
 function showTab(name) {
   if (!TABS.includes(name)) name = "home";
   if (!me) { showWelcome(); return; }
   transition(() => {
-    setNight(false);
+    setLanding(false);
     $("welcome").hidden = true;
     TABS.forEach(t => $(t).hidden = t !== name);
     document.querySelectorAll("#tabbar button").forEach(b => {
@@ -822,15 +995,42 @@ function showApp(data) {
   showTab(want === "attention" ? "home" : want);
   loadRecalls();
 }
+// ---- splash: shown once per visit to signed-out visitors; swipe up, scroll, tap or press Enter --------
+function showSplash(then) {
+  let seen = false;
+  try { seen = sessionStorage.getItem("splash") === "1"; } catch {}
+  if (seen) { then(); return; }
+  const s = $("splash");
+  s.hidden = false;
+  $("splashHint").textContent = touch ? "Swipe up to enter" : "Scroll, click or press Enter";
+  setTimeout(() => $("splashEnter").focus({ preventScroll: true }), 50);
+  let leaving = false, y0 = null;
+  const enter = () => {
+    if (leaving) return;
+    leaving = true;
+    try { sessionStorage.setItem("splash", "1"); } catch {}
+    then();                                             // the landing starts its entrance under the rising light
+    if (reduceMotion) { s.hidden = true; return; }
+    s.classList.add("leaving");
+    setTimeout(() => s.classList.add("gone"), 650);
+    setTimeout(() => { s.hidden = true; s.classList.remove("leaving", "gone"); }, 1150);
+  };
+  s.addEventListener("click", enter);
+  s.addEventListener("wheel", (e) => { if (e.deltaY > 10) enter(); }, { passive: true });
+  s.addEventListener("touchstart", (e) => { y0 = e.touches[0].clientY; }, { passive: true });
+  s.addEventListener("touchmove", (e) => { if (y0 !== null && y0 - e.touches[0].clientY > 40) enter(); }, { passive: true });
+  s.addEventListener("keydown", (e) => { if (["Enter", " ", "ArrowUp", "PageDown", "ArrowDown"].includes(e.key)) { e.preventDefault(); enter(); } });
+}
+
 async function refreshMe() {
   const { res, data } = await api("/api/me");
-  if (res.ok) showApp(data); else showWelcome();
+  if (res.ok) showApp(data); else showSplash(() => showWelcome());
 }
 document.querySelectorAll("#tabbar button").forEach(b => b.addEventListener("click", () => showTab(b.dataset.tab)));
 window.addEventListener("hashchange", () => { if (me) showTab(location.hash.slice(1).replace("attention", "home")); });
 function openLearn(topic) {
   if (!me) {   // signed out: the Learn page on its own, with a way back
-    setNight(false);
+    setLanding(false);
     $("welcome").hidden = true; TABS.forEach(t => $(t).hidden = t !== "learn");
     if (!$("learnBack")) {
       const back = button("‹ Back", "textbtn", () => { showWelcome(); $("scroller").scrollTo({ top: 0, behavior: "instant" }); });
@@ -890,15 +1090,51 @@ $("keepForm").addEventListener("submit", async (e) => {
   renderCallouts();
 });
 
-// ---- welcome: start with a car or a product, or the example -------------------------------------
+// ---- landing: one prompt bar for a car or a product, or the example ------------------------------
 const start = $("startForm");
-start.dataset.kind = "vehicle"; start.dataset.vin = "0";
-start.querySelectorAll(".seg button").forEach(b => b.addEventListener("click", () => {
-  start.querySelectorAll(".seg button").forEach(x => x.setAttribute("aria-pressed", String(x === b)));
+start.dataset.kind = "vehicle";
+const EXAMPLES = { vehicle: ["2018 Honda Civic", "2006 Ford Ranger", "2019 Hyundai Tucson"],
+                   product: [["crib mattress", "KEAWIS"], ["crib mattress", "Voomf"], ["space heater", "Lasko"]] };
+function renderExamples() {
+  const box = $("examples"), kind = start.dataset.kind;
+  box.replaceChildren(el("span", "lbl", "Try"), ...EXAMPLES[kind].map(ex => {
+    const label = kind === "vehicle" ? ex : `${ex[1]} ${ex[0]}`;
+    return button(label, "", () => {
+      if (kind === "vehicle") $("carInput").value = ex; else { $("productInput").value = ex[0]; $("brandInput").value = ex[1]; }
+      start.requestSubmit();
+    });
+  }));
+}
+function moveThumb() {
+  const on = start.querySelector('.kind-toggle button[aria-pressed="true"]'), thumb = start.querySelector(".kind-toggle .thumb");
+  thumb.style.left = on.offsetLeft + "px"; thumb.style.width = on.offsetWidth + "px";
+}
+start.querySelectorAll(".kind-toggle button").forEach(b => b.addEventListener("click", () => {
+  start.querySelectorAll(".kind-toggle button").forEach(x => x.setAttribute("aria-pressed", String(x === b)));
   start.dataset.kind = b.dataset.kind;
   start.querySelectorAll("[data-part]").forEach(p => p.hidden = p.dataset.part !== b.dataset.kind);
-  $("startBtn").textContent = b.dataset.kind === "vehicle" ? "Check for recalls" : "Check this product";
+  $("startError").textContent = "";
+  moveThumb(); renderExamples();
+  (b.dataset.kind === "vehicle" ? $("carInput") : $("productInput")).focus();
 }));
+window.addEventListener("resize", moveThumb);
+renderExamples();
+
+// "2018 Honda Civic", "Honda Civic 2018", "2016 Land Rover Range Rover" or a 17-character VIN
+const TWO_WORD_MAKES = ["land rover", "alfa romeo", "aston martin", "mercedes benz", "rolls royce"];
+function parseCar(text) {
+  const s = (text || "").trim().replace(/\s+/g, " ");
+  const vin = s.replace(/[\s-]/g, "").toUpperCase();
+  if (/^[A-HJ-NPR-Z0-9]{17}$/.test(vin)) return { vin };
+  let year = null, rest = "", m = s.match(/^((?:19|20)\d{2})\s+(.+)$/);
+  if (m) { year = +m[1]; rest = m[2]; } else if ((m = s.match(/^(.+?)\s+((?:19|20)\d{2})$/))) { year = +m[2]; rest = m[1]; }
+  if (!year) return { error: "Add the year, like \"2018 Honda Civic\", or paste the 17-character VIN." };
+  const two = TWO_WORD_MAKES.find(k => rest.toLowerCase().replace("-", " ").startsWith(k + " "));
+  const make = two ? rest.slice(0, two.length) : rest.split(" ")[0];
+  const model = rest.slice(make.length).trim();
+  if (!model) return { error: `Add the model too, like "${year} ${make} Civic".` };
+  return { year, make, model };
+}
 function vinToggle(btn, ymm, vin, form) {
   btn.dataset.label = btn.textContent;
   btn.addEventListener("click", () => {
@@ -910,7 +1146,6 @@ function vinToggle(btn, ymm, vin, form) {
     (useVin ? vin : ymm).querySelector("input").focus();
   });
 }
-vinToggle($("startVinToggle"), $("startYmm"), $("startVin"), start);
 const addCarForm = $("addCar");
 addCarForm.dataset.vin = "0";
 vinToggle(addCarForm.querySelector("[data-vin-toggle]"), addCarForm.querySelector("[data-part=ymm]"), addCarForm.querySelector("[data-part=vin]"), addCarForm);
@@ -920,7 +1155,7 @@ async function ensureSession() {
   const { res, data } = await api("/api/me");
   if (res.ok) { me = data; return true; }
   const g = await api("/api/auth/guest", { method: "POST" });
-  if (!g.res.ok) throw new Error(detail(g.data, "Couldn't start a session.") + (g.res.status === 429 ? " You can also sign in below." : ""));
+  if (!g.res.ok) throw new Error(detail(g.data, "Couldn't start a session.") + (g.res.status === 429 ? " You can also sign in." : ""));
   me = g.data;
   return true;
 }
@@ -936,11 +1171,16 @@ function carProblem(body) {
 start.addEventListener("submit", async (e) => {
   e.preventDefault();
   const isCar = start.dataset.kind === "vehicle";
-  const body = isCar ? carBody(start) : { product: start.product.value.trim(), brand: start.brand.value.trim(), model: start.pmodel.value.trim() };
-  const problem = isCar ? carProblem(body) : (body.product ? "" : "Say what it is, for example: crib, stroller, space heater.");
-  $("startError").textContent = problem;
-  if (problem) return;
-  $("startBtn").disabled = true;
+  let body;
+  if (isCar) {
+    body = parseCar($("carInput").value);
+    if (body.error) { $("startError").textContent = body.error; return; }
+  } else {
+    body = { product: $("productInput").value.trim(), brand: $("brandInput").value.trim(), model: "" };
+    if (!body.product) { $("startError").textContent = "Say what it is, for example: crib mattress, stroller, space heater."; return; }
+  }
+  $("startError").textContent = "";
+  start.querySelectorAll(".go").forEach(b => b.disabled = true);
   const done = startSweep(isCar ? "vehicle" : "product");
   try {
     await ensureSession();
@@ -953,7 +1193,7 @@ start.addEventListener("submit", async (e) => {
     await done(false);
     $("startError").textContent = err.message;
   } finally {
-    $("startBtn").disabled = false;
+    start.querySelectorAll(".go").forEach(b => b.disabled = false);
   }
 });
 $("demoBtn").addEventListener("click", async () => {
@@ -978,8 +1218,11 @@ $("demoBtn").addEventListener("click", async () => {
 async function signIn(path) {
   $("authError").textContent = "";
   const { res, data } = await api(path, { method: "POST", body: { username: $("username").value, password: $("password").value } });
-  if (res.ok) { store("demo"); showApp(data); } else $("authError").textContent = detail(data, `Couldn't sign in (error ${res.status}).`);
+  if (res.ok) { store("demo"); $("signInDialog").close(); showApp(data); }
+  else $("authError").textContent = detail(data, `Couldn't sign in (error ${res.status}).`);
 }
+$("signInBtn").addEventListener("click", () => { $("authError").textContent = ""; $("signInDialog").showModal(); });
+$("signInClose").addEventListener("click", () => $("signInDialog").close());
 $("authForm").addEventListener("submit", (e) => { e.preventDefault(); signIn("/api/auth/login"); });
 $("registerBtn").addEventListener("click", () => { if ($("authForm").reportValidity()) signIn("/api/auth/register"); });
 
