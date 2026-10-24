@@ -184,7 +184,17 @@ def create_app(loop: AgentLoop | None = None, settings: Settings | None = None,
 
     # ---- auth -------------------------------------------------------------------------------
     @app.post("/api/auth/guest", response_model=MeResponse)
-    def guest(response: Response) -> MeResponse:
+    def guest(request: Request, response: Response) -> MeResponse:
+        # Per-network limit, so per-guest message caps can't be dodged by making endless guests (#6).
+        # Only a keyed hash of the address is stored, never the address itself.
+        network = hmac.new(settings.app_secret_key.encode(), client_ip(request, settings.trusted_proxy_hops).encode(),
+                           "sha256").hexdigest()[:16]
+        if not site_quota.try_consume(f"guests:{network}", settings.guests_per_ip_per_day or None):
+            raise AuthError("Too many guest accounts from your network today. Sign in through Steam or create "
+                            "an account, or try again tomorrow.", status=429)
+        # Entry count only (no addresses): shows how many proxies append to the header, i.e. TRUSTED_PROXY_HOPS.
+        log.info("guest created; X-Forwarded-For entries: %d",
+                 len([e for e in request.headers.get("x-forwarded-for", "").split(",") if e.strip()]))
         return start_session(response, accounts.create_guest())
 
     @app.post("/api/auth/register", response_model=MeResponse)
@@ -429,3 +439,13 @@ def create_app(loop: AgentLoop | None = None, settings: Settings | None = None,
 
 def _sse(event: dict) -> str:
     return f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+
+
+def client_ip(request: Request, trusted_hops: int) -> str:
+    """The visitor's address. Behind a proxy, use the entry the proxy appended to X-Forwarded-For (the
+    rightmost `trusted_hops` entries); never the leftmost, which the visitor can set to anything."""
+    peer = request.client.host if request.client else "unknown"
+    if trusted_hops <= 0:
+        return peer
+    entries = [e.strip() for e in request.headers.get("x-forwarded-for", "").split(",") if e.strip()]
+    return entries[-trusted_hops] if len(entries) >= trusted_hops else peer

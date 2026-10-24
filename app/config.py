@@ -35,6 +35,8 @@ class Settings:
     user_messages_per_day: int = 100     # chat messages per signed-in player per day (0 = unlimited)
     site_messages_per_day: int = 300     # all players together, per day (0 = unlimited)
     site_tavily_credits_per_day: int = 60  # Tavily credits the whole site may spend per day (0 = unlimited)
+    guests_per_ip_per_day: int = 5   # new guest accounts per network per day (0 = unlimited)
+    trusted_proxy_hops: int = 1      # proxies that append to X-Forwarded-For (Cloud Run: 1); 0 = use the socket peer
     steam_api_key: str = ""          # optional: Steam Web API key for importing public Steam libraries
     model_balanced: str = ""         # Nemotron Super, writes answers from sources; empty = use MODEL_FAST
     public_base_url: str = ""        # e.g. https://lantern.example.com (Steam sign-in return address)
@@ -91,6 +93,8 @@ def load_settings(env_file: str | Path | None = ".env") -> Settings:
         user_messages_per_day=_as_int("USER_MESSAGES_PER_DAY", get("USER_MESSAGES_PER_DAY", "100")),
         site_messages_per_day=_as_int("SITE_MESSAGES_PER_DAY", get("SITE_MESSAGES_PER_DAY", "300")),
         site_tavily_credits_per_day=_as_int("SITE_TAVILY_CREDITS_PER_DAY", get("SITE_TAVILY_CREDITS_PER_DAY", "60")),
+        guests_per_ip_per_day=_as_int("GUESTS_PER_IP_PER_DAY", get("GUESTS_PER_IP_PER_DAY", "5")),
+        trusted_proxy_hops=_as_int("TRUSTED_PROXY_HOPS", get("TRUSTED_PROXY_HOPS", "1")),
         steam_api_key=get("STEAM_API_KEY"),
         public_base_url=get("PUBLIC_BASE_URL").rstrip("/"),
         model_balanced=get("MODEL_BALANCED"),

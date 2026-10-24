@@ -88,3 +88,40 @@ def test_site_quota_resets_each_day(settings):
     assert site.try_consume("messages", 1) and not site.try_consume("messages", 1)
     t[0] += 86400
     assert site.try_consume("messages", 1)
+
+
+def test_guest_creation_is_limited_per_network(settings):
+    app, _ = app_with(settings, guests_per_ip_per_day=2)
+    c = TestClient(app)
+    hdr = {"X-Forwarded-For": "203.0.113.7"}
+    assert [c.post("/api/auth/guest", headers=hdr).status_code for _ in range(3)] == [200, 200, 429]
+    r = c.post("/api/auth/guest", headers=hdr)
+    assert "Too many guest accounts" in r.json()["detail"] and "Steam" in r.json()["detail"]
+    assert c.post("/api/auth/guest", headers={"X-Forwarded-For": "198.51.100.9"}).status_code == 200  # other network
+
+
+def test_spoofed_forwarded_for_entries_do_not_bypass_the_limit(settings):
+    app, _ = app_with(settings, guests_per_ip_per_day=1)
+    c = TestClient(app)
+    # The visitor controls the left part of the header; the proxy appends the real address on the right.
+    assert c.post("/api/auth/guest", headers={"X-Forwarded-For": "1.1.1.1, 203.0.113.7"}).status_code == 200
+    assert c.post("/api/auth/guest", headers={"X-Forwarded-For": "2.2.2.2, 203.0.113.7"}).status_code == 429
+
+
+def test_addresses_are_stored_only_as_hashes(settings):
+    app, _ = app_with(settings)
+    TestClient(app).post("/api/auth/guest", headers={"X-Forwarded-For": "203.0.113.7"})
+    stored = (settings.data_dir / "site_usage.json").read_text()
+    assert "203.0.113.7" not in stored and '"guests:' in stored
+
+
+def test_client_ip_helper():
+    from types import SimpleNamespace
+    from app.main import client_ip
+
+    def req(xff=None, peer="10.0.0.1"):
+        return SimpleNamespace(client=SimpleNamespace(host=peer), headers={"x-forwarded-for": xff} if xff else {})
+    assert client_ip(req("9.9.9.9, 203.0.113.7"), 1) == "203.0.113.7"
+    assert client_ip(req("9.9.9.9, 203.0.113.7, 35.0.0.1"), 2) == "203.0.113.7"
+    assert client_ip(req(None), 1) == "10.0.0.1"         # no header: the direct peer
+    assert client_ip(req("9.9.9.9"), 0) == "10.0.0.1"    # 0 hops: ignore the header entirely
