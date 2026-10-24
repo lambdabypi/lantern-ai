@@ -255,3 +255,19 @@ def test_opening_the_app_never_waits_for_the_model(settings):
     assert len(llm.calls) == 1 and full["plain_pending"] == 0
     again = w.check("alice", write_plain=False)                            # cached now: shown straight away
     assert again["plain_pending"] == 0 and all(r["plain"] for r in again["items"][0]["recalls"])
+
+
+def test_the_same_product_is_confirmed_once_for_everyone(settings):
+    w, store, _, llm = make(settings, [verdicts(("26669", True))])
+    for uid in ("alice", "bob"):
+        store.upsert(uid, "product", "Voomf crib mattress", {"brand": "Voomf", "product": "crib mattress"})
+        [item] = w.check(uid)["items"]
+        assert [(r["id"], r["confirmed"]) for r in item["recalls"]] == [("26669", True)]
+    assert len(llm.calls) == 1                         # bob's identical crib mattress reuses alice's verdict
+
+
+def test_nhtsa_model_list_fetched_once_per_day(settings):
+    w, _, client, _ = make(settings)
+    for uid in ("alice", "bob"):
+        w.save_vehicle(uid, "Honda", "Civic", 2018)
+    assert sum(1 for c in client.calls if c[0] == "models") == 1

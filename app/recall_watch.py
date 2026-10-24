@@ -138,6 +138,7 @@ class RecallWatch:
         self.router = router
         self.data_dir = Path(data_dir)
         self.shared_dir = self.data_dir / "shared_cache" / "recalls"
+        self._feed: tuple[str, list[ProductRecall]] | None = None  # (day, parsed CPSC feed): ~2.8 MB, parsed once a day
 
     # ---- shared, per day ----------------------------------------------------------------------
     def _shared(self, name: str, fetch) -> Any:
@@ -156,10 +157,18 @@ class RecallWatch:
         key = f"nhtsa-{slugify(f'{make}-{model}-{year}')}"
         return self._shared(key, lambda: [asdict(r) for r in self.client.vehicle_recalls(make, model, year)])
 
+    def vehicle_models(self, make: str, year: int) -> list[str]:
+        return self._shared(f"models-{slugify(f'{make}-{year}')}", lambda: self.client.vehicle_models(make, year))
+
     def product_feed(self) -> list[ProductRecall]:
+        today = date.today().isoformat()
+        if self._feed and self._feed[0] == today:
+            return self._feed[1]
         since = date.today() - timedelta(days=FEED_DAYS)
         rows = self._shared("cpsc", lambda: [asdict(r) for r in self.client.product_recalls(since)])
-        return [ProductRecall(**r) for r in rows]
+        feed = [ProductRecall(**r) for r in rows]
+        self._feed = (today, feed)
+        return feed
 
     # ---- adding a car -------------------------------------------------------------------------
     def describe_vehicle(self, make: str = "", model: str = "", year: Any = None, vin: str = "") -> dict[str, Any]:
@@ -176,7 +185,7 @@ class RecallWatch:
         if not (make and model and year):
             raise RecallError("To watch a car I need its make, model and year (or its VIN).")
         fields.update({"make": make, "model": str(model).strip(), "year": int(year)})
-        nhtsa = match_nhtsa_model(fields["model"], self.client.vehicle_models(make, fields["year"]))
+        nhtsa = match_nhtsa_model(fields["model"], self.vehicle_models(make, fields["year"]))
         if nhtsa:
             fields["nhtsa_model"] = nhtsa
         fields["name"] = f"{fields['year']} {make} {fields['model']}"
@@ -352,8 +361,20 @@ class RecallWatch:
         candidates = product_candidates(p.meta, feed)
         undecided = [r for r in candidates if f"{fp}|{r.number}" not in decisions]
         if undecided:
-            for number, verdict in self._confirm(p.meta, undecided).items():
-                decisions[f"{fp}|{number}"] = verdict
+            # Verdicts depend only on the product details and the notice, so they're shared by everyone who owns the
+            # same thing (the fingerprint is a hash): the model is asked once, not once per user.
+            shared_path = self.shared_dir / "matches" / f"{fp}.json"
+            try:
+                shared = json.loads(shared_path.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                shared = {}
+            todo = [r for r in undecided if r.number not in shared]
+            if todo:
+                shared.update(self._confirm(p.meta, todo))
+                _write_json(shared_path, shared)
+            for r in undecided:
+                if r.number in shared:
+                    decisions[f"{fp}|{r.number}"] = shared[r.number]
         status = p.meta.get("recall_status") or {}
         for r in candidates:
             verdict = decisions.get(f"{fp}|{r.number}") or {"match": None, "why": "couldn't double-check"}
