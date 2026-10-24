@@ -3,9 +3,9 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Lantern</title>
-<meta name="description" content="Lantern knows what you own and watches official U.S. safety recalls for it, every day.">
-<meta name="theme-color" content="#12201b">
+<title>Lantern: recall watch</title>
+<meta name="description" content="Lantern knows what you own and checks the U.S. government's official safety recall lists for it every day.">
+<meta name="theme-color" content="#0d1714">
 <link rel="manifest" href="/manifest.webmanifest">
 <link rel="icon" href="/icons/icon-192.png">
 <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
@@ -13,213 +13,440 @@
 <meta name="apple-mobile-web-app-title" content="Lantern">
 <style>
   :root {
-    --bg: #f6f4ef; --surface: #ffffff; --text: #1b1f1d; --muted: #66706b; --border: #e2ded4;
-    --accent: #2f5d50; --accent-text: #ffffff; --amber: #c27a12; --amber-bg: #fdf3e2;
-    --danger: #b42318; --danger-bg: #fdecea; --orange: #b54708; --orange-bg: #fff1e3;
-    --ok: #1f7a4d; --ok-bg: #e7f4ec; --user: #e5eee9; --shadow: 0 1px 2px rgba(0,0,0,.04), 0 4px 16px rgba(0,0,0,.05);
+    --bg: #f6f3ec; --surface: #ffffff; --text: #1b1f1d; --muted: #59625d; --border: #ddd8cc;
+    --accent: #2f5d50; --accent-text: #ffffff; --accent-soft: #e5eee9;
+    --amber: #8a5a00; --amber-bg: #fdf3e2; --glow: #ffbe5a;
+    --danger: #a3200f; --danger-bg: #fdecea; --danger-fill: #b42318;
+    --orange: #9a3b00; --orange-bg: #fff1e3;
+    --ok: #1d6b45; --ok-bg: #e7f4ec; --neutral-bg: #eeebe4;
+    --shadow: 0 1px 2px rgba(0,0,0,.04), 0 8px 24px rgba(40,30,10,.07);
+    --night1: #08110e; --night2: #12241e; --cream: #f6ead2;
   }
   @media (prefers-color-scheme: dark) {
     :root {
-      --bg: #101614; --surface: #19211e; --text: #ebeee9; --muted: #9aa49f; --border: #2c3632;
-      --accent: #7fb8a4; --accent-text: #0e1d18; --amber: #ffbe5a; --amber-bg: #2c2312;
-      --danger: #ff8a7a; --danger-bg: #3a1714; --orange: #ffb27a; --orange-bg: #35200f;
-      --ok: #7fd3a6; --ok-bg: #12281d; --user: #22302b; --shadow: none;
+      --bg: #0f1513; --surface: #18201d; --text: #ebeee9; --muted: #a3ada8; --border: #2f3a35;
+      --accent: #7fb8a4; --accent-text: #0e1d18; --accent-soft: #22302b;
+      --amber: #ffc56b; --amber-bg: #2c2312;
+      --danger: #ff9b8c; --danger-bg: #3a1714; --danger-fill: #b42318;
+      --orange: #ffb27a; --orange-bg: #35200f;
+      --ok: #7fd3a6; --ok-bg: #12281d; --neutral-bg: #1e2724; --shadow: 0 8px 24px rgba(0,0,0,.25);
     }
   }
+  /* Text follows the phone's text-size setting (iOS Dynamic Type) */
+  html { font: -apple-system-body; -webkit-text-size-adjust: 100%; interpolate-size: allow-keywords; }
+  @supports not (font: -apple-system-body) { html { font-size: 100%; } }
   * { box-sizing: border-box; }
-  html { -webkit-text-size-adjust: 100%; }
-  body { margin: 0; background: var(--bg); color: var(--text);
-         font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  body { margin: 0; background: var(--bg); color: var(--text); font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+         font-size: 1rem; line-height: 1.5; min-height: 100dvh; }
+  body::before { content: ""; position: fixed; inset: 0 0 auto 0; height: 340px; pointer-events: none; z-index: 0;
+                 background: radial-gradient(60% 100% at 50% 0%, rgba(255,190,90,.16), transparent 70%); }
   [hidden] { display: none !important; }
   a { color: var(--accent); }
   button { font: inherit; color: inherit; }
-  main { max-width: 640px; margin: 0 auto; min-height: 100dvh; padding: 0 16px calc(88px + env(safe-area-inset-bottom)); }
-  .bar { display: flex; align-items: center; justify-content: space-between; padding: calc(14px + env(safe-area-inset-top)) 0 10px; }
-  .brand { display: flex; gap: 8px; align-items: center; font-weight: 700; font-size: 1.1rem; }
-  .brand img { width: 28px; height: 28px; border-radius: 8px; }
-  .iconbtn { background: none; border: 1px solid var(--border); border-radius: 999px; min-width: 40px; height: 40px;
-             padding: 0 12px; cursor: pointer; color: var(--text); }
-  .menu { position: absolute; right: 16px; top: 60px; background: var(--surface); border: 1px solid var(--border);
-          border-radius: 12px; box-shadow: var(--shadow); display: grid; min-width: 220px; z-index: 10; overflow: hidden; }
-  .menu button, .menu a { background: none; border: none; text-align: left; padding: 12px 16px; cursor: pointer;
-                          text-decoration: none; color: var(--text); }
+  :focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+  .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); border: 0; }
+  main { position: relative; z-index: 1; max-width: 640px; margin: 0 auto; min-height: 100dvh; padding: 0 16px calc(100px + env(safe-area-inset-bottom)); }
+  .bar { display: flex; align-items: center; justify-content: space-between; padding: calc(12px + env(safe-area-inset-top)) 0 8px; }
+  .brand { display: flex; gap: 10px; align-items: center; font-weight: 750; font-size: 1.2rem; letter-spacing: .01em; }
+  .brand svg { width: 30px; height: 30px; }
+  .iconbtn { background: var(--surface); border: 1px solid var(--border); border-radius: 999px; min-width: 44px; height: 44px;
+             padding: 0 14px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; }
+  .menu { position: absolute; right: 16px; top: 64px; background: var(--surface); border: 1px solid var(--border);
+          border-radius: 14px; box-shadow: var(--shadow); display: grid; min-width: 250px; z-index: 30; overflow: hidden;
+          animation: pop .18s ease-out; transform-origin: top right; }
+  .menu button, .menu a { background: none; border: none; text-align: left; padding: 14px 18px; cursor: pointer;
+                          text-decoration: none; color: var(--text); min-height: 48px; }
   .menu button:hover, .menu a:hover { background: var(--bg); }
-  h1 { font-size: 1.7rem; line-height: 1.2; margin: 24px 0 8px; }
-  h2 { font-size: 1.05rem; margin: 22px 0 8px; }
-  p.lead { color: var(--muted); margin: 0 0 20px; }
-  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 16px; box-shadow: var(--shadow); }
+  h1 { font-size: 1.8rem; line-height: 1.15; margin: 18px 0 10px; letter-spacing: -.01em; }
+  h2 { font-size: 1.15rem; margin: 26px 0 10px; }
+  h3 { font-size: 1.05rem; margin: 0; }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 18px; padding: 16px; box-shadow: var(--shadow); }
   .stack { display: grid; gap: 12px; }
-  .seg { display: flex; background: var(--bg); border-radius: 10px; padding: 3px; gap: 3px; margin-bottom: 12px; }
-  .seg button { flex: 1; border: none; background: none; padding: 8px; border-radius: 8px; cursor: pointer; color: var(--muted); }
-  .seg button.on { background: var(--surface); color: var(--text); font-weight: 600; box-shadow: var(--shadow); }
+  .seg { display: flex; background: var(--bg); border-radius: 12px; padding: 4px; gap: 4px; margin-bottom: 14px; position: relative; }
+  .seg button { flex: 1; border: none; background: none; min-height: 44px; border-radius: 9px; cursor: pointer; color: var(--muted);
+                font-weight: 650; transition: background .2s, color .2s, box-shadow .2s; }
+  .seg button[aria-pressed="true"] { background: var(--surface); color: var(--text); box-shadow: var(--shadow); }
+  label.field { display: grid; gap: 4px; font-size: .9rem; font-weight: 600; }
   input, select, textarea { width: 100%; padding: 12px 14px; border-radius: 12px; border: 1px solid var(--border);
-         background: var(--surface); color: var(--text); font: inherit; font-size: 16px; }
-  input:focus, textarea:focus, select:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
-  .grid3 { display: grid; grid-template-columns: 90px 1fr 1fr; gap: 8px; }
-  .primary { width: 100%; padding: 14px; border: none; border-radius: 12px; background: var(--accent);
-             color: var(--accent-text); font-weight: 650; cursor: pointer; font-size: 1rem; }
+         background: var(--surface); color: var(--text); font: inherit; font-size: max(16px, 1rem); min-height: 48px;
+         transition: border-color .2s, box-shadow .2s; }
+  input:focus, textarea:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 22%, transparent); }
+  .grid3 { display: grid; grid-template-columns: 5.5em 1fr 1fr; gap: 8px; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .primary { width: 100%; min-height: 50px; padding: 12px 18px; border: none; border-radius: 14px; cursor: pointer; font-size: 1.02rem;
+             font-weight: 750; color: var(--accent-text); background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 88%, white), var(--accent));
+             box-shadow: 0 6px 16px color-mix(in srgb, var(--accent) 30%, transparent); transition: transform .12s, box-shadow .2s;
+             text-decoration: none; display: inline-flex; align-items: center; justify-content: center; text-align: center; }
+  .primary:hover { box-shadow: 0 10px 22px color-mix(in srgb, var(--accent) 38%, transparent); }
+  .primary:active, .secondary:active, .chipbtn:active { transform: scale(.97); }
   .primary:disabled { opacity: .6; cursor: progress; }
-  .secondary { width: 100%; padding: 13px; border-radius: 12px; border: 1px solid var(--border); background: var(--surface);
-               cursor: pointer; font-weight: 600; }
-  .textbtn { background: none; border: none; padding: 0; color: var(--accent); cursor: pointer; font-size: .9rem; }
+  .secondary { width: 100%; min-height: 48px; padding: 10px 16px; border-radius: 14px; border: 1px solid var(--border);
+               background: var(--surface); cursor: pointer; font-weight: 650; transition: transform .12s; }
+  .textbtn { background: none; border: none; padding: 10px 4px; min-height: 44px; color: var(--accent); cursor: pointer;
+             font-size: .95rem; text-decoration: underline; text-underline-offset: 3px; }
   .textbtn.danger { color: var(--danger); }
-  .hint { color: var(--muted); font-size: .88rem; margin: 6px 0 0; }
-  .error { color: var(--danger); font-size: .9rem; min-height: 1.3em; margin-top: 8px; }
-  .or { text-align: center; color: var(--muted); font-size: .85rem; margin: 14px 0; }
-  details.account summary { cursor: pointer; color: var(--muted); font-size: .92rem; margin-top: 18px; }
-  .trust { display: grid; gap: 6px; margin-top: 22px; color: var(--muted); font-size: .88rem; }
-  .trust div::before { content: "✓ "; color: var(--ok); font-weight: 700; }
+  .hint { color: var(--muted); font-size: .92rem; margin: 6px 0 0; }
+  .error { color: var(--danger); font-size: .95rem; min-height: 1.3em; margin-top: 8px; }
+  .or { text-align: center; color: var(--muted); font-size: .9rem; margin: 14px 0; }
+  .note { border-radius: 12px; padding: 12px 14px; background: var(--neutral-bg); font-size: .95rem; margin: 0; }
+  ol.steps { margin: 8px 0 0; padding-left: 1.3em; display: grid; gap: 6px; }
 
-  /* home */
-  .status { border-radius: 16px; padding: 16px; display: flex; gap: 12px; align-items: flex-start; margin-top: 8px; }
-  .status .big { font-size: 1.15rem; font-weight: 700; }
-  .status.danger { background: var(--danger-bg); color: var(--danger); }
+  /* ---------- the lantern (hero, header, loading) ---------- */
+  #lantern .flame { transform-origin: 60px 104px; animation: flicker 2.6s ease-in-out infinite; }
+  #lantern .flame-core { transform-origin: 60px 104px; animation: flicker 1.9s ease-in-out infinite reverse; }
+  #lantern .halo { transform-origin: center; animation: breathe 4.5s ease-in-out infinite; }
+  @keyframes flicker { 0%,100% { transform: scale(1,1) skewX(0); } 20% { transform: scale(.95,1.06) skewX(-2deg); }
+                       45% { transform: scale(1.04,.96) skewX(1.5deg); } 70% { transform: scale(.97,1.04) skewX(-1deg); } }
+  @keyframes breathe { 0%,100% { opacity: .55; transform: scale(1); } 50% { opacity: .9; transform: scale(1.08); } }
+  @keyframes rise { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+  @keyframes pop { from { opacity: 0; transform: scale(.94); } to { opacity: 1; transform: none; } }
+
+  /* welcome: a lantern in the night, always dark */
+  body.night { background: radial-gradient(120% 70% at 50% 0%, var(--night2), var(--night1) 70%); color: var(--cream); }
+  body.night::before { height: 520px; background: radial-gradient(45% 60% at 50% 18%, rgba(255,190,90,.22), transparent 70%); }
+  body.night .brand { color: var(--cream); }
+  #welcome { color: var(--cream); }
+  #welcome .lead { color: #c9c2b2; font-size: 1.06rem; margin: 0 0 22px; }
+  #welcome h1 { font-size: clamp(1.9rem, 7vw, 2.5rem); text-align: center; text-wrap: balance; }
+  #welcome .lead, #welcome .center { text-align: center; text-wrap: pretty; }
+  #welcome .card { background: rgba(255,250,240,.96); color: #1b1f1d; border-color: transparent;
+                   box-shadow: 0 20px 60px rgba(0,0,0,.45), 0 0 0 1px rgba(255,190,90,.18); }
+  #welcome .card .muted, #welcome .card .hint { color: #59625d; }
+  #welcome .card input { background: #fff; color: #1b1f1d; border-color: #d8d2c4; }
+  #welcome .card .seg { background: #efe9dc; }
+  #welcome .card .seg button[aria-pressed="true"] { background: #fff; color: #1b1f1d; }
+  #welcome .card .seg button { color: #59625d; }
+  #welcome .card .note { background: #f1ece1; color: #3b3f3c; }
+  #welcome .card .secondary { background: #fff; color: #1b1f1d; border-color: #d8d2c4; }
+  #welcome .card .textbtn { color: #2f5d50; }
+  #welcome .card .primary { --accent: #2f5d50; --accent-text: #fff; }
+  #welcome .card .or { color: #59625d; }
+  #welcome a, #welcome .textbtn { color: var(--glow); }
+  #welcome details summary { color: var(--glow); }
+  #welcome label.field { color: #1b1f1d; }
+  #welcome #authForm label.field { color: var(--cream); }
+  #welcome #authForm input { background: rgba(255,255,255,.06); color: var(--cream); border-color: rgba(255,255,255,.18); }
+  #welcome #authForm .secondary { background: rgba(255,255,255,.08); color: var(--cream); border-color: rgba(255,255,255,.18); }
+  #welcome .error { color: #ffb4a8; }
+  .hero { position: relative; height: 210px; display: grid; place-items: center; margin-top: 4px; }
+  .hero .lantern { width: 132px; height: auto; position: relative; z-index: 1; filter: drop-shadow(0 0 30px rgba(255,190,90,.35)); }
+  .hero .pool { position: absolute; bottom: 0; width: 240px; height: 34px; border-radius: 50%;
+                background: radial-gradient(closest-side, rgba(255,190,90,.35), transparent); animation: breathe 4.5s ease-in-out infinite; }
+  .mote { position: absolute; left: 50%; top: 55%; width: 5px; height: 5px; border-radius: 50%; background: #ffd58a;
+          box-shadow: 0 0 10px 2px rgba(255,200,110,.8); opacity: 0;
+          animation: drift var(--d, 6s) ease-in var(--delay, 0s) infinite; }
+  @keyframes drift { 0% { opacity: 0; transform: translate(0, 0) scale(.6); } 15% { opacity: 1; }
+                     100% { opacity: 0; transform: translate(var(--dx, 30px), -150px) scale(1.1); } }
+  .trust { display: grid; gap: 10px; margin: 24px 0 0; padding: 0; list-style: none; color: #c9c2b2; font-size: .96rem; }
+  .trust li { display: flex; gap: 10px; align-items: flex-start; }
+  .trust li::before { content: ""; flex: none; width: 10px; height: 10px; margin-top: .45em; border-radius: 50%;
+                      background: var(--glow); box-shadow: 0 0 10px var(--glow); }
+  .how { display: grid; gap: 12px; margin-top: 8px; counter-reset: how; }
+  .how li { list-style: none; display: grid; grid-template-columns: 38px 1fr; gap: 12px; align-items: start; color: #d9d2c2; }
+  .how li::before { counter-increment: how; content: counter(how); width: 38px; height: 38px; border-radius: 50%; display: grid; place-items: center;
+                    font-weight: 800; color: #1b1405; background: radial-gradient(circle at 35% 30%, #ffe3ad, var(--glow)); box-shadow: 0 0 18px rgba(255,190,90,.45); }
+  #welcome h2 { color: var(--cream); }
+  #welcome .reveal { animation: rise .7s cubic-bezier(.2,.7,.2,1) both; animation-delay: calc(var(--i, 0) * 90ms); }
+
+  /* loading: the lantern sweeps the official lists */
+  #sweep { position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; padding: 24px;
+           background: radial-gradient(80% 60% at 50% 40%, rgba(18,36,30,.985), rgba(8,17,14,.995)); color: var(--cream);
+           backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+           animation: pop .25s ease-out; }
+  #sweep .box { width: min(380px, 100%); text-align: center; }
+  #sweep .beam-wrap { position: relative; width: 190px; height: 190px; margin: 0 auto 10px; display: grid; place-items: center; }
+  #sweep .beam { position: absolute; inset: 0; border-radius: 50%;
+                 background: conic-gradient(from 0deg, rgba(255,190,90,.0) 0deg, rgba(255,190,90,.38) 40deg, rgba(255,190,90,0) 80deg, transparent 360deg);
+                 animation: spin 2.4s linear infinite; mask: radial-gradient(circle, transparent 28%, #000 30%); }
+  #sweep .ring { position: absolute; inset: 0; border-radius: 50%; border: 1px solid rgba(255,190,90,.22); }
+  #sweep .ring.r2 { inset: 30px; } #sweep .ring.r3 { inset: 60px; }
+  #sweep .lantern { width: 64px; position: relative; filter: drop-shadow(0 0 22px rgba(255,190,90,.6)); }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  #sweep ol { list-style: none; padding: 0; margin: 14px 0 0; display: grid; gap: 10px; text-align: left; }
+  #sweep li { display: flex; gap: 12px; align-items: center; color: #8d8a80; transition: color .3s; }
+  #sweep li::before { content: ""; flex: none; width: 20px; height: 20px; border-radius: 50%; border: 2px solid #4c5a54; transition: all .3s; }
+  #sweep li.now { color: var(--cream); }
+  #sweep li.now::before { border-color: var(--glow); border-top-color: transparent; animation: spin .8s linear infinite; }
+  #sweep li.done { color: #c9c2b2; }
+  #sweep li.done::before { border-color: var(--glow); background: var(--glow) center/12px no-repeat
+      url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%231b1405' stroke-width='4'%3E%3Cpath d='M5 12l5 5 9-10'/%3E%3C/svg%3E"); }
+
+  /* ---------- home ---------- */
+  .status { position: relative; overflow: hidden; border-radius: 20px; padding: 18px 18px 16px; margin-top: 6px; animation: rise .55s cubic-bezier(.2,.7,.2,1) both; }
+  .status h1 { font-size: 1.35rem; margin: 0 0 6px; text-wrap: balance; }
+  .status p { margin: 0; }
+  .status .actions { margin-top: 14px; }
+  .status .primary { width: auto; }
+  .status.danger { background: linear-gradient(160deg, var(--danger-bg), color-mix(in srgb, var(--danger-bg) 70%, var(--surface))); color: var(--danger);
+                   box-shadow: 0 0 0 1px color-mix(in srgb, var(--danger) 25%, transparent); animation: rise .55s both, ember 3.6s ease-in-out .6s infinite; }
+  @keyframes ember { 0%,100% { box-shadow: 0 0 0 1px color-mix(in srgb, var(--danger) 25%, transparent), 0 0 0 rgba(180,35,24,0); }
+                     50% { box-shadow: 0 0 0 1px color-mix(in srgb, var(--danger) 35%, transparent), 0 10px 34px rgba(180,35,24,.22); } }
   .status.warn { background: var(--amber-bg); color: var(--amber); }
-  .status.ok { background: var(--ok-bg); color: var(--ok); }
-  .status .sub { color: var(--text); opacity: .8; font-size: .92rem; margin-top: 2px; }
-  .status .dot { font-size: 1.4rem; line-height: 1; }
-  .recall { border-left: 5px solid var(--amber); }
-  .recall.park_it { border-left-color: var(--danger); }
-  .recall.park_outside { border-left-color: var(--orange); }
-  .recall.possible { border-left-color: var(--border); }
-  .badges { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 6px; }
-  .badge { font-size: .75rem; font-weight: 700; padding: 3px 9px; border-radius: 999px; background: var(--amber-bg); color: var(--amber);
-           white-space: nowrap; flex: none; }
-  .badge.park_it { background: var(--danger-bg); color: var(--danger); }
+  .status.ok { background: radial-gradient(120% 140% at 85% 0%, rgba(255,190,90,.25), transparent 55%), var(--ok-bg); color: var(--ok); }
+  .status.neutral { background: var(--surface); border: 1px solid var(--border); }
+  .status .body { color: var(--text); opacity: .92; }
+  .status .lantern { position: absolute; right: 14px; top: 12px; width: 46px; opacity: .95; filter: drop-shadow(0 0 14px rgba(255,190,90,.55)); }
+  .status.ok h1, .status.ok .body { padding-right: 56px; }
+  .watching { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: .88rem; margin: 10px 2px 0; }
+  .watching .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--ok); position: relative; flex: none; }
+  .watching .dot::after { content: ""; position: absolute; inset: -4px; border-radius: 50%; border: 2px solid var(--ok); animation: ping 2.4s ease-out infinite; }
+  @keyframes ping { from { transform: scale(.5); opacity: .8; } to { transform: scale(1.8); opacity: 0; } }
+  .reveal { animation: rise .55s cubic-bezier(.2,.7,.2,1) both; animation-delay: calc(var(--i, 0) * 80ms + 120ms); }
+  article.thing-card { position: relative; overflow: hidden; padding-left: 20px; }
+  article.thing-card::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 6px; background: var(--amber); }
+  article.thing-card.park_it::before, article.thing-card.stop_using::before { background: linear-gradient(var(--danger-fill), #e0563f); }
+  article.thing-card.park_outside::before { background: linear-gradient(#c2410c, #f59e0b); }
+  article.thing-card.possible::before { background: var(--border); }
+  .badges { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 8px; }
+  .badge { font-size: .8rem; font-weight: 750; padding: 3px 10px; border-radius: 999px; background: var(--amber-bg); color: var(--amber);
+           white-space: nowrap; flex: none; display: inline-flex; gap: 5px; align-items: center; }
+  .badge.park_it, .badge.stop_using { background: var(--danger-bg); color: var(--danger); }
   .badge.park_outside { background: var(--orange-bg); color: var(--orange); }
-  .badge.new { background: var(--accent); color: var(--accent-text); }
-  .badge.possible { background: var(--bg); color: var(--muted); }
-  .recall .item { font-weight: 700; }
-  .recall .what { margin-top: 2px; }
-  .recall .risk { color: var(--muted); font-size: .92rem; margin-top: 6px; }
-  .rlist { margin-top: 10px; border-top: 1px solid var(--border); }
+  .badge.new { background: var(--accent); color: var(--accent-text); animation: pop .4s .5s both; }
+  .badge.possible { background: var(--neutral-bg); color: var(--muted); }
+  .badge.ok { background: var(--ok-bg); color: var(--ok); }
+  .why { font-size: .88rem; }
+  .thing-card h2 { margin: 0; font-size: 1.2rem; }
+  .thing-card .headline { margin: 6px 0 0; font-size: 1.02rem; }
+  .thing-card .who { color: var(--muted); font-size: .88rem; margin: 6px 0 0; }
+  .rlist { margin-top: 12px; border-top: 1px solid var(--border); }
   .rrow { border-bottom: 1px solid var(--border); }
-  .rrow summary { cursor: pointer; display: flex; gap: 8px; align-items: center; padding: 11px 0; list-style: none; }
-  .rrow summary::-webkit-details-marker { display: none; }
-  .rrow summary::after { content: "›"; margin-left: auto; color: var(--muted); font-size: 1.2rem; transition: transform .15s; }
-  .rrow[open] summary::after { transform: rotate(90deg); }
-  .rrow .rtitle { font-weight: 600; }
-  .rrow .rdate { color: var(--muted); font-size: .85rem; }
-  .rrow .badge { font-size: .7rem; }
-  .rrow .fix { padding-bottom: 12px; }
-  .recall > .hint { margin-top: 10px; }
-  .recall .fix { margin-top: 8px; font-size: .92rem; display: grid; gap: 6px; }
-  .actions { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
-  .chipbtn { border: 1px solid var(--border); background: var(--surface); border-radius: 999px; padding: 8px 14px;
-             cursor: pointer; font-size: .9rem; }
-  .chipbtn.good { border-color: var(--ok); color: var(--ok); }
-  .sharerow { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
-  .sharerow a, .sharerow button { font-size: .88rem; }
-  .callout { display: flex; gap: 12px; align-items: center; justify-content: space-between; }
-  .callout .text { font-size: .93rem; }
-  .callout button { flex: none; width: auto; padding: 10px 14px; }
-  details.done summary { cursor: pointer; color: var(--muted); margin: 18px 0 8px; }
+  .rrow::details-content { transition: height .28s ease, content-visibility .28s allow-discrete; height: 0; overflow: clip; }
+  .rrow[open]::details-content { height: auto; }
+  .rrow > summary { cursor: pointer; display: flex; gap: 10px; align-items: center; padding: 12px 0; list-style: none; min-height: 52px; }
+  .rrow > summary::-webkit-details-marker { display: none; }
+  .rrow > summary::after { content: "›"; margin-left: auto; color: var(--muted); font-size: 1.4rem; transition: transform .25s; }
+  .rrow[open] > summary::after { transform: rotate(90deg); }
+  .rrow .rtitle { font-weight: 650; }
+  .rrow .rmeta { display: block; color: var(--muted); font-size: .82rem; font-weight: normal; }
+  .fix { padding: 0 0 14px; display: grid; gap: 10px; }
+  .fix dl { margin: 0; display: grid; gap: 10px; }
+  .fix dt { font-weight: 750; font-size: .78rem; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
+  .fix dd { margin: 2px 0 0; }
+  .ai { font-size: .82rem; color: var(--muted); margin: 0; display: flex; gap: 6px; align-items: center; }
+  .ai::before { content: "✦"; color: var(--glow); text-shadow: 0 0 8px var(--glow); }
+  details.official summary { cursor: pointer; color: var(--accent); min-height: 44px; display: flex; align-items: center; }
+  details.official .body { font-size: .92rem; display: grid; gap: 6px; color: var(--muted); }
+  details.official .body p { margin: 0; }
+  .actions { display: flex; gap: 8px; flex-wrap: wrap; }
+  .chipbtn { border: 1px solid var(--border); background: var(--surface); border-radius: 999px; padding: 8px 16px; min-height: 44px;
+             cursor: pointer; font-size: .95rem; text-decoration: none; color: var(--text); display: inline-flex; align-items: center;
+             transition: transform .12s, background .2s; }
+  .chipbtn:hover { background: var(--bg); }
+  .chipbtn.good { border-color: var(--ok); color: var(--ok); font-weight: 650; }
+  .callout { display: grid; gap: 10px; }
+  .callout .row { display: flex; gap: 10px; flex-wrap: wrap; }
+  .callout .row > * { width: auto; flex: 1 1 150px; }
+  .callout.glow { background: radial-gradient(100% 120% at 100% 0%, rgba(255,190,90,.18), transparent 60%), var(--surface); }
+  details.done summary { cursor: pointer; color: var(--muted); margin: 18px 0 8px; min-height: 44px; display: flex; align-items: center; }
   .muted { color: var(--muted); }
+  .spark { position: fixed; width: 8px; height: 8px; border-radius: 50%; pointer-events: none; z-index: 60;
+           background: #ffd58a; box-shadow: 0 0 12px 3px rgba(255,190,90,.9); animation: burst .85s cubic-bezier(.15,.6,.3,1) forwards; }
+  @keyframes burst { from { transform: translate(0,0) scale(1); opacity: 1; } to { transform: translate(var(--sx), var(--sy)) scale(.2); opacity: 0; } }
 
   /* my stuff */
-  .thing .top { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
-  .thing .name { font-weight: 700; }
-  .pill { font-size: .78rem; padding: 2px 8px; border-radius: 999px; background: var(--user); white-space: nowrap; }
-  .pill.bad { background: var(--danger-bg); color: var(--danger); }
-  .thing .sub { color: var(--muted); font-size: .85rem; margin-top: 4px; }
-  .thing .row { display: flex; gap: 16px; margin-top: 8px; }
+  .thing .top { display: flex; justify-content: space-between; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .thing .sub { color: var(--muted); font-size: .9rem; margin-top: 4px; }
+  .thing .row { display: flex; gap: 16px; margin-top: 4px; flex-wrap: wrap; }
+  details.more > summary { cursor: pointer; font-weight: 700; color: var(--accent); min-height: 44px; display: flex; align-items: center; list-style: none; }
+  details.more > summary::-webkit-details-marker { display: none; }
+  details.more form { display: grid; gap: 10px; }
+
+  /* learn */
+  .faq details { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 0 16px; box-shadow: var(--shadow); }
+  .faq details::details-content { transition: height .28s ease, content-visibility .28s allow-discrete; height: 0; overflow: clip; }
+  .faq details[open]::details-content { height: auto; }
+  .faq summary { cursor: pointer; font-weight: 700; min-height: 56px; display: flex; align-items: center; gap: 12px; list-style: none; }
+  .faq summary::-webkit-details-marker { display: none; }
+  .faq summary::before { content: "+"; flex: none; width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center;
+                         background: var(--amber-bg); color: var(--amber); font-weight: 800; transition: transform .25s; }
+  .faq details[open] summary::before { transform: rotate(45deg); }
+  .faq .a { padding: 0 0 16px 40px; display: grid; gap: 8px; }
+  .faq .a p { margin: 0; }
+  .faq .src { font-size: .85rem; color: var(--muted); }
 
   /* ask */
-  #log { display: flex; flex-direction: column; gap: 12px; padding: 8px 0 16px; min-height: 40dvh; }
-  .msg { padding: 10px 14px; border-radius: 14px; overflow-wrap: anywhere; max-width: 92%; }
-  .msg.user { align-self: flex-end; background: var(--user); white-space: pre-wrap; }
-  .msg.bot { align-self: flex-start; background: var(--surface); border: 1px solid var(--border); }
+  #log { display: flex; flex-direction: column; gap: 12px; padding: 8px 0 16px; min-height: 30dvh; }
+  .msg { padding: 10px 14px; border-radius: 16px; overflow-wrap: anywhere; max-width: 92%; animation: rise .35s ease-out both; }
+  .msg.user { align-self: flex-end; background: var(--accent); color: var(--accent-text); white-space: pre-wrap; border-bottom-right-radius: 6px; }
+  .msg.bot { align-self: flex-start; background: var(--surface); border: 1px solid var(--border); border-bottom-left-radius: 6px; box-shadow: var(--shadow); }
   .msg.status { color: var(--muted); font-style: italic; }
+  .msg.status::before { content: ""; display: inline-block; width: 8px; height: 8px; margin-right: 8px; border-radius: 50%;
+                        background: var(--glow); box-shadow: 0 0 8px var(--glow); animation: breathe 1.2s ease-in-out infinite; }
   .msg.stopped { background: var(--amber-bg); color: var(--amber); border-color: transparent; }
   .msg p { margin: 0 0 8px; } .msg p:last-child, .msg ul:last-child { margin-bottom: 0; }
   .msg ul { margin: 0 0 8px; padding-left: 20px; } .msg li { margin: 2px 0; }
-  .msg a.cite { font-size: .8rem; white-space: nowrap; text-decoration: none; padding: 0 5px; margin-left: 2px;
-                border-radius: 6px; background: var(--user); }
-  .meta { font-size: .75rem; color: var(--muted); margin-top: 6px; }
+  .msg a.cite { font-size: .85rem; white-space: nowrap; text-decoration: none; padding: 0 6px; border-radius: 6px; background: var(--accent-soft); }
+  .meta { font-size: .8rem; color: var(--muted); margin-top: 8px; display: flex; gap: 6px; align-items: center; }
+  .meta::before { content: "✦"; color: var(--glow); text-shadow: 0 0 8px var(--glow); }
   .suggest { display: flex; gap: 8px; flex-wrap: wrap; margin: 4px 0 12px; }
-  .composer { position: sticky; bottom: calc(72px + env(safe-area-inset-bottom)); background: var(--bg); padding: 8px 0; }
+  .suggest .chipbtn { animation: rise .45s both; animation-delay: calc(var(--i, 0) * 70ms); }
+  .composer { position: sticky; bottom: calc(80px + env(safe-area-inset-bottom)); background: var(--bg); padding: 8px 0; }
   .composer .row { display: flex; gap: 8px; align-items: flex-end; }
-  .composer textarea { resize: none; min-height: 48px; max-height: 140px; }
-  .round { flex: none; width: 48px; height: 48px; border-radius: 50%; border: none; cursor: pointer;
-           background: var(--accent); color: var(--accent-text); font-size: 1.1rem; }
+  .composer textarea { resize: none; max-height: 140px; border-radius: 16px; }
+  .round { flex: none; width: 50px; height: 50px; border-radius: 50%; border: none; cursor: pointer; background: var(--accent);
+           color: var(--accent-text); display: inline-flex; align-items: center; justify-content: center; transition: transform .12s; }
+  .round:active { transform: scale(.92); }
   .round.mic { background: var(--surface); color: var(--text); border: 1px solid var(--border); }
-  .round.mic.live { background: var(--danger); color: #fff; border-color: transparent; animation: pulse 1.2s infinite; }
-  @keyframes pulse { 50% { box-shadow: 0 0 0 8px rgba(180,35,24,.15); } }
-  @media (prefers-reduced-motion: reduce) { .round.mic.live { animation: none; } }
-  .toggles { display: flex; gap: 16px; flex-wrap: wrap; font-size: .85rem; color: var(--muted); margin-top: 6px; }
-  .toggles label { display: flex; gap: 6px; align-items: center; cursor: pointer; }
-  .toggles input { width: auto; }
+  .round.mic[aria-pressed="true"] { background: var(--danger-fill); color: #fff; border-color: transparent; animation: listen 1.2s infinite; }
+  @keyframes listen { 50% { box-shadow: 0 0 0 10px rgba(180,35,24,.18); } }
+  .toggles { display: flex; gap: 0 18px; flex-wrap: wrap; font-size: .92rem; color: var(--muted); margin-top: 4px; }
+  .toggles label { display: flex; gap: 8px; align-items: center; cursor: pointer; min-height: 44px; }
+  .toggles input { width: 22px; height: 22px; min-height: 0; accent-color: var(--accent); }
 
-  /* tab bar */
-  nav.tabbar { position: fixed; left: 0; right: 0; bottom: 0; background: var(--surface); border-top: 1px solid var(--border);
-               display: flex; justify-content: center; padding-bottom: env(safe-area-inset-bottom); z-index: 5; }
-  nav.tabbar .in { display: flex; max-width: 640px; width: 100%; }
-  nav.tabbar button { flex: 1; background: none; border: none; padding: 10px 0 12px; cursor: pointer; color: var(--muted);
-                      font-size: .78rem; display: grid; justify-items: center; gap: 2px; position: relative; }
-  nav.tabbar button .ic { font-size: 1.3rem; line-height: 1.2; }
-  nav.tabbar button.on { color: var(--accent); font-weight: 700; }
-  .count { position: absolute; top: 6px; left: calc(50% + 6px); background: var(--danger); color: #fff; border-radius: 999px;
-           font-size: .7rem; font-weight: 700; min-width: 18px; padding: 0 5px; line-height: 18px; }
-  dialog { border: 1px solid var(--border); border-radius: 16px; background: var(--bg); color: var(--text);
-           width: min(640px, calc(100vw - 32px)); padding: 16px; }
-  dialog textarea { font: 13px/1.5 ui-monospace, Consolas, monospace; }
-  .toast { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(84px + env(safe-area-inset-bottom));
-           background: var(--text); color: var(--bg); padding: 10px 16px; border-radius: 12px; font-size: .9rem; z-index: 20; }
+  /* tab bar (bottom on phones, top on wide screens) */
+  nav.tabbar { position: fixed; left: 10px; right: 10px; bottom: calc(10px + env(safe-area-inset-bottom)); z-index: 20; display: flex; justify-content: center; }
+  nav.tabbar .in { display: flex; max-width: 520px; width: 100%; background: color-mix(in srgb, var(--surface) 86%, transparent);
+                   backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); border: 1px solid var(--border); border-radius: 22px;
+                   box-shadow: 0 10px 30px rgba(0,0,0,.14); padding: 4px; }
+  nav.tabbar button { flex: 1; background: none; border: none; padding: 6px 0 8px; min-height: 58px; cursor: pointer; color: var(--muted);
+                      font-size: .78rem; display: grid; justify-items: center; gap: 2px; position: relative; border-radius: 18px; transition: color .2s, background .25s; }
+  nav.tabbar svg { width: 24px; height: 24px; transition: transform .25s; }
+  nav.tabbar button[aria-current="page"] { color: var(--accent); font-weight: 750; background: var(--accent-soft); }
+  nav.tabbar button[aria-current="page"] svg { transform: translateY(-1px) scale(1.08); }
+  .count { position: absolute; top: 2px; left: calc(50% + 6px); background: var(--danger-fill); color: #fff; border-radius: 999px;
+           font-size: .74rem; font-weight: 800; min-width: 20px; padding: 0 6px; line-height: 20px; box-shadow: 0 2px 8px rgba(180,35,24,.4); animation: pop .35s both; }
+  @media (min-width: 900px) {
+    main { max-width: 760px; padding-bottom: 40px; }
+    nav.tabbar { position: sticky; top: 8px; left: auto; right: auto; bottom: auto; margin: 0 auto; max-width: 760px; padding: 0 16px; }
+    nav.tabbar .in { max-width: none; }
+    nav.tabbar button { grid-auto-flow: column; gap: 8px; align-items: center; font-size: .95rem; min-height: 48px; }
+    .composer { bottom: 0; }
+    .count { position: static; }
+  }
+  dialog { border: 1px solid var(--border); border-radius: 20px; background: var(--bg); color: var(--text);
+           width: min(640px, calc(100vw - 24px)); max-height: calc(100dvh - 24px); padding: 0; box-shadow: 0 30px 80px rgba(0,0,0,.35); }
+  dialog[open] { animation: pop .22s ease-out; }
+  dialog::backdrop { background: rgba(8,17,14,.55); backdrop-filter: blur(3px); }
+  dialog .dhead { position: sticky; top: 0; background: var(--bg); display: flex; justify-content: space-between; align-items: center;
+                  gap: 8px; padding: 14px 16px 10px; border-bottom: 1px solid var(--border); z-index: 1; }
+  dialog .dhead h2 { margin: 0; font-size: 1.1rem; }
+  dialog .dbody { padding: 12px 16px 18px; display: grid; gap: 12px; }
+  dialog textarea.code { font-family: ui-monospace, Consolas, monospace; }
+  #toast { position: fixed; left: 50%; bottom: calc(96px + env(safe-area-inset-bottom)); z-index: 40; transform: translateX(-50%);
+           background: var(--text); color: var(--bg); padding: 12px 18px; border-radius: 14px; font-size: .95rem; box-shadow: 0 10px 30px rgba(0,0,0,.25);
+           display: flex; gap: 14px; align-items: center; max-width: calc(100vw - 32px); animation: toastIn .3s cubic-bezier(.2,.7,.2,1); }
+  @keyframes toastIn { from { opacity: 0; transform: translate(-50%, 12px); } to { opacity: 1; transform: translate(-50%, 0); } }
+  #toast button { background: none; border: none; color: inherit; font-weight: 700; text-decoration: underline; cursor: pointer; min-height: 36px; }
+  @media (min-width: 900px) { #toast { bottom: 24px; } }
+  ::view-transition-old(root), ::view-transition-new(root) { animation-duration: .22s; }
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after, ::view-transition-group(*) { animation: none !important; transition: none !important; }
+    .mote { display: none; }
+  }
 </style>
 </head>
 <body>
-<main>
+<a class="sr-only" href="#app">Skip to content</a>
+
+<!-- one lantern drawing, reused everywhere -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <radialGradient id="lgGlass" cx="50%" cy="62%" r="60%">
+      <stop offset="0" stop-color="#fff4d6"/><stop offset=".45" stop-color="#ffd27a"/><stop offset="1" stop-color="#e08a1e"/>
+    </radialGradient>
+    <radialGradient id="lgHalo" cx="50%" cy="50%" r="50%">
+      <stop offset="0" stop-color="#ffbe5a" stop-opacity=".55"/><stop offset="1" stop-color="#ffbe5a" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="lgFlame" x1="0" y1="1" x2="0" y2="0">
+      <stop offset="0" stop-color="#ff8a1e"/><stop offset=".55" stop-color="#ffc24a"/><stop offset="1" stop-color="#fff2c4"/>
+    </linearGradient>
+    <symbol id="lantern" viewBox="0 0 120 160">
+      <circle class="halo" cx="60" cy="96" r="58" fill="url(#lgHalo)"/>
+      <path d="M44 30a16 16 0 0 1 32 0" fill="none" stroke="#e9e2d0" stroke-width="6" stroke-linecap="round"/>
+      <path d="M34 34h52l-6 12H40z" fill="#e9e2d0"/>
+      <rect x="40" y="46" width="40" height="78" rx="6" fill="url(#lgGlass)"/>
+      <path class="flame" d="M60 74c7 9 10 15 10 22a10 10 0 0 1-20 0c0-7 3-13 10-22z" fill="url(#lgFlame)"/>
+      <path class="flame-core" d="M60 88c3 4 4.5 7 4.5 10a4.5 4.5 0 0 1-9 0c0-3 1.5-6 4.5-10z" fill="#fffbe9"/>
+      <rect x="36" y="46" width="6" height="78" rx="2" fill="#e9e2d0"/><rect x="78" y="46" width="6" height="78" rx="2" fill="#e9e2d0"/>
+      <path d="M32 124h56l4 10H28z" fill="#e9e2d0"/>
+    </symbol>
+  </defs>
+</svg>
+
+<main id="app">
   <header class="bar">
-    <div class="brand"><img src="/icons/icon-192.png" alt=""><span>Lantern</span></div>
+    <div class="brand"><svg class="lantern" aria-hidden="true"><use href="#lantern"/></svg><span>Lantern</span></div>
     <div id="topActions" hidden>
-      <button type="button" class="iconbtn" id="menuBtn" aria-haspopup="true" aria-expanded="false" aria-label="Menu">☰</button>
+      <button type="button" class="iconbtn" id="menuBtn" aria-expanded="false" aria-controls="menu">
+        <span aria-hidden="true">☰</span><span>Menu</span></button>
     </div>
   </header>
   <div class="menu" id="menu" hidden>
-    <button type="button" id="mAlerts">🔔 Alerts on this phone</button>
-    <button type="button" id="mNewChat">💬 New chat</button>
-    <a href="/api/export" download>⬇ Download my data</a>
-    <button type="button" id="mLogout">↩ Sign out</button>
+    <button type="button" id="mKeep" hidden>Keep my list (free account)</button>
+    <button type="button" id="mAlerts">Alerts on this phone</button>
+    <button type="button" id="mNewChat">Start a new chat</button>
+    <a href="/api/export" download>Download my data</a>
+    <button type="button" id="mLogout">Sign out</button>
   </div>
 
-  <!-- ===== welcome (signed out) ===== -->
-  <section id="welcome" hidden>
-    <h1>Is anything you own under a safety recall?</h1>
-    <p class="lead">About 1 in 5 cars in the U.S. has a safety recall that was never fixed. Lantern checks the official
-      lists for your car and household products every day, tells you in plain words, and helps you get the free fix.</p>
-    <div class="card">
+  <!-- ===== welcome (signed out): a lantern in the night ===== -->
+  <section id="welcome" hidden aria-labelledby="welcomeTitle">
+    <div class="hero" aria-hidden="true">
+      <div class="pool"></div>
+      <span class="mote" style="--dx:-46px; --d:6.5s; --delay:0s"></span>
+      <span class="mote" style="--dx:38px; --d:7.5s; --delay:1.2s"></span>
+      <span class="mote" style="--dx:-18px; --d:5.8s; --delay:2.4s"></span>
+      <span class="mote" style="--dx:60px; --d:8s; --delay:3.1s"></span>
+      <span class="mote" style="--dx:-70px; --d:7s; --delay:4.2s"></span>
+      <span class="mote" style="--dx:12px; --d:6.2s; --delay:5s"></span>
+      <svg class="lantern" viewBox="0 0 120 160"><use href="#lantern"/></svg>
+    </div>
+    <h1 id="welcomeTitle" class="reveal" style="--i:1">Is anything you own under a safety recall?</h1>
+    <p class="lead reveal" style="--i:2">About 1 in 5 cars on U.S. roads has a safety recall that was never fixed.
+      Lantern checks the U.S. government's official recall lists for your car and household things every day,
+      explains them in plain words, and helps you get them fixed.</p>
+    <div class="card reveal" style="--i:3">
       <form id="startForm" novalidate>
-        <div class="seg" role="tablist">
-          <button type="button" class="on" data-mode="ymm" role="tab">Year, make, model</button>
-          <button type="button" data-mode="vin" role="tab">VIN</button>
+        <div class="seg" role="group" aria-label="What do you want to check?">
+          <button type="button" data-kind="vehicle" aria-pressed="true">A car</button>
+          <button type="button" data-kind="product" aria-pressed="false">Baby &amp; home</button>
         </div>
-        <div id="startYmm" class="grid3">
-          <input id="sYear" inputmode="numeric" maxlength="4" placeholder="Year" aria-label="Year">
-          <input id="sMake" placeholder="Make" aria-label="Make" autocapitalize="words">
-          <input id="sModel" placeholder="Model" aria-label="Model" autocapitalize="words">
+        <div data-part="vehicle">
+          <div class="grid3" id="startYmm">
+            <label class="field">Year<input name="year" inputmode="numeric" maxlength="4" placeholder="2018" autocomplete="off"></label>
+            <label class="field">Make<input name="make" placeholder="Toyota" autocapitalize="words" autocomplete="off"></label>
+            <label class="field">Model<input name="model" placeholder="Camry" autocapitalize="words" autocomplete="off"></label>
+          </div>
+          <div id="startVin" hidden>
+            <label class="field">Car ID number (VIN)<input name="vin" maxlength="20" placeholder="17 letters and numbers" autocapitalize="characters" spellcheck="false" autocomplete="off"></label>
+            <p class="hint">It's on your registration or insurance card, and on the dashboard where it meets the windshield (driver's side).</p>
+          </div>
+          <button type="button" class="textbtn" id="startVinToggle" aria-expanded="false">Use the car's ID number (VIN) instead</button>
         </div>
-        <div id="startVin" hidden>
-          <input id="sVin" maxlength="20" placeholder="17-character VIN" aria-label="VIN" autocapitalize="characters" spellcheck="false">
-          <p class="hint">On your registration or insurance card, or the dashboard by the windscreen.</p>
+        <div data-part="product" hidden class="stack">
+          <label class="field">What is it?<input name="product" maxlength="80" placeholder="Crib, stroller, high chair, space heater…" autocomplete="off"></label>
+          <div class="grid2">
+            <label class="field">Brand<input name="brand" maxlength="60" placeholder="e.g. Graco" autocomplete="off"></label>
+            <label class="field">Model <span class="muted">(optional)</span><input name="pmodel" maxlength="60" autocomplete="off"></label>
+          </div>
+          <p class="note">Child car seats aren't checked yet. Check them at <a href="https://www.nhtsa.gov/recalls" target="_blank" rel="noopener noreferrer" style="color:#2f5d50">nhtsa.gov/recalls</a>.</p>
         </div>
-        <div style="height:12px"></div>
-        <button class="primary" id="startBtn" type="submit">Check my car</button>
+        <div style="height:14px"></div>
+        <button class="primary" id="startBtn" type="submit">Check for recalls</button>
         <div class="error" id="startError" role="alert"></div>
       </form>
       <div class="or">or</div>
-      <button class="secondary" id="demoBtn" type="button">See a demo household</button>
+      <button class="secondary" id="demoBtn" type="button">See an example household</button>
     </div>
-    <div class="trust">
-      <div>Official data from NHTSA and the CPSC, checked daily</div>
-      <div>No sign-up needed. No phone number, no email</div>
-      <div>Everything it remembers is a file you can see, edit and delete</div>
-    </div>
+    <ul class="trust reveal" style="--i:4">
+      <li>Uses the U.S. government's official recall lists, checked every day</li>
+      <li>No sign-up, no phone number, no email</li>
+      <li>Lantern never contacts anyone for you</li>
+    </ul>
+    <h2 class="reveal" style="--i:5">How it works</h2>
+    <ol class="how reveal" style="--i:6; padding:0">
+      <li>Tell Lantern what you own: your car, and things like a crib or a space heater.</li>
+      <li>Every day it checks the official lists from NHTSA (cars) and the CPSC (household products).</li>
+      <li>If something is recalled, it tells you what's wrong, what to do, and helps you get the free fix.</li>
+    </ol>
+    <p class="center"><button type="button" class="textbtn" data-learn="what">What is a safety recall?</button></p>
     <details class="account">
-      <summary>Have an account? Sign in</summary>
+      <summary>Already have an account? Sign in</summary>
       <form id="authForm" class="stack" style="margin-top:10px" autocomplete="on">
-        <input id="username" placeholder="Username" autocomplete="username" maxlength="64" required>
-        <input id="password" type="password" placeholder="Password (8+ characters)" autocomplete="current-password" maxlength="256" required>
-        <div style="display:flex; gap:8px">
+        <label class="field">Username<input id="username" autocomplete="username" maxlength="64" required></label>
+        <label class="field">Password<input id="password" type="password" autocomplete="current-password" maxlength="256" required></label>
+        <div class="grid2">
           <button type="submit" class="secondary">Sign in</button>
           <button type="button" class="secondary" id="registerBtn">Create account</button>
         </div>
@@ -228,108 +455,210 @@
     </details>
   </section>
 
-  <!-- ===== home: what needs attention ===== -->
-  <section id="home" hidden>
+  <!-- ===== home ===== -->
+  <section id="home" hidden aria-label="Home">
     <div id="statusBox"></div>
-    <div class="stack" id="callouts" style="margin-top:12px"></div>
-    <div class="stack" id="attention" style="margin-top:12px"></div>
+    <p class="watching" id="watching" hidden><span class="dot" aria-hidden="true"></span><span id="watchingText"></span></p>
+    <div class="stack" id="attention" style="margin-top:14px"></div>
     <details class="done" id="doneBox" hidden><summary id="doneSummary"></summary><div class="stack" id="doneList"></div></details>
+    <div class="stack" id="callouts" style="margin-top:16px"></div>
     <p class="hint" id="homeNote"></p>
   </section>
 
   <!-- ===== my stuff ===== -->
-  <section id="stuff" hidden>
+  <section id="stuff" hidden aria-labelledby="stuffTitle">
+    <h1 id="stuffTitle" style="font-size:1.5rem">My stuff</h1>
+    <p class="hint">Everything Lantern watches. Each thing is a small file you can see, change or download.</p>
     <h2>Cars</h2>
     <div class="stack" id="carList"></div>
-    <div class="card" style="margin-top:12px">
-      <form id="addCar" novalidate>
-        <div class="seg"><button type="button" class="on" data-mode="ymm">Year, make, model</button><button type="button" data-mode="vin">VIN</button></div>
+    <details class="more card" style="margin-top:12px" id="addCarBox">
+      <summary>+ Add a car</summary>
+      <form id="addCar" novalidate style="margin-top:8px">
         <div class="grid3" data-part="ymm">
-          <input name="year" inputmode="numeric" maxlength="4" placeholder="Year" aria-label="Year">
-          <input name="make" placeholder="Make" aria-label="Make" autocapitalize="words">
-          <input name="model" placeholder="Model" aria-label="Model" autocapitalize="words">
+          <label class="field">Year<input name="year" inputmode="numeric" maxlength="4" placeholder="2018"></label>
+          <label class="field">Make<input name="make" placeholder="Toyota" autocapitalize="words"></label>
+          <label class="field">Model<input name="model" placeholder="Camry" autocapitalize="words"></label>
         </div>
-        <div data-part="vin" hidden><input name="vin" maxlength="20" placeholder="17-character VIN" aria-label="VIN" autocapitalize="characters" spellcheck="false"></div>
-        <div style="height:10px"></div>
+        <div data-part="vin" hidden><label class="field">Car ID number (VIN)<input name="vin" maxlength="20" placeholder="17 letters and numbers" autocapitalize="characters" spellcheck="false"></label></div>
+        <button type="button" class="textbtn" data-vin-toggle aria-expanded="false" style="justify-self:start">Use the VIN instead</button>
         <button class="primary" type="submit">Add car</button>
         <div class="error" role="alert"></div>
       </form>
-    </div>
-    <h2>Household products</h2>
+    </details>
+    <h2>Baby &amp; home</h2>
     <div class="stack" id="productList"></div>
-    <div class="card" style="margin-top:12px">
-      <form id="addProduct" class="stack" novalidate>
-        <input name="product" placeholder="What is it? (crib, stroller, space heater…)" maxlength="80" aria-label="Product">
-        <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px">
-          <input name="brand" placeholder="Brand" maxlength="60" aria-label="Brand">
-          <input name="model" placeholder="Model (optional)" maxlength="60" aria-label="Model">
+    <details class="more card" style="margin-top:12px" id="addProductBox">
+      <summary>+ Add a product</summary>
+      <form id="addProduct" novalidate style="margin-top:8px">
+        <label class="field">What is it?<input name="product" maxlength="80" placeholder="Crib, stroller, space heater…"></label>
+        <div class="grid2">
+          <label class="field">Brand<input name="brand" maxlength="60"></label>
+          <label class="field">Model <span class="muted">(optional)</span><input name="model" maxlength="60"></label>
         </div>
         <button class="primary" type="submit">Add product</button>
         <div class="error" role="alert"></div>
+        <p class="hint">Child car seats and tires aren't checked yet: check them at <a href="https://www.nhtsa.gov/recalls" target="_blank" rel="noopener noreferrer">nhtsa.gov/recalls</a>.</p>
       </form>
-      <p class="hint">Child car seats and tires aren't checked yet.</p>
-    </div>
-    <p class="hint" style="margin-top:20px">Everything Lantern remembers is here as plain files.
-      <a href="/api/export" download>Download everything</a>.</p>
+    </details>
+    <p class="hint" style="margin-top:24px"><a href="/api/export" download>Download everything Lantern keeps about you</a> (a zip of plain files).</p>
   </section>
 
   <!-- ===== ask ===== -->
-  <section id="ask" hidden>
-    <div id="log" aria-live="polite"></div>
+  <section id="ask" hidden aria-label="Ask">
+    <div id="log" role="log" aria-live="polite" aria-relevant="additions"></div>
     <div class="suggest" id="suggest"></div>
     <form class="composer" id="chatForm">
       <div class="row">
-        <button type="button" class="round mic" id="micBtn" aria-label="Speak" title="Speak" hidden>🎤</button>
-        <textarea id="msg" rows="1" maxlength="4000" placeholder="Ask about your car or things…" aria-label="Message"></textarea>
-        <button class="round" id="sendBtn" type="submit" aria-label="Send">➤</button>
+        <button type="button" class="round mic" id="micBtn" aria-label="Speak your question" aria-pressed="false" hidden>
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v4"/></svg></button>
+        <label class="sr-only" for="msg">Your question</label>
+        <textarea id="msg" rows="1" maxlength="4000" placeholder="Ask about your car or things…"></textarea>
+        <button class="round" id="sendBtn" type="submit" aria-label="Send">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M3 20l18-8L3 4v6l12 2-12 2z"/></svg></button>
       </div>
       <div class="toggles">
         <label id="speakToggle" hidden><input type="checkbox" id="speakAnswers"> Read answers aloud</label>
-        <label><input type="checkbox" id="escalate"> Think harder<span id="ultraLeft"></span></label>
+        <label><input type="checkbox" id="escalate"> Take more time to think<span id="ultraLeft" class="sr-only"></span></label>
       </div>
-      <p class="hint" id="voiceNote" hidden>Voice uses your browser's own speech service (in Chrome that's Google's).</p>
+      <p class="hint" id="voiceNote" hidden>Voice uses your browser's own speech service (in Chrome, that's Google's). Typing works everywhere.</p>
     </form>
   </section>
 
-  <dialog id="fixDialog">
-    <h3 id="fixTitle" style="margin-top:0"></h3>
-    <div id="fixWhere">
-      <p class="hint" id="fixWhy"></p>
-      <form id="fixForm" style="display:flex; gap:8px; margin-top:8px">
-        <input id="fixLocation" maxlength="80" placeholder="Your city or ZIP code" aria-label="City or ZIP code">
-        <button class="secondary" type="submit" style="width:auto">Find</button>
-      </form>
-      <div class="stack" id="fixDealers" style="margin-top:10px"></div>
+  <!-- ===== learn ===== -->
+  <section id="learn" hidden aria-labelledby="learnTitle">
+    <h1 id="learnTitle" style="font-size:1.5rem">About safety recalls</h1>
+    <p class="hint" style="margin-bottom:14px">Short answers, with links to the official sources.</p>
+    <div class="faq stack" id="faq">
+      <details id="learn-what"><summary>What is a safety recall?</summary><div class="a">
+        <p>When a car, a car part or a household product turns out to have a safety defect, or doesn't meet U.S. safety
+          standards, the maker announces a recall and has to offer owners a fix. For cars this is overseen by NHTSA, the
+          U.S. road safety agency. For most household products it's the Consumer Product Safety Commission (CPSC).</p>
+        <p class="src">Sources: <a href="https://www.nhtsa.gov/recalls" target="_blank" rel="noopener noreferrer">NHTSA recalls</a> ·
+          <a href="https://www.cpsc.gov/Recalls" target="_blank" rel="noopener noreferrer">CPSC recalls</a></p></div></details>
+      <details id="learn-free"><summary>Is the fix really free?</summary><div class="a">
+        <p><strong>Cars:</strong> for most cars, yes. The maker pays for the recall repair at any authorized dealer for
+          your brand, whether you bought the car new or used, and not just the one that sold it.</p>
+        <p>By law the free repair may not apply if the car was first sold more than 15 years before the recall. Makers
+          often fix older cars anyway, so ask the dealer.</p>
+        <p><strong>Products:</strong> the company offers a remedy in the recall notice, usually a refund, a repair or a
+          replacement.</p>
+        <p class="src">Sources: <a href="https://www.kbb.com/ownership-faq/car-recall-questions/" target="_blank" rel="noopener noreferrer">Kelley Blue Book recall FAQ</a> ·
+          <a href="https://www.law.cornell.edu/uscode/text/49/30120" target="_blank" rel="noopener noreferrer">49 U.S.C. § 30120</a> ·
+          <a href="https://www.cpsc.gov/Recalls" target="_blank" rel="noopener noreferrer">CPSC recalls</a></p></div></details>
+      <details id="learn-park_it"><summary>What does "Do not drive" mean?</summary><div class="a">
+        <p>The maker and NHTSA say the defect is dangerous enough that the car shouldn't be driven at all until it's
+          repaired. Call a dealer for your brand and ask about a tow or a mobile repair.</p>
+        <p>Not sure if yours was already fixed? The official VIN check shows it, and so can any dealer for your brand.</p>
+        <p class="src">Sources: <a href="https://www.nhtsa.gov/recalls" target="_blank" rel="noopener noreferrer">NHTSA recalls</a> ·
+          <a href="https://www.carpro.com/blog/nhtsa-updates-recall-website-to-include-urgent-recalls" target="_blank" rel="noopener noreferrer">CarPro on NHTSA's urgent recall alerts</a></p></div></details>
+      <details id="learn-park_outside"><summary>What does "Park outside" mean?</summary><div class="a">
+        <p>There's a risk of fire, even when the car is switched off. Park it outside, away from garages and buildings,
+          until it's repaired.</p>
+        <p class="src">Source: <a href="https://www.carpro.com/blog/nhtsa-updates-recall-website-to-include-urgent-recalls" target="_blank" rel="noopener noreferrer">CarPro on NHTSA's urgent recall alerts</a></p></div></details>
+      <details id="learn-stop_using"><summary>What does "Stop using" mean?</summary><div class="a">
+        <p>The official recall notice tells owners to stop using the product right away. The notice also says how to get
+          the remedy, and Lantern shows it under "What to do".</p>
+        <p class="src">Source: the CPSC notice for each recall (linked on every recall).</p></div></details>
+      <details id="learn-vin"><summary>What's a VIN, and where do I find it?</summary><div class="a">
+        <p>It's your car's ID number: 17 letters and numbers. You'll find it on your registration or insurance card, on
+          the dashboard where it meets the windshield (driver's side, seen from outside), and on the driver's door frame.</p>
+        <p class="src">Source: <a href="https://knowhow.napaonline.com/where-is-my-vin-number/" target="_blank" rel="noopener noreferrer">NAPA: where is my VIN?</a></p></div></details>
+      <details id="learn-exact"><summary>Why can't Lantern tell if my car was already fixed?</summary><div class="a">
+        <p>The government's recall list is by make, model and year. Whether your particular car has been repaired is
+          only shown by the <a href="https://www.nhtsa.gov/recalls" target="_blank" rel="noopener noreferrer">official VIN check</a>,
+          or by any dealer for your brand. If it was fixed, tap "A dealer fixed this" and Lantern stops warning you.</p></div></details>
+      <details id="learn-used"><summary>I bought it used. Does the recall still apply?</summary><div class="a">
+        <p>Yes. A recall stays with the car. If the last owner never had it fixed, you can get the repair, and for most
+          cars it's free.</p>
+        <p class="src">Source: <a href="https://www.kbb.com/ownership-faq/car-recall-questions/" target="_blank" rel="noopener noreferrer">Kelley Blue Book recall FAQ</a></p></div></details>
+      <details id="learn-seats"><summary>What about child car seats and tires?</summary><div class="a">
+        <p>Lantern doesn't check them yet. Check them at <a href="https://www.nhtsa.gov/recalls" target="_blank" rel="noopener noreferrer">nhtsa.gov/recalls</a>.</p></div></details>
+      <details id="learn-ai"><summary>Who writes the plain-English summaries?</summary><div class="a">
+        <p>NVIDIA Nemotron, an open AI model running on Nebius Token Factory, rewrites each official notice in everyday
+          words, using only what the notice says. The official notice is always one tap away, under the summary.</p></div></details>
+      <details id="learn-data"><summary>What happens to my data?</summary><div class="a">
+        <p>Your list is kept as plain files, and you can download or delete it any time. To check recalls, Lantern sends
+          only a make, model and year (or a VIN) to NHTSA. Chat messages go to Nebius Token Factory to write replies,
+          and dealer searches go to Tavily. Lantern never contacts anyone for you.</p>
+        <p>Without an account, your list is kept for 7 days. A free account keeps it.</p></div></details>
     </div>
-    <p class="hint" id="fixContact"></p>
-    <h4 style="margin:16px 0 6px">Your message <span class="muted" style="font-weight:normal">(edit it if you like)</span></h4>
-    <textarea id="fixMessage" rows="9" aria-label="Message"></textarea>
-    <p class="hint">Lantern never sends anything for you. Pick how you want to send it:</p>
-    <div class="actions" id="fixSend"></div>
-    <div style="margin-top:14px"><button type="button" class="secondary" id="fixClose">Close</button></div>
+  </section>
+
+  <dialog id="fixDialog" aria-labelledby="fixTitle">
+    <div class="dhead"><h2 id="fixTitle"></h2><button type="button" class="iconbtn" id="fixClose" aria-label="Close">✕</button></div>
+    <div class="dbody">
+      <div id="fixWhere" class="stack">
+        <p class="hint" style="margin:0">Recall repairs are free at any authorized dealer for this brand. Lantern can look for one near you.</p>
+        <form id="fixForm" style="display:flex; gap:8px; align-items:flex-end">
+          <label class="field" style="flex:1">Your city or ZIP code<input id="fixLocation" maxlength="80" autocomplete="postal-code"></label>
+          <button class="secondary" type="submit" style="width:auto">Find</button>
+        </form>
+        <div class="stack" id="fixDealers" aria-live="polite"></div>
+      </div>
+      <div id="fixContact" class="note" hidden></div>
+      <label class="field">Your message <span class="muted" style="font-weight:normal">(you can change it)</span>
+        <textarea id="fixMessage" rows="8"></textarea></label>
+      <p class="hint" style="margin:0">Lantern never sends anything for you. Send it yourself:</p>
+      <div class="actions" id="fixSend"></div>
+    </div>
   </dialog>
 
-  <dialog id="editor">
-    <h3 id="edTitle" style="margin-top:0"></h3>
-    <p class="hint">This is the actual file Lantern keeps. Edit the values after the colons, or the notes below the second ---.</p>
-    <textarea id="edText" rows="14" spellcheck="false" aria-label="File"></textarea>
-    <div class="error" id="edError" role="alert"></div>
-    <div style="display:flex; gap:8px"><button type="button" class="primary" id="edSave">Save</button>
-      <button type="button" class="secondary" id="edCancel">Cancel</button></div>
+  <dialog id="keepDialog" aria-labelledby="keepTitle">
+    <div class="dhead"><h2 id="keepTitle">Keep your list</h2><button type="button" class="iconbtn" id="keepClose" aria-label="Close">✕</button></div>
+    <form class="dbody" id="keepForm">
+      <p style="margin:0">Without an account your list is deleted after 7 days. Pick a username and password to keep it.
+        No email or phone number needed.</p>
+      <label class="field">Username<input id="keepUser" autocomplete="username" maxlength="64" required></label>
+      <label class="field">Password (8 or more characters)<input id="keepPass" type="password" autocomplete="new-password" maxlength="256" required></label>
+      <button class="primary" type="submit">Keep my list</button>
+      <div class="error" id="keepError" role="alert"></div>
+    </form>
+  </dialog>
+
+  <dialog id="editor" aria-labelledby="edTitle">
+    <div class="dhead"><h2 id="edTitle"></h2><button type="button" class="iconbtn" id="edClose" aria-label="Close">✕</button></div>
+    <div class="dbody">
+      <p class="hint" style="margin:0">Advanced: this is the actual file Lantern keeps. Change the values after the colons, or the notes below the second ---.</p>
+      <textarea id="edText" class="code" rows="12" spellcheck="false" aria-label="File contents"></textarea>
+      <div class="error" id="edError" role="alert"></div>
+      <button type="button" class="primary" id="edSave">Save</button>
+    </div>
   </dialog>
 </main>
 
-<nav class="tabbar" id="tabbar" hidden>
+<nav class="tabbar" id="tabbar" hidden aria-label="Sections">
   <div class="in">
-    <button type="button" data-tab="home"><span class="ic">🏠</span>Home<span class="count" id="homeCount" hidden></span></button>
-    <button type="button" data-tab="stuff"><span class="ic">🧰</span>My stuff</button>
-    <button type="button" data-tab="ask"><span class="ic">💬</span>Ask</button>
+    <button type="button" data-tab="home">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg>
+      <span>Home</span><span class="count" id="homeCount" hidden></span></button>
+    <button type="button" data-tab="stuff">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M3 7l9-4 9 4-9 4-9-4zM3 7v10l9 4 9-4V7M12 11v10"/></svg>
+      <span>My stuff</span></button>
+    <button type="button" data-tab="ask">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"/></svg>
+      <span>Ask</span></button>
+    <button type="button" data-tab="learn">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .9-1 1.6V14M12 17.5v.5"/></svg>
+      <span>Learn</span></button>
   </div>
 </nav>
+
+<div id="sweep" hidden role="status" aria-live="polite">
+  <div class="box">
+    <div class="beam-wrap" aria-hidden="true">
+      <div class="ring"></div><div class="ring r2"></div><div class="ring r3"></div><div class="beam"></div>
+      <svg class="lantern" viewBox="0 0 120 160"><use href="#lantern"/></svg>
+    </div>
+    <ol id="sweepSteps"></ol>
+  </div>
+</div>
+<div id="toast" role="status" aria-live="polite" hidden></div>
 
 <script>
 const $ = (id) => document.getElementById(id);
 let me = null, report = null, pushInfo = null, installPrompt = null;
+const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+const touch = window.matchMedia("(pointer: coarse)").matches;
 
 // ---- helpers --------------------------------------------------------------------------------
 async function api(path, options = {}) {
@@ -364,10 +693,23 @@ function button(label, cls, onClick) {
   b.addEventListener("click", onClick);
   return b;
 }
-function toast(text) {
-  const t = el("div", "toast", text);
-  document.body.appendChild(t);
-  setTimeout(() => t.remove(), 2600);
+function lanternIcon(cls) {
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("viewBox", "0 0 120 160"); svg.setAttribute("aria-hidden", "true"); svg.classList.add("lantern");
+  if (cls) svg.classList.add(cls);
+  const use = document.createElementNS("http://www.w3.org/2000/svg", "use");
+  use.setAttribute("href", "#lantern"); svg.appendChild(use);
+  return svg;
+}
+let toastTimer = null;
+function toast(text, undo) {
+  const t = $("toast");
+  t.hidden = true; void t.offsetWidth;   // restart the entrance animation
+  t.replaceChildren(el("span", "", text));
+  if (undo) t.appendChild(button("Undo", "", () => { t.hidden = true; undo(); }));
+  t.hidden = false;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { t.hidden = true; }, undo ? 7000 : 4500);
 }
 function store(key, value) { try { value === undefined ? localStorage.removeItem(key) : localStorage.setItem(key, value); } catch {} }
 function stored(key) { try { return localStorage.getItem(key); } catch { return null; } }
@@ -377,27 +719,74 @@ function sentence(text, max = 220) {
   const cut = t.slice(0, max);
   return cut.slice(0, Math.max(cut.lastIndexOf(". ") + 1, cut.lastIndexOf(" "))) + "…";
 }
+function transition(update) {
+  if (document.startViewTransition && !reduceMotion) document.startViewTransition(update); else update();
+}
+// A small burst of light from an element (marking something fixed).
+function sparks(from) {
+  if (reduceMotion || !from) return;
+  const r = from.getBoundingClientRect(), cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+  for (let i = 0; i < 14; i++) {
+    const s = el("span", "spark"), a = (Math.PI * 2 * i) / 14, d = 40 + Math.random() * 46;
+    s.style.left = cx + "px"; s.style.top = cy + "px";
+    s.style.setProperty("--sx", Math.cos(a) * d + "px"); s.style.setProperty("--sy", Math.sin(a) * d - 20 + "px");
+    document.body.appendChild(s);
+    setTimeout(() => s.remove(), 900);
+  }
+}
+
+// ---- the loading sweep: what Lantern is doing while it checks --------------------------------
+const STEPS = {
+  vehicle: ["Looking up your car", "Asking NHTSA for its recalls", "Writing plain-English summaries with NVIDIA Nemotron"],
+  product: ["Reading the CPSC's list of product recalls", "Matching it to your product with Nemotron", "Writing a plain-English summary"],
+  demo: ["Setting up an example household", "Asking NHTSA about two cars", "Checking the CPSC for a crib mattress and a heater",
+         "Writing plain-English summaries with NVIDIA Nemotron"],
+};
+function startSweep(kind) {
+  const list = $("sweepSteps"), steps = STEPS[kind];
+  list.replaceChildren(...steps.map(s => el("li", "", s + "…")));
+  $("sweep").hidden = false;
+  let i = 0;
+  const mark = () => [...list.children].forEach((li, j) => { li.className = j < i ? "done" : j === i ? "now" : ""; });
+  mark();
+  const timer = setInterval(() => { if (i < steps.length - 1) { i++; mark(); } }, 1700);
+  return async (ok) => {
+    clearInterval(timer);
+    if (ok) { i = steps.length; mark(); await new Promise(r => setTimeout(r, reduceMotion ? 0 : 450)); }
+    $("sweep").hidden = true;
+  };
+}
 
 // ---- views ----------------------------------------------------------------------------------
-const TABS = ["home", "stuff", "ask"];
+const TABS = ["home", "stuff", "ask", "learn"];
+function setNight(on) { document.body.classList.toggle("night", on); }
 function showWelcome(message = "") {
   me = null;
-  ["home", "stuff", "ask"].forEach(t => $(t).hidden = true);
+  TABS.forEach(t => $(t).hidden = true);
   $("welcome").hidden = false; $("tabbar").hidden = true; $("topActions").hidden = true;
+  setNight(true);
   $("authError").textContent = message;
 }
 function showTab(name) {
   if (!TABS.includes(name)) name = "home";
-  TABS.forEach(t => $(t).hidden = t !== name);
-  document.querySelectorAll("#tabbar button").forEach(b => b.classList.toggle("on", b.dataset.tab === name));
-  if (location.hash !== "#" + name) history.replaceState(null, "", "#" + name);
+  if (!me) { showWelcome(); return; }
+  transition(() => {
+    setNight(false);
+    $("welcome").hidden = true;
+    TABS.forEach(t => $(t).hidden = t !== name);
+    document.querySelectorAll("#tabbar button").forEach(b => {
+      if (b.dataset.tab === name) b.setAttribute("aria-current", "page"); else b.removeAttribute("aria-current");
+    });
+    if (location.hash !== "#" + name) history.replaceState(null, "", "#" + name);
+    window.scrollTo(0, 0);
+  });
   if (name === "stuff") loadStuff();
-  if (name === "ask") { loadHistory(); setTimeout(() => $("msg").focus(), 50); }
-  window.scrollTo(0, 0);
+  if (name === "ask") { loadHistory(); if (!touch) setTimeout(() => $("msg").focus(), 60); }
 }
 function showApp(data) {
   me = data;
-  $("welcome").hidden = true; $("tabbar").hidden = false; $("topActions").hidden = false;
+  $("tabbar").hidden = false; $("topActions").hidden = false;
+  $("mKeep").hidden = me.kind !== "guest";
   $("ultraLeft").textContent = me.ultra_left_today === null ? "" : ` (${me.ultra_left_today} left today)`;
   const want = (location.hash || "#home").slice(1);
   showTab(want === "attention" ? "home" : want);
@@ -409,85 +798,138 @@ async function refreshMe() {
 }
 document.querySelectorAll("#tabbar button").forEach(b => b.addEventListener("click", () => showTab(b.dataset.tab)));
 window.addEventListener("hashchange", () => { if (me) showTab(location.hash.slice(1).replace("attention", "home")); });
+function openLearn(topic) {
+  if (!me) {   // signed out: the Learn page on its own, with a way back
+    setNight(false);
+    $("welcome").hidden = true; TABS.forEach(t => $(t).hidden = t !== "learn");
+    if (!$("learnBack")) {
+      const back = button("‹ Back", "textbtn", () => { showWelcome(); window.scrollTo(0, 0); });
+      back.id = "learnBack";
+      $("learn").prepend(back);
+    }
+    $("learnBack").hidden = false;
+  } else {
+    if ($("learnBack")) $("learnBack").hidden = true;
+    showTab("learn");
+  }
+  const d = $("learn-" + topic);
+  if (d) { d.open = true; setTimeout(() => { d.scrollIntoView({ block: "start", behavior: reduceMotion ? "auto" : "smooth" }); d.querySelector("summary").focus({ preventScroll: true }); }, 60); }
+}
+document.querySelectorAll("[data-learn]").forEach(b => b.addEventListener("click", () => openLearn(b.dataset.learn)));
 
 // ---- menu -----------------------------------------------------------------------------------
+function closeMenu(returnFocus) {
+  $("menu").hidden = true; $("menuBtn").setAttribute("aria-expanded", "false");
+  if (returnFocus) $("menuBtn").focus();
+}
 $("menuBtn").addEventListener("click", (e) => {
   e.stopPropagation();
   const open = $("menu").hidden;
   $("menu").hidden = !open; $("menuBtn").setAttribute("aria-expanded", String(open));
+  if (open) $("menu").querySelector("button:not([hidden]), a").focus();
 });
-document.addEventListener("click", () => { $("menu").hidden = true; });
-$("mLogout").addEventListener("click", async () => { await api("/api/auth/logout", { method: "POST" }); $("log").replaceChildren(); showWelcome(); });
-$("mNewChat").addEventListener("click", async () => { await api("/api/reset", { method: "POST" }); $("log").replaceChildren(); showTab("ask"); });
-$("mAlerts").addEventListener("click", () => { showTab("home"); enableAlerts(); });
+document.addEventListener("click", (e) => { if (!$("menu").contains(e.target)) closeMenu(false); });
+document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !$("menu").hidden) closeMenu(true); });
+$("mLogout").addEventListener("click", async () => { closeMenu(); await api("/api/auth/logout", { method: "POST" }); $("log").replaceChildren(); historyLoaded = false; showWelcome(); });
+$("mNewChat").addEventListener("click", async () => { closeMenu(); await api("/api/reset", { method: "POST" }); $("log").replaceChildren(); renderSuggestions(); showTab("ask"); });
+$("mAlerts").addEventListener("click", () => { closeMenu(); showTab("home"); enableAlerts(); });
+$("mKeep").addEventListener("click", () => { closeMenu(); openKeep(); });
 
-// ---- welcome: start with a car, or the demo ------------------------------------------------
-function segmented(form) {
-  form.querySelectorAll(".seg button").forEach(b => b.addEventListener("click", () => {
-    form.querySelectorAll(".seg button").forEach(x => x.classList.toggle("on", x === b));
-    form.dataset.mode = b.dataset.mode;
-    form.querySelectorAll("[data-part]").forEach(p => p.hidden = p.dataset.part !== b.dataset.mode);
-  }));
-  form.dataset.mode = "ymm";
-}
-segmented($("addCar"));
-document.querySelectorAll("#startForm .seg button").forEach(b => b.addEventListener("click", () => {
-  document.querySelectorAll("#startForm .seg button").forEach(x => x.classList.toggle("on", x === b));
-  $("startYmm").hidden = b.dataset.mode !== "ymm"; $("startVin").hidden = b.dataset.mode !== "vin";
-  $("startForm").dataset.mode = b.dataset.mode;
+// ---- keep my list (guest -> account) -----------------------------------------------------------
+function openKeep() { $("keepError").textContent = ""; $("keepDialog").showModal(); }
+$("keepClose").addEventListener("click", () => $("keepDialog").close());
+$("keepForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const { res, data } = await api("/api/auth/keep", { method: "POST", body: { username: $("keepUser").value, password: $("keepPass").value } });
+  if (!res.ok) { $("keepError").textContent = detail(data, "Couldn't create the account."); return; }
+  $("keepDialog").close(); store("demo"); me = data; $("mKeep").hidden = true;
+  toast(`Saved. Sign in as "${data.user_id}" on any device.`);
+  renderCallouts();
+});
+
+// ---- welcome: start with a car or a product, or the example -------------------------------------
+const start = $("startForm");
+start.dataset.kind = "vehicle"; start.dataset.vin = "0";
+start.querySelectorAll(".seg button").forEach(b => b.addEventListener("click", () => {
+  start.querySelectorAll(".seg button").forEach(x => x.setAttribute("aria-pressed", String(x === b)));
+  start.dataset.kind = b.dataset.kind;
+  start.querySelectorAll("[data-part]").forEach(p => p.hidden = p.dataset.part !== b.dataset.kind);
+  $("startBtn").textContent = b.dataset.kind === "vehicle" ? "Check for recalls" : "Check this product";
 }));
+function vinToggle(btn, ymm, vin, form) {
+  btn.dataset.label = btn.textContent;
+  btn.addEventListener("click", () => {
+    const useVin = form.dataset.vin !== "1";
+    form.dataset.vin = useVin ? "1" : "0";
+    ymm.hidden = useVin; vin.hidden = !useVin;
+    btn.setAttribute("aria-expanded", String(useVin));
+    btn.textContent = useVin ? "Use year, make and model instead" : btn.dataset.label;
+    (useVin ? vin : ymm).querySelector("input").focus();
+  });
+}
+vinToggle($("startVinToggle"), $("startYmm"), $("startVin"), start);
+const addCarForm = $("addCar");
+addCarForm.dataset.vin = "0";
+vinToggle(addCarForm.querySelector("[data-vin-toggle]"), addCarForm.querySelector("[data-part=ymm]"), addCarForm.querySelector("[data-part=vin]"), addCarForm);
 
 async function ensureSession() {
   if (me) return true;
   const { res, data } = await api("/api/me");
   if (res.ok) { me = data; return true; }
   const g = await api("/api/auth/guest", { method: "POST" });
-  if (!g.res.ok) throw new Error(detail(g.data, "Couldn't start a session."));
+  if (!g.res.ok) throw new Error(detail(g.data, "Couldn't start a session.") + (g.res.status === 429 ? " You can also sign in below." : ""));
   me = g.data;
   return true;
 }
-function carBody(mode, vin, year, make, model) {
-  if (mode === "vin") return { vin: vin.trim() };
-  return { year: parseInt(year, 10) || null, make: make.trim(), model: model.trim() };
+function carBody(form) {
+  if (form.dataset.vin === "1") return { vin: form.vin.value.trim() };
+  return { year: parseInt(form.year.value, 10) || null, make: form.make.value.trim(), model: form.model.value.trim() };
 }
 function carProblem(body) {
   if ("vin" in body) return body.vin ? "" : "Enter the 17-character VIN.";
-  if (!body.year || !body.make || !body.model) return "Enter the year, make and model (for example 2018 Honda Civic).";
+  if (!body.year || !body.make || !body.model) return "Enter the year, make and model (for example 2018 Toyota Camry).";
   return "";
 }
-$("startForm").addEventListener("submit", async (e) => {
+start.addEventListener("submit", async (e) => {
   e.preventDefault();
-  const body = carBody($("startForm").dataset.mode || "ymm", $("sVin").value, $("sYear").value, $("sMake").value, $("sModel").value);
-  const problem = carProblem(body);
+  const isCar = start.dataset.kind === "vehicle";
+  const body = isCar ? carBody(start) : { product: start.product.value.trim(), brand: start.brand.value.trim(), model: start.pmodel.value.trim() };
+  const problem = isCar ? carProblem(body) : (body.product ? "" : "Say what it is, for example: crib, stroller, space heater.");
   $("startError").textContent = problem;
   if (problem) return;
-  $("startBtn").disabled = true; $("startBtn").textContent = "Checking official recall lists…";
+  $("startBtn").disabled = true;
+  const done = startSweep(isCar ? "vehicle" : "product");
   try {
     await ensureSession();
-    const { res, data } = await api("/api/vehicles", { method: "POST", body });
-    if (!res.ok) throw new Error(detail(data, "Couldn't add that car."));
+    const { res, data } = await api(isCar ? "/api/vehicles" : "/api/products", { method: "POST", body });
+    if (!res.ok) throw new Error(detail(data, "Couldn't check that."));
+    await done(true);
     location.hash = "#home";
-    showApp(me); renderRecalls(data.recalls);
+    showApp(me); renderRecalls(data.recalls); focusStatus();
   } catch (err) {
+    await done(false);
     $("startError").textContent = err.message;
   } finally {
-    $("startBtn").disabled = false; $("startBtn").textContent = "Check my car";
+    $("startBtn").disabled = false;
   }
 });
 $("demoBtn").addEventListener("click", async () => {
-  $("demoBtn").disabled = true; $("demoBtn").textContent = "Loading the demo household…";
+  $("demoBtn").disabled = true;
+  const done = startSweep("demo");
   try {
     if (me) { await api("/api/auth/logout", { method: "POST" }); me = null; }
     await ensureSession();
     const { res, data } = await api("/api/demo", { method: "POST" });
-    if (!res.ok) throw new Error(detail(data, "Couldn't load the demo."));
+    if (!res.ok) throw new Error(detail(data, "Couldn't load the example."));
     store("demo", "1");
+    await done(true);
     location.hash = "#home";
-    showApp(me); renderRecalls(data);
+    showApp(me); renderRecalls(data); focusStatus();
   } catch (err) {
+    await done(false);
     $("startError").textContent = err.message;
   } finally {
-    $("demoBtn").disabled = false; $("demoBtn").textContent = "See a demo household";
+    $("demoBtn").disabled = false;
   }
 });
 async function signIn(path) {
@@ -498,66 +940,26 @@ async function signIn(path) {
 $("authForm").addEventListener("submit", (e) => { e.preventDefault(); signIn("/api/auth/login"); });
 $("registerBtn").addEventListener("click", () => { if ($("authForm").reportValidity()) signIn("/api/auth/register"); });
 
-// ---- home: what needs attention -------------------------------------------------------------
-const BADGE = { park_it: "Do not drive", park_outside: "Park outside" };
+// ---- home: what needs attention ----------------------------------------------------------------
+const BADGE = { park_it: "Do not drive", park_outside: "Park outside", stop_using: "Stop using" };
+const SEVERITY = { park_it: 0, park_outside: 1, stop_using: 1, "": 2 };
+function focusStatus() { const h = $("statusBox").querySelector("h1"); if (h) { h.setAttribute("tabindex", "-1"); h.focus({ preventScroll: true }); } }
 async function loadRecalls() {
-  const { res, data } = await api("/api/recalls");
+  let res, data;
+  try { ({ res, data } = await api("/api/recalls")); } catch { res = { ok: false, status: 0 }; }
   if (res.status === 401) { showWelcome("Your session ended. Start again or sign in."); return; }
-  if (res.ok) renderRecalls(data);
-  else $("homeNote").textContent = detail(data, "Couldn't check recalls right now.");
+  if (res.ok) { renderRecalls(data); return; }
+  const s = el("div", "status warn");
+  s.append(el("h1", "", "Couldn't check right now"),
+           el("p", "body", detail(data, "Lantern couldn't reach the recall lists just now.") + " Your list is safe."));
+  const row = el("div", "actions"); row.appendChild(button("Try again", "primary", loadRecalls)); s.appendChild(row);
+  $("statusBox").replaceChildren(s);
 }
 function flatten(r) {
   const out = [];
   for (const item of r.items) for (const rc of item.recalls) out.push({ item, rc });
-  const order = { park_it: 0, park_outside: 1, "": 2 };
-  return out.sort((a, b) => (order[a.rc.severity] - order[b.rc.severity]) || String(b.rc.date || "").localeCompare(String(a.rc.date || "")));
+  return out.sort((a, b) => (SEVERITY[a.rc.severity] - SEVERITY[b.rc.severity]) || String(b.rc.date || "").localeCompare(String(a.rc.date || "")));
 }
-function renderRecalls(r) {
-  report = r;
-  const all = flatten(r);
-  const open = all.filter(x => x.rc.status === "open"), done = all.filter(x => x.rc.status !== "open");
-  const urgent = open.filter(x => x.rc.severity);
-  const box = $("statusBox");
-  box.replaceChildren();
-  const s = el("div", "status");
-  if (!r.items.length) {
-    s.classList.add("warn");
-    s.append(el("div", "dot", "＋"), el("div"));
-    s.lastChild.append(el("div", "big", "Add the things you own"),
-                       el("div", "sub", "Add your car (or a VIN) and household products, and Lantern will watch them every day."));
-    const go = button("Add a car or product", "primary", () => showTab("stuff"));
-    go.style.marginTop = "10px"; s.lastChild.appendChild(go);
-  } else if (urgent.length) {
-    const first = urgent[0];
-    s.classList.add("danger");
-    s.append(el("div", "dot", "⚠"), el("div"));
-    s.lastChild.append(el("div", "big", first.rc.severity === "park_it" ? `Don't drive the ${first.item.name} until it's repaired`
-                                                                         : `Park the ${first.item.name} outside until it's repaired`),
-                       el("div", "sub", `${open.length} open recall${open.length === 1 ? "" : "s"} in total. Repairs are free.`));
-  } else if (open.length) {
-    s.classList.add("warn");
-    s.append(el("div", "dot", "●"), el("div"));
-    s.lastChild.append(el("div", "big", `${open.length} recall${open.length === 1 ? "" : "s"} may affect your things`),
-                       el("div", "sub", "Nothing urgent. The fixes are free."));
-  } else {
-    s.classList.add("ok");
-    s.append(el("div", "dot", "✓"), el("div"));
-    s.lastChild.append(el("div", "big", "All clear"),
-                       el("div", "sub", `No open recalls for your ${r.items.length} thing${r.items.length === 1 ? "" : "s"}. Lantern checks again every day.`));
-  }
-  box.appendChild(s);
-  $("attention").replaceChildren(...groupByItem(open).map(g => itemCard(g.item, g.recalls)));
-  $("doneBox").hidden = !done.length;
-  $("doneSummary").textContent = `Fixed or not yours (${done.length})`;
-  $("doneList").replaceChildren(...done.map(x => doneCard(x.item, x.rc)));
-  const notes = [r.note, stored("demo") ? "Demo household: made-up people, real recall data." : ""].filter(Boolean);
-  $("homeNote").textContent = notes.join(" ");
-  const count = $("homeCount");
-  count.hidden = !open.length; count.textContent = open.length;
-  renderCallouts();
-  if (!$("stuff").hidden) loadStuff();   // keep the per-item counts in step
-}
-const SEVERITY = { park_it: 0, park_outside: 1, "": 2 };
 function groupByItem(open) {
   const groups = new Map();
   for (const x of open) {
@@ -568,113 +970,196 @@ function groupByItem(open) {
   return [...groups.values()].sort((a, b) =>
     (SEVERITY[a.recalls[0].severity] - SEVERITY[b.recalls[0].severity]) || (b.recalls.length - a.recalls.length));
 }
-// NHTSA summaries open with "<Maker> is recalling certain 2004-2006 ... vehicles." Keep the part that says what's wrong.
-function plainSummary(text) {
-  const t = (text || "").replace(/\s+/g, " ").trim();
-  const rest = t.replace(/^[^.]*\bis recalling\b[^.]*\.\s*/i, "");
-  return rest.length > 20 ? rest : t;
+function makeOf(item) { return (item.name || "").replace(/^\d{4}\s+/, "").split(" ")[0] || "your brand's"; }
+function renderRecalls(r) {
+  const firstRender = !report;
+  report = r;
+  const all = flatten(r);
+  const open = all.filter(x => x.rc.status === "open"), done = all.filter(x => x.rc.status !== "open");
+  const urgent = open.filter(x => x.rc.severity);
+  const groups = groupByItem(open);
+  const s = el("div", "status");
+  if (!r.items.length) {
+    s.classList.add("neutral");
+    s.append(el("h1", "", "Add the things you own"),
+             el("p", "body", "Add your car and things like a crib or a space heater. Lantern checks them against the official recall lists every day."));
+    const row = el("div", "actions");
+    row.append(button("Add a car", "primary", () => { showTab("stuff"); $("addCarBox").open = true; addCarForm.year.focus(); }),
+               button("Add a product", "secondary", () => { showTab("stuff"); $("addProductBox").open = true; $("addProduct").product.focus(); }));
+    s.appendChild(row);
+  } else if (urgent.length) {
+    const top = urgent[0], it = top.item, sev = top.rc.severity;
+    const others = groups.length - 1;
+    s.classList.add("danger");
+    const title = sev === "park_it" ? `Cars like your ${it.name} have a "Do not drive" recall`
+               : sev === "park_outside" ? `Cars like your ${it.name} have a "Park outside" recall`
+               : `Stop using your ${it.name}`;
+    const body = sev === "stop_using"
+      ? "The official recall notice says to stop using it now. See what to do below."
+      : `${makeOf(it)} and the U.S. government say ${sev === "park_it" ? "not to drive these" : "to park these outside, away from buildings,"} until they're repaired. The repair is usually free. It may already be fixed on yours: check with your car's ID number (VIN) or ask any ${makeOf(it)} dealer.`;
+    s.append(el("h1", "", title), el("p", "body", body));
+    const row = el("div", "actions");
+    row.appendChild(button(it.kind === "vehicle" ? "Get it fixed" : "What to do", "primary", () => openFix(it)));
+    if (it.kind === "vehicle") row.appendChild(link("https://www.nhtsa.gov/recalls", "Check my VIN", "chipbtn"));
+    row.appendChild(button("What does this mean?", "chipbtn", () => openLearn(sev)));
+    s.appendChild(row);
+    if (others > 0) { const m = el("p", "body", `${others} more thing${others === 1 ? " needs" : "s need"} attention below.`); m.style.marginTop = "10px"; s.appendChild(m); }
+  } else if (open.length) {
+    s.classList.add("warn");
+    s.append(el("h1", "", `${open.length} recall${open.length === 1 ? "" : "s"} may affect your things`),
+             el("p", "body", "None of them says to stop driving or using something. The fixes are usually free."));
+  } else {
+    s.classList.add("ok");
+    s.appendChild(lanternIcon());
+    s.append(el("h1", "", "All clear"),
+             el("p", "body", `No open recalls for your ${r.items.length} thing${r.items.length === 1 ? "" : "s"}. Lantern checks again every day.`));
+  }
+  $("statusBox").replaceChildren(s);
+  const when = r.generated_at ? new Date(r.generated_at) : null;
+  $("watching").hidden = !r.items.length;
+  $("watchingText").textContent = `Watching ${r.items.length} thing${r.items.length === 1 ? "" : "s"} · last checked ` +
+    (when ? when.toLocaleString(undefined, { weekday: "short", hour: "numeric", minute: "2-digit" }) : "today");
+  $("attention").replaceChildren(...groups.map((g, i) => itemCard(g.item, g.recalls, firstRender ? i : -1)));
+  $("doneBox").hidden = !done.length;
+  $("doneSummary").textContent = `Fixed or doesn't apply (${done.length})`;
+  $("doneList").replaceChildren(...done.map(x => doneCard(x.item, x.rc)));
+  const notes = [r.note, stored("demo") ? "This is an example household: the people are made up, the recalls are real." : ""].filter(Boolean);
+  $("homeNote").textContent = notes.join(" ");
+  const count = $("homeCount");
+  count.hidden = !open.length;
+  count.replaceChildren(document.createTextNode(open.length), el("span", "sr-only", ` open recall${open.length === 1 ? "" : "s"}`));
+  renderCallouts();
+  if (!$("stuff").hidden) loadStuff();
 }
 function isPossible(item, rc) { return item.kind === "product" && rc.confirmed === false; }
 function badgeFor(item, rc) {
   if (isPossible(item, rc)) return el("span", "badge possible", "Possible match");
   return el("span", "badge " + rc.severity, BADGE[rc.severity] || (item.kind === "vehicle" ? "Recall" : "Product recall"));
 }
-function itemCard(item, recalls) {
+// NHTSA component codes like "AIR BAGS:FRONTAL:PASSENGER SIDE" -> "Air bags: frontal, passenger side"
+function componentLabel(rc) {
+  const parts = String(rc.title || "").split(":").map(s => s.trim().toLowerCase()).filter(Boolean);
+  if (!parts.length) return "Safety recall";
+  const head = parts[0].charAt(0).toUpperCase() + parts[0].slice(1);
+  return parts.length > 1 ? `${head}: ${parts.slice(1, 3).join(", ")}` : head;
+}
+function rowTitle(item, rc) {
+  if (rc.plain && rc.plain.title) return rc.plain.title;
+  return item.kind === "vehicle" ? componentLabel(rc) : sentence(String(rc.title).replace(/\s+Recalled\b.*$/i, ""), 70);
+}
+function itemCard(item, recalls, index) {
   const top = recalls[0];
-  const c = el("article", "card recall " + (isPossible(item, top) ? "possible" : top.severity));
+  const c = el("article", "card thing-card " + (isPossible(item, top) ? "possible" : top.severity));
+  if (index >= 0) { c.classList.add("reveal"); c.style.setProperty("--i", index); }
   const badges = el("div", "badges");
   badges.appendChild(badgeFor(item, top));
+  if (top.severity) badges.appendChild(button("What's this?", "textbtn why", () => openLearn(top.severity)));
   if (recalls.some(r => r.new)) badges.appendChild(el("span", "badge new", "New"));
   c.appendChild(badges);
-  c.appendChild(el("div", "item", item.name));
-  const headline = top.consequence ? sentence(top.consequence, 150) : sentence(item.kind === "vehicle" ? plainSummary(top.summary) : top.title, 150);
-  c.appendChild(el("div", "what", headline));
-  c.appendChild(el("div", "risk", recalls.length === 1 ? "1 open recall. The fix is free." : `${recalls.length} open recalls. The fixes are free.`));
+  c.appendChild(el("h2", "", item.name));
+  const headline = (top.plain && top.plain.what) || sentence(top.consequence || top.summary, 180);
+  c.appendChild(el("p", "headline", headline));
+  c.appendChild(el("p", "who", item.kind === "vehicle"
+    ? `Official recall${recalls.length === 1 ? "" : "s"} from ${makeOf(item)} and NHTSA, the U.S. road safety agency.`
+    : "Official recall from the CPSC, the U.S. product safety agency."));
   const list = el("div", "rlist");
-  recalls.forEach(rc => list.appendChild(recallRow(item, rc)));
+  recalls.forEach(rc => list.appendChild(recallRow(item, rc, top.severity)));
   c.appendChild(list);
-  const book = button(item.kind === "vehicle" ? "🔧 Book the free fix" : "Get the remedy", "primary", () => openFix(item));
-  book.style.marginTop = "12px";
-  c.appendChild(book);
-  if (item.kind === "vehicle") {
-    const v = el("div", "hint");
-    v.append("Repairs are free at any authorized dealer for this brand, even if you bought it used. Not sure if yours was already done? ",
-             link("https://www.nhtsa.gov/recalls", "Check your VIN"));
-    c.appendChild(v);
-  }
+  const row = el("div", "actions"); row.style.marginTop = "14px";
+  row.appendChild(button(item.kind === "vehicle" ? "Get it fixed for free" : "What to do", "primary", () => openFix(item)));
+  c.appendChild(row);
   return c;
 }
-function recallRow(item, rc) {
+function recallRow(item, rc, cardSeverity) {
   const d = el("details", "rrow");
   const s = el("summary");
-  if (rc.severity || isPossible(item, rc)) s.appendChild(badgeFor(item, rc));
-  s.appendChild(el("span", "rtitle", item.kind === "vehicle" ? rc.title : sentence(rc.title.replace(/\s+Recalled\b.*$/i, ""), 70)));
-  if (rc.date) s.appendChild(el("span", "rdate", rc.date.slice(0, 4)));
+  if (isPossible(item, rc) || (rc.severity && rc.severity !== cardSeverity)) s.appendChild(badgeFor(item, rc));
+  const t = el("span", "rtitle", rowTitle(item, rc));
+  t.appendChild(el("span", "rmeta", `Recall ${rc.id}${rc.date ? " · issued " + rc.date.slice(0, 4) : ""}`));
+  s.appendChild(t);
   d.appendChild(s);
   const fix = el("div", "fix");
-  fix.appendChild(el("div", "", item.kind === "vehicle" ? sentence(plainSummary(rc.summary), 320) : sentence(rc.summary, 320)));
-  if (rc.consequence) fix.appendChild(el("div", "", "Risk: " + sentence(rc.consequence, 240)));
-  if (rc.remedy) fix.appendChild(el("div", "", "Fix: " + sentence(rc.remedy, 320)));
-  if (item.kind === "product" && rc.contact) fix.appendChild(el("div", "muted", sentence(rc.contact, 240)));
-  if (isPossible(item, rc) && rc.why) fix.appendChild(el("div", "muted", "Why it may match: " + rc.why));
-  const off = el("div"); off.appendChild(link(rc.url, item.kind === "vehicle" ? "Official NHTSA notice" : "Official CPSC notice")); fix.appendChild(off);
+  const dl = el("dl");
+  const add = (term, text) => { if (text) { const g = el("div"); g.append(el("dt", "", term), el("dd", "", text)); dl.appendChild(g); } };
+  if (rc.plain) { add("What's wrong", rc.plain.what); add("What to do", rc.plain.todo); }
+  else { add("What's wrong", sentence(rc.consequence || rc.summary, 260)); add("What to do", sentence(rc.remedy, 260)); }
+  add("Cost", item.kind === "vehicle" ? `Usually free at any authorized ${makeOf(item)} dealer.` : (rc.remedy_options && rc.remedy_options.length ? rc.remedy_options.join(", ") : ""));
+  if (isPossible(item, rc) && rc.why) add("Why it may match", rc.why);
+  fix.appendChild(dl);
+  if (rc.plain) fix.appendChild(el("p", "ai", "Plain-English summary by NVIDIA Nemotron, from the official notice"));
+  const off = el("details", "official");
+  off.appendChild(el("summary", "", "Read the official notice"));
+  const ob = el("div", "body");
+  [rc.summary, rc.consequence && "Risk: " + rc.consequence, rc.remedy && "Remedy: " + rc.remedy, item.kind === "product" && rc.contact]
+    .filter(Boolean).forEach(x => ob.appendChild(el("p", "", sentence(x, 900))));
+  ob.appendChild(link(rc.url, item.kind === "vehicle" ? "Open the notice on nhtsa.gov" : "Open the notice on cpsc.gov"));
+  off.appendChild(ob);
+  fix.appendChild(off);
   const actions = el("div", "actions");
-  actions.append(button("✓ It's fixed", "chipbtn good", () => setStatus(item, rc, "fixed")),
-                 button("Not mine", "chipbtn", () => setStatus(item, rc, "not_mine")),
-                 button("Share", "chipbtn", () => share(item, rc, d)));
+  const fixedBtn = button(item.kind === "vehicle" ? "A dealer fixed this" : "It's been dealt with", "chipbtn good", () => setStatus(item, rc, "fixed", fixedBtn));
+  actions.append(fixedBtn,
+                 button(item.kind === "vehicle" ? "Doesn't apply to my car" : "Doesn't apply to mine", "chipbtn", () => setStatus(item, rc, "not_mine")),
+                 button("Share", "chipbtn", () => share(item, rc, fix)));
   fix.appendChild(actions);
   d.appendChild(fix);
   return d;
 }
 function doneCard(item, rc) {
   const c = el("div", "card");
-  c.appendChild(el("div", "", `${item.name}: ${rc.title}`));
-  c.appendChild(el("div", "hint", rc.status === "fixed" ? "Marked fixed" : "Marked not yours"));
-  c.appendChild(button("Undo", "textbtn", () => setStatus(item, rc, "open")));
+  c.appendChild(el("div", "", `${item.name}: ${rowTitle(item, rc)}`));
+  c.appendChild(el("div", "hint", rc.status === "fixed" ? "Marked fixed" : "Marked as not applying"));
+  c.appendChild(button("Move back to open", "textbtn", () => setStatus(item, rc, "open")));
   return c;
 }
-async function setStatus(item, rc, status) {
+async function setStatus(item, rc, status, origin) {
+  if (status === "fixed" && rc.severity === "park_it" &&
+      !confirm(`Did a dealer repair this recall on your ${item.name}? Only mark it fixed if it was repaired, or the official VIN check says so.`)) return;
   const { res, data } = await api("/api/recalls/status", { method: "POST", body: { kind: item.kind, slug: item.slug, recall_id: rc.id, status } });
   if (!res.ok) { toast(detail(data, "Couldn't update that.")); return; }
-  renderRecalls(data);
-  toast(status === "fixed" ? "Marked fixed. Nice." : status === "open" ? "Moved back to open." : "Hidden from your list.");
+  if (status === "fixed") sparks(origin);
+  transition(() => renderRecalls(data));
+  if (status === "open") toast("Moved back to open.");
+  else toast(status === "fixed" ? "Marked fixed. One less thing to worry about." : "Marked as not applying.", () => setStatus(item, rc, "open"));
 }
 function shareText(item, rc) {
-  const parts = [`Safety recall: ${item.name}`, item.kind === "vehicle" ? rc.title : sentence(rc.title, 120)];
-  if (rc.consequence) parts.push("Risk: " + sentence(rc.consequence, 160));
-  parts.push(item.kind === "vehicle" ? "The repair is free at any authorized dealer for the brand." : "Fix: " + sentence(rc.remedy, 160));
-  parts.push(rc.url);
+  const parts = [`Safety recall: ${item.name}`, rowTitle(item, rc)];
+  if (rc.plain) parts.push(rc.plain.what, rc.plain.todo);
+  else if (rc.consequence) parts.push("Risk: " + sentence(rc.consequence, 160));
+  parts.push("Official notice: " + rc.url);
   return parts.join("\n");
 }
-async function share(item, rc, card) {
+async function share(item, rc, container) {
   const text = shareText(item, rc);
   if (navigator.share) {
     try { await navigator.share({ title: "Safety recall: " + item.name, text }); return; } catch (e) { if (e.name === "AbortError") return; }
   }
-  let row = card.querySelector(".sharerow");
+  let row = container.querySelector(".sharerow");
   if (row) { row.remove(); return; }
-  row = el("div", "sharerow");
+  row = el("div", "actions sharerow");
   row.append(link("https://wa.me/?text=" + encodeURIComponent(text), "WhatsApp", "chipbtn"),
              link("sms:?&body=" + encodeURIComponent(text), "Text message", "chipbtn"),
              button("Copy", "chipbtn", async () => { try { await navigator.clipboard.writeText(text); toast("Copied"); } catch { toast("Couldn't copy"); } }));
-  card.appendChild(row);
+  container.appendChild(row);
 }
 
-// ---- book the free fix: who to contact, and a message the user sends themselves ----------------------
+// ---- get it fixed: who to contact, and a message the user sends themselves ------------------------
 let fixing = null;
 async function openFix(item, location = "") {
   fixing = item;
-  $("fixTitle").textContent = item.kind === "vehicle" ? `Get the free fix for your ${item.name}` : `Get the remedy for your ${item.name}`;
-  $("fixWhere").hidden = item.kind !== "vehicle";
-  $("fixWhy").textContent = "Recall repairs are free at any authorized dealer for this brand. Lantern can look for one near you.";
-  $("fixDealers").replaceChildren(el("p", "hint", "Looking…"));
-  $("fixContact").textContent = "";
+  const isCar = item.kind === "vehicle";
+  $("fixTitle").textContent = isCar ? `Get your ${item.name} fixed` : `What to do about your ${item.name}`;
+  $("fixWhere").hidden = !isCar;
+  $("fixContact").hidden = true;
+  $("fixMessage").value = ""; $("fixSend").replaceChildren();          // never show a previous item's message
+  $("fixDealers").replaceChildren(el("p", "hint", "Getting things ready…"));
   if (!$("fixDialog").open) $("fixDialog").showModal();
   const { res, data } = await api("/api/fix", { method: "POST", body: { kind: item.kind, slug: item.slug, location } });
+  if (fixing !== item) return;
   if (!res.ok) { $("fixDealers").replaceChildren(el("p", "error", detail(data, "Couldn't prepare this."))); return; }
   $("fixMessage").value = data.draft.body;
   renderSendButtons(data.draft.subject);
-  if (item.kind === "product") {
+  if (!isCar) {
+    $("fixContact").hidden = false;
     $("fixContact").textContent = data.contact ? "Who to contact: " + data.contact : "The official notice says who to contact.";
     return;
   }
@@ -682,28 +1167,30 @@ async function openFix(item, location = "") {
   const box = $("fixDealers");
   box.replaceChildren();
   if (!data.location) { box.appendChild(el("p", "hint", "Enter your city or ZIP code to find dealers near you.")); return; }
-  for (const d of data.dealers) {
-    const row = el("div");
-    row.appendChild(link(d.url, sentence(d.title.split(" | ")[0], 60)));
-    row.appendChild(el("span", "muted", "  " + siteName(d.url)));
-    box.appendChild(row);
+  if (data.maps_url) box.appendChild(link(data.maps_url, `Find ${makeOf(item)} dealers near you on Google Maps`, "primary"));
+  if (data.dealers.length) {
+    box.appendChild(el("p", "hint", `Web search results. Check it's an authorized ${makeOf(item)} dealer, then call their service department.`));
+    for (const d of data.dealers) {
+      const row = el("div");
+      row.appendChild(link(d.url, sentence(d.title.split(" | ")[0], 60)));
+      row.appendChild(el("span", "muted", "  " + siteName(d.url)));
+      box.appendChild(row);
+    }
   }
-  if (data.maps_url) box.appendChild(link(data.maps_url, "🗺 Open dealers near you on a map"));
   if (data.note) box.appendChild(el("p", "hint", data.note));
 }
 function renderSendButtons(subject) {
   const body = () => $("fixMessage").value;
-  const row = $("fixSend");
-  row.replaceChildren(
+  $("fixSend").replaceChildren(
+    button("Copy", "chipbtn", async () => { try { await navigator.clipboard.writeText(body()); toast("Copied. Paste it into an email or text."); } catch { toast("Couldn't copy"); } }),
     button("Email", "chipbtn", () => { location.href = `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body())}`; }),
     button("Text", "chipbtn", () => { location.href = "sms:?&body=" + encodeURIComponent(body()); }),
-    button("WhatsApp", "chipbtn", () => window.open("https://wa.me/?text=" + encodeURIComponent(body()), "_blank", "noopener")),
-    button("Copy", "chipbtn", async () => { try { await navigator.clipboard.writeText(body()); toast("Copied"); } catch { toast("Couldn't copy"); } }));
+    button("WhatsApp", "chipbtn", () => window.open("https://wa.me/?text=" + encodeURIComponent(body()), "_blank", "noopener")));
 }
 $("fixForm").addEventListener("submit", (e) => { e.preventDefault(); if (fixing) openFix(fixing, $("fixLocation").value.trim()); });
 $("fixClose").addEventListener("click", () => $("fixDialog").close());
 
-// ---- callouts: alerts and install --------------------------------------------------------------
+// ---- callouts after the list: keep my list, alerts (and install) -----------------------------------
 const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
 const standalone = window.matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
 window.addEventListener("beforeinstallprompt", (e) => { e.preventDefault(); installPrompt = e; renderCallouts(); });
@@ -715,29 +1202,38 @@ async function loadPushInfo() {
 }
 async function renderCallouts() {
   const box = $("callouts");
-  box.replaceChildren();
-  if (!report || !report.items.length) return;
+  if (!report || !report.items.length) { box.replaceChildren(); return; }
+  const cards = [];
   const info = await loadPushInfo();
   const pushOk = "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
   if (info.available && !info.enabled && stored("alertsDismissed") !== "1") {
-    const c = el("div", "card callout");
+    const c = el("div", "card callout glow");
+    c.appendChild(el("h3", "", "Get an alert on this phone"));
+    c.appendChild(el("p", "hint", "Lantern sends a notification when a new recall affects your things. No phone number needed."));
     if (pushOk) {
-      c.append(el("div", "text", "🔔 Get an alert on this phone when a new recall affects your things."),
-               button("Turn on", "primary", enableAlerts));
+      const row = el("div", "row");
+      row.appendChild(button("Turn on alerts", "primary", enableAlerts));
+      if (installPrompt && !standalone) row.appendChild(button("Install the app", "secondary", async () => { installPrompt.prompt(); installPrompt = null; renderCallouts(); }));
+      c.appendChild(row);
     } else if (isIOS && !standalone) {
-      c.append(el("div", "text", "🔔 For alerts on iPhone: tap Share ⬆, then \"Add to Home Screen\", then open Lantern from your Home Screen."));
+      const ol = el("ol", "steps");
+      ["Tap the Share button (the square with an arrow) at the bottom of Safari.", "Tap \"Add to Home Screen\".",
+       "Open Lantern from your Home Screen, then tap \"Turn on alerts\"."].forEach(t => ol.appendChild(el("li", "", t)));
+      c.appendChild(ol);
+    } else {
+      c.appendChild(el("p", "hint", "This browser can't show alerts. Try Chrome, Edge, Firefox or Safari."));
     }
-    if (c.childNodes.length) {
-      c.appendChild(button("✕", "textbtn", () => { store("alertsDismissed", "1"); renderCallouts(); }));
-      box.appendChild(c);
-    }
+    c.appendChild(button("Not now", "textbtn", () => { store("alertsDismissed", "1"); renderCallouts(); }));
+    cards.push(c);
   }
-  if (installPrompt && !standalone) {
+  if (me && me.kind === "guest") {
     const c = el("div", "card callout");
-    c.append(el("div", "text", "📲 Install Lantern as an app on this device."),
-             button("Install", "secondary", async () => { installPrompt.prompt(); installPrompt = null; renderCallouts(); }));
-    box.appendChild(c);
+    c.append(el("h3", "", "Keep your list"),
+             el("p", "hint", "Without an account, Lantern keeps your list for 7 days. A free account keeps it (no email needed)."),
+             button("Keep my list", "secondary", openKeep));
+    cards.push(c);
   }
+  box.replaceChildren(...cards);
 }
 function urlKey(b64) {
   const pad = "=".repeat((4 - b64.length % 4) % 4);
@@ -775,43 +1271,44 @@ async function loadStuff() {
   const openFor = {};
   for (const item of (report ? report.items : [])) openFor[item.kind + ":" + item.slug] = item.recalls.filter(r => r.status === "open").length;
   $("carList").replaceChildren(...(data.vehicles.length ? data.vehicles.map(v => thing("vehicle", v, openFor["vehicle:" + v.slug],
-      [v.vin ? "VIN on file" : "", v.trim].filter(Boolean).join(" · ")))
+      [v.vin ? "ID number (VIN) saved" : "", v.trim].filter(Boolean).join(" · ")))
     : [el("p", "hint", "No cars yet.")]));
   $("productList").replaceChildren(...(data.products.length ? data.products.map(p => thing("product", p, openFor["product:" + p.slug],
       [p.brand, p.model ? "model " + p.model : ""].filter(Boolean).join(" · ")))
-    : [el("p", "hint", "No products yet.")]));
+    : [el("p", "hint", "Nothing yet. Add a crib, stroller, high chair, space heater…")]));
 }
 function thing(kind, item, openCount, sub) {
   const c = el("div", "card thing");
   const top = el("div", "top");
-  top.appendChild(el("span", "name", item.name || item.slug));
-  top.appendChild(el("span", "pill" + (openCount ? " bad" : ""), openCount ? `${openCount} open recall${openCount === 1 ? "" : "s"}` : "No open recalls"));
+  top.appendChild(el("h3", "", item.name || item.slug));
+  top.appendChild(el("span", "badge " + (openCount ? "park_it" : "ok"), openCount ? `${openCount} open recall${openCount === 1 ? "" : "s"}` : "No open recalls"));
   c.appendChild(top);
   if (sub) c.appendChild(el("div", "sub", sub));
-  if (item.notes) c.appendChild(el("div", "sub", item.notes.split("\n").slice(-2).map(n => n.replace(/^-\s*/, "")).join(" · ")));
   const row = el("div", "row");
-  row.append(button("Edit file", "textbtn", () => openEditor(kind, item.slug, item.name || item.slug)),
-             button("Remove", "textbtn danger", () => removeThing(kind, item.slug, item.name || item.slug)));
+  row.append(button("Stop watching", "textbtn danger", () => removeThing(kind, item.slug, item.name || item.slug)),
+             button("Advanced: edit the file", "textbtn", () => openEditor(kind, item.slug, item.name || item.slug)));
   c.appendChild(row);
   return c;
 }
 async function removeThing(kind, slug, name) {
-  if (!confirm(`Stop watching "${name}" and delete its file?`)) return;
+  if (!confirm(`Stop watching "${name}"? Lantern deletes its file.`)) return;
   const { res, data } = await api(`/api/memory/${kind}/${encodeURIComponent(slug)}`, { method: "DELETE" });
   if (!res.ok) toast(detail(data, "Couldn't remove it."));
   await loadRecalls(); loadStuff();
 }
-$("addCar").addEventListener("submit", async (e) => {
+addCarForm.addEventListener("submit", async (e) => {
   e.preventDefault();
   const f = e.target, err = f.querySelector(".error"), btn = f.querySelector("button[type=submit]");
-  const body = carBody(f.dataset.mode, f.vin.value, f.year.value, f.make.value, f.model.value);
+  const body = carBody(f);
   err.textContent = carProblem(body);
   if (err.textContent) return;
-  btn.disabled = true; btn.textContent = "Checking official recall lists…";
+  btn.disabled = true;
+  const done = startSweep("vehicle");
   const { res, data } = await api("/api/vehicles", { method: "POST", body });
-  btn.disabled = false; btn.textContent = "Add car";
+  await done(res.ok);
+  btn.disabled = false;
   if (!res.ok) { err.textContent = detail(data, "Couldn't add that car."); return; }
-  f.reset(); renderRecalls(data.recalls); loadStuff();
+  f.reset(); $("addCarBox").open = false; renderRecalls(data.recalls); loadStuff();
   const n = data.recalls.items.find(i => i.slug === data.item.slug);
   const open = n ? n.recalls.filter(r => r.status === "open").length : 0;
   toast(open ? `${data.item.name}: ${open} open recall${open === 1 ? "" : "s"}. See Home.` : `${data.item.name}: no open recalls.`);
@@ -821,11 +1318,13 @@ $("addProduct").addEventListener("submit", async (e) => {
   const f = e.target, err = f.querySelector(".error"), btn = f.querySelector("button[type=submit]");
   if (!f.product.value.trim()) { err.textContent = "Say what it is, for example: crib, stroller, space heater."; return; }
   err.textContent = "";
-  btn.disabled = true; btn.textContent = "Checking official recall lists…";
+  btn.disabled = true;
+  const done = startSweep("product");
   const { res, data } = await api("/api/products", { method: "POST", body: { product: f.product.value, brand: f.brand.value, model: f.model.value } });
-  btn.disabled = false; btn.textContent = "Add product";
+  await done(res.ok);
+  btn.disabled = false;
   if (!res.ok) { err.textContent = detail(data, "Couldn't add that product."); return; }
-  f.reset(); renderRecalls(data.recalls); loadStuff();
+  f.reset(); $("addProductBox").open = false; renderRecalls(data.recalls); loadStuff();
   toast(`Watching ${data.item.name}.`);
 });
 
@@ -837,14 +1336,14 @@ async function openEditor(kind, slug, title) {
   $("edTitle").textContent = title; $("edText").value = data.text; $("edError").textContent = "";
   $("editor").showModal();
 }
-$("edCancel").addEventListener("click", () => $("editor").close());
+$("edClose").addEventListener("click", () => $("editor").close());
 $("edSave").addEventListener("click", async () => {
   const { res, data } = await api(`/api/memory/${editing.kind}/${encodeURIComponent(editing.slug)}`, { method: "PUT", body: { text: $("edText").value } });
   if (!res.ok) { $("edError").textContent = detail(data, "Couldn't save."); return; }
   $("editor").close(); await loadRecalls(); loadStuff();
 });
 
-// ---- ask: chat, with voice ------------------------------------------------------------------------
+// ---- ask: chat, with voice --------------------------------------------------------------------------
 const INLINE = /\[([^\]\n]{1,200})\]\((https?:\/\/[^\s)]+)\)|(https?:\/\/[^\s<>()\]]+)|\*\*([^*\n]+)\*\*/g;
 function siteName(url) { try { return new URL(url).hostname.replace(/^www\./, ""); } catch { return "link"; } }
 function inline(parent, text) {
@@ -888,9 +1387,12 @@ function add(text, cls) {
   $("suggest").hidden = true;
   return div;
 }
-const SUGGESTIONS = ["Is my car safe to drive?", "We also have a baby crib and a stroller", "What does my most urgent recall mean?", "How do I get a recall fixed?"];
+const SUGGESTIONS = ["Is my car safe to drive?", "We also have a baby crib and a stroller", "Explain my most urgent recall simply", "How do I get a recall fixed?"];
 function renderSuggestions() {
-  $("suggest").replaceChildren(...SUGGESTIONS.map(s => button(s, "chipbtn", () => { $("msg").value = s; $("chatForm").requestSubmit(); })));
+  $("suggest").replaceChildren(...SUGGESTIONS.map((s, i) => {
+    const b = button(s, "chipbtn", () => { $("msg").value = s; $("chatForm").requestSubmit(); });
+    b.style.setProperty("--i", i); return b;
+  }));
   $("suggest").hidden = !!$("log").children.length;
 }
 let historyLoaded = false;
@@ -898,7 +1400,9 @@ async function loadHistory() {
   if (historyLoaded) return;
   historyLoaded = true;
   const { res, data } = await api("/api/history");
+  $("log").setAttribute("aria-busy", "true");
   if (res.ok && data.length && !$("log").children.length) data.forEach(m => add(m.content, m.role === "user" ? "user" : "bot"));
+  $("log").setAttribute("aria-busy", "false");
   renderSuggestions();
 }
 async function readEvents(res, onEvent) {
@@ -926,6 +1430,7 @@ $("chatForm").addEventListener("submit", async (e) => {
   $("sendBtn").disabled = true;
   const pending = add("", "bot");
   pending.classList.add("status"); pending.textContent = "Thinking…";
+  $("log").setAttribute("aria-busy", "true");
   let text = "";
   try {
     const res = await fetch("/api/chat/stream", { method: "POST", headers: { "Content-Type": "application/json" },
@@ -941,8 +1446,11 @@ $("chatForm").addEventListener("submit", async (e) => {
       } else if (ev.type === "done") {
         pending.classList.remove("status"); answer = ev.answer; renderAnswer(pending, ev.answer);
         if (ev.stop_reason !== "done") pending.classList.add("stopped");
-        const model = ev.model ? ev.model.split("/").pop() : "";
-        if (model) pending.appendChild(el("div", "meta", model));
+        else {
+          const m = el("div", "meta", "Answer by NVIDIA Nemotron, from the official recall data");
+          if (ev.model) m.title = ev.model;
+          pending.appendChild(m);
+        }
       } else if (ev.type === "error") failure = ev.text;
     });
     if (failure) throw new Error(failure);
@@ -953,11 +1461,14 @@ $("chatForm").addEventListener("submit", async (e) => {
     pending.textContent = `Something went wrong: ${err.message}`;
   } finally {
     $("sendBtn").disabled = false;
+    $("log").setAttribute("aria-busy", "false");
   }
 });
-$("msg").addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); $("chatForm").requestSubmit(); } });
+$("msg").addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey && !touch) { e.preventDefault(); $("chatForm").requestSubmit(); } });
+$("msg").addEventListener("focus", () => { if (touch) $("tabbar").hidden = true; });
+$("msg").addEventListener("blur", () => { if (me) $("tabbar").hidden = false; });
 
-// Voice: the browser's own speech recognition and speech synthesis (no extra service from Lantern).
+// Voice: the browser's own speech recognition and speech synthesis.
 const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
 let recognizer = null;
 if (Recognition) {
@@ -971,8 +1482,7 @@ if ("speechSynthesis" in window) {
                                                        if (!$("speakAnswers").checked) speechSynthesis.cancel(); });
 }
 function startListening() {
-  $("voiceNote").hidden = stored("voiceNoted") === "1";
-  store("voiceNoted", "1");
+  $("voiceNote").hidden = false;
   recognizer = new Recognition();
   recognizer.lang = "en-US"; recognizer.interimResults = true; recognizer.continuous = false;
   let finalText = "";
@@ -985,10 +1495,10 @@ function startListening() {
   };
   recognizer.onerror = (e) => { if (e.error !== "no-speech" && e.error !== "aborted") toast("Voice didn't work: " + e.error); };
   recognizer.onend = () => {
-    $("micBtn").classList.remove("live"); recognizer = null;
-    if (finalText.trim()) { $("speakAnswers").checked = true; store("speak", "1"); $("chatForm").requestSubmit(); }
+    $("micBtn").setAttribute("aria-pressed", "false"); recognizer = null;
+    if (finalText.trim()) $("chatForm").requestSubmit();
   };
-  try { recognizer.start(); $("micBtn").classList.add("live"); } catch { recognizer = null; }
+  try { recognizer.start(); $("micBtn").setAttribute("aria-pressed", "true"); } catch { recognizer = null; }
 }
 function stopListening() { if (recognizer) { try { recognizer.stop(); } catch {} } }
 function speak(text) {

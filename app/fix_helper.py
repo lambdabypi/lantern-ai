@@ -8,6 +8,7 @@ opens in the user's own email, text or WhatsApp app (the "ask before acting" rul
 
 from __future__ import annotations
 
+import re
 from typing import Any
 from urllib.parse import quote
 
@@ -33,6 +34,8 @@ def find_dealers(search: WebSearch, make: str, location: str) -> dict[str, Any]:
         url, title = str(r.get("url") or ""), str(r.get("title") or "").strip()
         if not url.startswith("https://") or url in seen or not title:
             continue
+        if re.search(r"\bused\b", title, re.I) and not re.search(r"service|parts|recall", title, re.I):
+            continue  # used-car sales pages aren't where the free repair is done
         seen.add(url)
         out["dealers"].append({"title": title[:120], "url": url, "snippet": str(r.get("content") or "")[:200]})
         if len(out["dealers"]) >= MAX_DEALERS:
@@ -47,7 +50,7 @@ def draft_message(kind: str, meta: dict[str, Any], recalls: list[dict[str, Any]]
     name = meta.get("name", "my item")
     if kind == "vehicle":
         vin = f" (VIN {meta['vin']})" if meta.get("vin") else ""
-        lines = [f"- NHTSA recall {r['id']}: {r['title']}" for r in recalls]
+        lines = [f"- {_label(r)} (NHTSA recall {r['id']})" for r in recalls]
         urgent = any(r.get("severity") == "park_it" for r in recalls)
         body = "\n".join([
             "Hello,",
@@ -61,9 +64,10 @@ def draft_message(kind: str, meta: dict[str, Any], recalls: list[dict[str, Any]]
             + "Could you confirm the parts are in stock before my visit, and let me know your earliest appointment?",
             "",
             "Thank you,",
+            "[Your name and phone number]",
         ])
         return {"subject": f"Safety recall repair for my {name}", "body": body}
-    lines = [f"- CPSC recall {r['id']}: {r['title']}" for r in recalls]
+    lines = [f"- {_label(r)} (CPSC recall {r['id']})" for r in recalls]
     body = "\n".join([
         "Hello,",
         "",
@@ -73,5 +77,11 @@ def draft_message(kind: str, meta: dict[str, Any], recalls: list[dict[str, Any]]
         "Please tell me how to get the remedy (refund, repair or replacement) and what you need from me.",
         "",
         "Thank you,",
+        "[Your name and phone number]",
     ])
     return {"subject": f"Recall remedy for my {name}", "body": body}
+
+
+def _label(recall: dict[str, Any]) -> str:
+    """The plain-English title when Nemotron wrote one, else the official one."""
+    return (recall.get("plain") or {}).get("title") or recall["title"]

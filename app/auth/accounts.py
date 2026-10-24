@@ -129,6 +129,20 @@ class AccountStore:
             self._save(account)
         return account
 
+    def keep_guest_data(self, guest: Account, username: str, password: str) -> Account:
+        """Turn a guest session into a real account: register it, then move the guest's files (memory, history,
+        recall status, alerts) across and delete the guest. Nothing moves if the username is refused."""
+        if not guest.is_guest:
+            raise AuthError("You already have an account.")
+        account = self.register(username, password)
+        source, target = user_dir(self.data_dir, guest.user_id), user_dir(self.data_dir, account.user_id)
+        with self._lock:
+            for item in source.iterdir() if source.is_dir() else []:
+                if item.name != "account.json" and not item.is_symlink():
+                    shutil.move(str(item), str(target / item.name))
+            shutil.rmtree(source, ignore_errors=True)
+        return account
+
     def authenticate(self, username: str, password: str) -> Account:
         user_id = (username or "").strip().lower()
         now = self.clock()
@@ -170,7 +184,7 @@ class AccountStore:
                 removed += 1
         return removed
 
-    # ---- personal access tokens (desktop companion) --------------------------------------
+    # ---- personal access tokens --------------------------------------
     def issue_token(self, user_id: str, label: str = "") -> tuple[str, str]:
         """Create a token. Returns (token, token_id); the token is shown to the user once."""
         with self._lock:

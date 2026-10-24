@@ -19,6 +19,7 @@ class DealerTavily:
             {"url": "https://www.examplefordboston.com/service", "title": "Example Ford of Boston: Service", "content": "Book service"},
             {"url": "https://www.examplefordboston.com/service", "title": "duplicate", "content": ""},
             {"url": "http://insecure.example/ford", "title": "Insecure", "content": ""},
+            {"url": "https://cars.example/used", "title": "Used Ford Dealer Boston", "content": ""},
         ]
 
     def search(self, query, **kw):
@@ -37,7 +38,10 @@ def app_with(settings, tavily=None, replies=()):
 def test_draft_for_a_car_lists_recalls_and_handles_do_not_drive():
     recalls = [{"id": "20V314000", "title": "Fuel System", "severity": "park_it"}, {"id": "18V421000", "title": "Labels", "severity": ""}]
     d = draft_message("vehicle", {"name": "2018 Honda Civic", "vin": "1HGCM82633A004352"}, recalls)
-    assert "2018 Honda Civic (VIN 1HGCM82633A004352)" in d["body"] and "- NHTSA recall 20V314000: Fuel System" in d["body"]
+    assert "2018 Honda Civic (VIN 1HGCM82633A004352)" in d["body"] and "- Fuel System (NHTSA recall 20V314000)" in d["body"]
+    assert d["body"].endswith("[Your name and phone number]")
+    plain = draft_message("vehicle", {"name": "x"}, [{**recalls[0], "plain": {"title": "Fuel pump can fail"}}])
+    assert "- Fuel pump can fail (NHTSA recall 20V314000)" in plain["body"]
     assert "should not be driven" in d["body"] and "parts are in stock" in d["body"]
     p = draft_message("product", {"name": "Voomf crib mattress"}, [{"id": "26669", "title": "Crib Mattresses Recalled"}])
     assert "CPSC recall 26669" in p["body"] and "refund, repair or replacement" in p["body"]

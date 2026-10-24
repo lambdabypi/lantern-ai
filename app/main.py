@@ -258,6 +258,11 @@ def create_app(loop: AgentLoop | None = None, settings: Settings | None = None, 
     def register(creds: Credentials, response: Response) -> MeResponse:
         return start_session(response, accounts.register(creds.username, creds.password))
 
+    @app.post("/api/auth/keep", response_model=MeResponse)
+    def keep_data(creds: Credentials, response: Response, account: Account = Depends(current_account)) -> MeResponse:
+        """A guest saves their list: becomes a registered account with the same data."""
+        return start_session(response, accounts.keep_guest_data(account, creds.username, creds.password))
+
     @app.post("/api/auth/login", response_model=MeResponse)
     def login(creds: Credentials, response: Response) -> MeResponse:
         return start_session(response, accounts.authenticate(creds.username, creds.password))

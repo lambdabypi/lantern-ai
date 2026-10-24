@@ -125,3 +125,21 @@ def test_client_ip_helper():
     assert client_ip(req("9.9.9.9, 203.0.113.7, 35.0.0.1"), 2) == "203.0.113.7"
     assert client_ip(req(None), 1) == "10.0.0.1"         # no header: the direct peer
     assert client_ip(req("9.9.9.9"), 0) == "10.0.0.1"    # 0 hops: ignore the header entirely
+
+
+def test_guest_keeps_their_data_by_creating_an_account(settings):
+    from tests.test_recall_chat import watch_and_store
+    watch, store, _ = watch_and_store(settings)
+    loop, _ = make_loop(settings, [])
+    c = TestClient(create_app(loop=loop, settings=settings, watch=watch))
+    guest = c.post("/api/auth/guest").json()["user_id"]
+    c.post("/api/vehicles", json={"make": "Honda", "model": "Civic", "year": 2018})
+    me = c.post("/api/auth/keep", json={"username": "maria", "password": "password123"}).json()
+    assert me["user_id"] == "maria" and me["kind"] == "user"
+    assert [v["name"] for v in c.get("/api/profile").json()["vehicles"]] == ["2018 Honda Civic"]
+    assert not (settings.data_dir / "users" / guest).exists()
+    assert c.post("/api/auth/keep", json={"username": "maria2", "password": "password123"}).status_code == 400
+    other = TestClient(create_app(loop=loop, settings=settings, watch=watch))
+    other.post("/api/auth/guest")
+    taken = other.post("/api/auth/keep", json={"username": "maria", "password": "password123"})
+    assert taken.status_code == 409 and other.get("/api/me").json()["kind"] == "guest"   # nothing moved
