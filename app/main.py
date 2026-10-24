@@ -34,6 +34,7 @@ from app.memory.extractor import MemoryExtractor
 from app.memory.history import HistoryStore
 from app.memory.store import KINDS, RECALL_STATUSES, MemoryStore, MemoryStoreError
 from app.demo import load_demo_household
+from app.fix_helper import draft_message, find_dealers
 from app.push import Push, PushError
 from app.recall_watch import RecallWatch
 from app.steam_import import import_steam_library
@@ -124,6 +125,12 @@ class PushSubscription(BaseModel):
     keys: dict[str, str] = Field(default_factory=dict)
 
 
+class FixRequest(BaseModel):
+    kind: str = Field(pattern="^(vehicle|product)$")
+    slug: str = Field(min_length=1, max_length=64)
+    location: str = Field(default="", max_length=80)
+
+
 class MemoryText(BaseModel):
     text: str = Field(min_length=1, max_length=20_000)
 
@@ -146,17 +153,17 @@ def create_app(loop: AgentLoop | None = None, settings: Settings | None = None,
                steam: SteamClient | None = None, openid_http: httpx.Client | None = None,
                extractor: MemoryExtractor | None = None, knowledge: GameKnowledge | None = None,
                briefings: Briefings | None = None, watch: RecallWatch | None = None,
-               push: Push | None = None) -> FastAPI:
+               push: Push | None = None, search: WebSearch | None = None) -> FastAPI:
     _setup_logging()
     settings = settings or load_settings()
     settings.require_secret_key()
     memory = MemoryStore(settings.data_dir)
     site_quota = SiteQuota(settings.data_dir)
     history_store = HistoryStore(settings.data_dir)
+    search = search or WebSearch(settings, credit_guard=lambda credits: site_quota.try_consume(
+        "tavily", settings.site_tavily_credits_per_day or None, credits))
     if loop is None:
         router = ModelRouter(settings)
-        search = WebSearch(settings, credit_guard=lambda credits: site_quota.try_consume(
-            "tavily", settings.site_tavily_credits_per_day or None, credits))
         watch = watch or RecallWatch(memory, RecallClient(), router, settings.data_dir)
         tools = make_recall_tools(memory, watch) + builtin_tools(settings, search)
         # Thinking off for the chat model: 2-10x faster in a live comparison and still used the calculator
@@ -559,6 +566,34 @@ def create_app(loop: AgentLoop | None = None, settings: Settings | None = None,
     def demo(account: Account = Depends(current_account)) -> dict:
         """Fill an empty account with a made-up household (real recall data, no real people)."""
         return load_demo_household(memory, need_watch(), account.user_id)
+
+    @app.post("/api/fix")
+    def book_the_fix(req: FixRequest, account: Account = Depends(current_account)) -> dict:
+        """Who to contact and a ready-to-send message. Nothing is sent: the user sends it from their own app."""
+        uid = account.user_id
+        item = memory.get(uid, req.kind, req.slug)
+        if item is None:
+            raise HTTPException(status_code=404, detail="That item isn't in your list.")
+        report = need_watch().check(uid)
+        entry = next((i for i in report["items"] if i["kind"] == req.kind and i["slug"] == req.slug), None)
+        recalls = [r for r in (entry["recalls"] if entry else []) if r["status"] == "open"]
+        if not recalls:
+            raise HTTPException(status_code=422, detail="This item has no open recalls to fix.")
+        out: dict = {"draft": draft_message(req.kind, item.meta, recalls), "dealers": [], "maps_url": None,
+                     "contact": None, "note": None}
+        if req.kind == "product":
+            out["contact"] = next((r.get("contact") for r in recalls if r.get("contact")), None)
+            return out
+        location = req.location.strip()
+        if location:
+            memory.upsert(uid, "profile", None, {"location": location}, source="user")
+        else:
+            prof = memory.get(uid, "profile")
+            location = (prof.meta.get("location") if prof else "") or ""
+        out["location"] = location
+        if location:
+            out.update(find_dealers(search, item.meta.get("make", ""), location))
+        return out
 
     @app.post("/api/recalls/status")
     def recall_status(req: RecallStatusUpdate, account: Account = Depends(current_account)) -> dict:

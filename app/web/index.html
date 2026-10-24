@@ -291,6 +291,24 @@
     </form>
   </section>
 
+  <dialog id="fixDialog">
+    <h3 id="fixTitle" style="margin-top:0"></h3>
+    <div id="fixWhere">
+      <p class="hint" id="fixWhy"></p>
+      <form id="fixForm" style="display:flex; gap:8px; margin-top:8px">
+        <input id="fixLocation" maxlength="80" placeholder="Your city or ZIP code" aria-label="City or ZIP code">
+        <button class="secondary" type="submit" style="width:auto">Find</button>
+      </form>
+      <div class="stack" id="fixDealers" style="margin-top:10px"></div>
+    </div>
+    <p class="hint" id="fixContact"></p>
+    <h4 style="margin:16px 0 6px">Your message <span class="muted" style="font-weight:normal">(edit it if you like)</span></h4>
+    <textarea id="fixMessage" rows="9" aria-label="Message"></textarea>
+    <p class="hint">Lantern never sends anything for you. Pick how you want to send it:</p>
+    <div class="actions" id="fixSend"></div>
+    <div style="margin-top:14px"><button type="button" class="secondary" id="fixClose">Close</button></div>
+  </dialog>
+
   <dialog id="editor">
     <h3 id="edTitle" style="margin-top:0"></h3>
     <p class="hint">This is the actual file Lantern keeps. Edit the values after the colons, or the notes below the second ---.</p>
@@ -575,6 +593,9 @@ function itemCard(item, recalls) {
   const list = el("div", "rlist");
   recalls.forEach(rc => list.appendChild(recallRow(item, rc)));
   c.appendChild(list);
+  const book = button(item.kind === "vehicle" ? "🔧 Book the free fix" : "Get the remedy", "primary", () => openFix(item));
+  book.style.marginTop = "12px";
+  c.appendChild(book);
   if (item.kind === "vehicle") {
     const v = el("div", "hint");
     v.append("Repairs are free at any authorized dealer for this brand, even if you bought it used. Not sure if yours was already done? ",
@@ -638,6 +659,49 @@ async function share(item, rc, card) {
              button("Copy", "chipbtn", async () => { try { await navigator.clipboard.writeText(text); toast("Copied"); } catch { toast("Couldn't copy"); } }));
   card.appendChild(row);
 }
+
+// ---- book the free fix: who to contact, and a message the user sends themselves ----------------------
+let fixing = null;
+async function openFix(item, location = "") {
+  fixing = item;
+  $("fixTitle").textContent = item.kind === "vehicle" ? `Get the free fix for your ${item.name}` : `Get the remedy for your ${item.name}`;
+  $("fixWhere").hidden = item.kind !== "vehicle";
+  $("fixWhy").textContent = "Recall repairs are free at any authorized dealer for this brand. Lantern can look for one near you.";
+  $("fixDealers").replaceChildren(el("p", "hint", "Looking…"));
+  $("fixContact").textContent = "";
+  if (!$("fixDialog").open) $("fixDialog").showModal();
+  const { res, data } = await api("/api/fix", { method: "POST", body: { kind: item.kind, slug: item.slug, location } });
+  if (!res.ok) { $("fixDealers").replaceChildren(el("p", "error", detail(data, "Couldn't prepare this."))); return; }
+  $("fixMessage").value = data.draft.body;
+  renderSendButtons(data.draft.subject);
+  if (item.kind === "product") {
+    $("fixContact").textContent = data.contact ? "Who to contact: " + data.contact : "The official notice says who to contact.";
+    return;
+  }
+  $("fixLocation").value = data.location || "";
+  const box = $("fixDealers");
+  box.replaceChildren();
+  if (!data.location) { box.appendChild(el("p", "hint", "Enter your city or ZIP code to find dealers near you.")); return; }
+  for (const d of data.dealers) {
+    const row = el("div");
+    row.appendChild(link(d.url, sentence(d.title.split(" | ")[0], 60)));
+    row.appendChild(el("span", "muted", "  " + siteName(d.url)));
+    box.appendChild(row);
+  }
+  if (data.maps_url) box.appendChild(link(data.maps_url, "🗺 Open dealers near you on a map"));
+  if (data.note) box.appendChild(el("p", "hint", data.note));
+}
+function renderSendButtons(subject) {
+  const body = () => $("fixMessage").value;
+  const row = $("fixSend");
+  row.replaceChildren(
+    button("Email", "chipbtn", () => { location.href = `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body())}`; }),
+    button("Text", "chipbtn", () => { location.href = "sms:?&body=" + encodeURIComponent(body()); }),
+    button("WhatsApp", "chipbtn", () => window.open("https://wa.me/?text=" + encodeURIComponent(body()), "_blank", "noopener")),
+    button("Copy", "chipbtn", async () => { try { await navigator.clipboard.writeText(body()); toast("Copied"); } catch { toast("Couldn't copy"); } }));
+}
+$("fixForm").addEventListener("submit", (e) => { e.preventDefault(); if (fixing) openFix(fixing, $("fixLocation").value.trim()); });
+$("fixClose").addEventListener("click", () => $("fixDialog").close());
 
 // ---- callouts: alerts and install --------------------------------------------------------------
 const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
