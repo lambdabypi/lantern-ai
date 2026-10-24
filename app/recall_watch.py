@@ -26,7 +26,7 @@ from app.llm.parsing import extract_json
 from app.llm.router import ModelRouter, Tier
 from app.fileio import write_atomic
 from app.memory.store import MemoryItem, MemoryStore, MemoryStoreError, slugify
-from app.tools.recalls import NHTSA_VIN_CHECK, ProductRecall, RecallClient, RecallError
+from app.tools.recalls import NHTSA_VIN_CHECK, ProductRecall, RecallClient, RecallError, normalise_vin
 
 log = logging.getLogger(__name__)
 
@@ -145,9 +145,10 @@ class RecallWatch:
         """Fields for a vehicle memory file: decoded from a VIN if given, with NHTSA's model spelling."""
         source = "chat"
         if vin:
+            vin = normalise_vin(vin)
             v = self.client.decode_vin(vin)
             make, model, year, source = v.make, v.model, v.year, "vin"
-            fields: dict[str, Any] = {"vin": vin.strip().upper().replace(" ", ""), "trim": v.trim}
+            fields: dict[str, Any] = {"vin": vin, "trim": v.trim}
         else:
             fields = {}
         make = normalise_make(make)
@@ -159,6 +160,47 @@ class RecallWatch:
             fields["nhtsa_model"] = nhtsa
         fields["name"] = f"{fields['year']} {make} {fields['model']}"
         return {"fields": fields, "source": source, "known_to_nhtsa": bool(nhtsa)}
+
+    def save_vehicle(self, user_id: str, make: str = "", model: str = "", year: Any = None, vin: str = "",
+                     note: str | None = None, source: str = "chat") -> MemoryItem:
+        """Add or update a car. The same VIN, or the same year/make/model, updates the existing file."""
+        desc = self.describe_vehicle(make, model, year, vin)
+        fields = desc["fields"]
+        existing = next((v for v in self.store.list(user_id, "vehicle")
+                         if (fields.get("vin") and v.meta.get("vin") == fields["vin"])
+                         or (not v.meta.get("vin") and v.meta.get("name") == fields["name"])), None)
+        # upsert by slug: an existing file is updated in place even if its name was edited by hand
+        name = existing.slug if existing else fields["name"]
+        if existing:
+            fields.pop("name")
+        return self.store.upsert(user_id, "vehicle", name, fields, note=note,
+                                 source=desc["source"] if source == "chat" else source)
+
+    def save_product(self, user_id: str, product: str, brand: str = "", model: str = "",
+                     note: str | None = None, source: str = "chat") -> MemoryItem:
+        product, brand, model = (product or "").strip(), (brand or "").strip(), (model or "").strip()
+        if not product:
+            raise MemoryStoreError("What kind of product is it (for example: crib, space heater, stroller)?")
+        name = " ".join(x for x in (brand, product, model) if x)
+        fields = {k: v for k, v in (("brand", brand), ("product", product), ("model", model)) if v}
+        return self.store.upsert(user_id, "product", name, fields, note=note, source=source)
+
+    def set_status(self, user_id: str, kind: str, slug: str, recall_id: str, status: str) -> MemoryItem:
+        """The user marks a recall fixed, not theirs, or open again. Fixing adds a dated line to the notes."""
+        if kind not in ("vehicle", "product"):
+            raise MemoryStoreError("Only cars and products have recalls.")
+        item = self.store.get(user_id, kind, slug)
+        if item is None:
+            raise MemoryStoreError("That item isn't in your list.")
+        statuses = dict(item.meta.get("recall_status") or {})
+        key = str(recall_id).strip().upper()
+        if status == "open":
+            statuses.pop(key, None)
+        else:
+            statuses[key] = status
+        note = f"Recall {key} marked fixed." if status == "fixed" else None
+        return self.store.upsert(user_id, kind, item.slug, {"recall_status": statuses},
+                                 note=note, source="user")
 
     # ---- per user -----------------------------------------------------------------------------
     def check(self, user_id: str) -> dict[str, Any]:

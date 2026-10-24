@@ -21,7 +21,7 @@ from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Request, R
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Response as RawResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
-from app.agent.lookup import LookupPlanner
+from app.agent.recall_planner import RecallPlanner
 from app.agent.loop import AgentLoop, TurnResult
 from app.auth.accounts import Account, AccountStore, AuthError
 from app.auth.quota import DailyQuota, SiteQuota
@@ -32,11 +32,13 @@ from app.config import Settings, load_settings
 from app.llm.router import ModelRouter, Tier
 from app.memory.extractor import MemoryExtractor
 from app.memory.history import HistoryStore
-from app.memory.store import KINDS, MemoryStore, MemoryStoreError
+from app.memory.store import KINDS, RECALL_STATUSES, MemoryStore, MemoryStoreError
+from app.recall_watch import RecallWatch
 from app.steam_import import import_steam_library
 from app.tools.builtin import builtin_tools
-from app.tools.game_knowledge import GameKnowledge, make_game_tools
-from app.tools.profile_tools import make_profile_tools
+from app.tools.game_knowledge import GameKnowledge
+from app.tools.recall_tools import make_recall_tools
+from app.tools.recalls import RecallClient, RecallError
 from app.tools.steam import SteamClient, SteamError
 from app.tools.web_search import WebSearch
 from app.tools.registry import ToolRegistry
@@ -94,6 +96,26 @@ class MemoryCreate(BaseModel):
     note: str = Field(default="", max_length=2000)
 
 
+class VehicleCreate(BaseModel):
+    vin: str = Field(default="", max_length=30)
+    make: str = Field(default="", max_length=40)
+    model: str = Field(default="", max_length=40)
+    year: int | None = Field(default=None, ge=1950, le=2100)
+
+
+class ProductCreate(BaseModel):
+    product: str = Field(min_length=1, max_length=80)
+    brand: str = Field(default="", max_length=60)
+    model: str = Field(default="", max_length=60)
+
+
+class RecallStatusUpdate(BaseModel):
+    kind: str = Field(pattern="^(vehicle|product)$")
+    slug: str = Field(min_length=1, max_length=64)
+    recall_id: str = Field(min_length=3, max_length=15)
+    status: str = Field(pattern="^(open|" + "|".join(RECALL_STATUSES) + ")$")
+
+
 class MemoryText(BaseModel):
     text: str = Field(min_length=1, max_length=20_000)
 
@@ -115,7 +137,7 @@ class MeResponse(BaseModel):
 def create_app(loop: AgentLoop | None = None, settings: Settings | None = None,
                steam: SteamClient | None = None, openid_http: httpx.Client | None = None,
                extractor: MemoryExtractor | None = None, knowledge: GameKnowledge | None = None,
-               briefings: Briefings | None = None) -> FastAPI:
+               briefings: Briefings | None = None, watch: RecallWatch | None = None) -> FastAPI:
     _setup_logging()
     settings = settings or load_settings()
     settings.require_secret_key()
@@ -126,19 +148,15 @@ def create_app(loop: AgentLoop | None = None, settings: Settings | None = None,
         router = ModelRouter(settings)
         search = WebSearch(settings, credit_guard=lambda credits: site_quota.try_consume(
             "tavily", settings.site_tavily_credits_per_day or None, credits))
-        knowledge = knowledge or GameKnowledge(memory, search, settings.data_dir)
-        tools = (make_game_tools(knowledge) + builtin_tools(settings, search)
-                 + make_profile_tools(memory, knowledge.cached_sources))
+        watch = watch or RecallWatch(memory, RecallClient(), router, settings.data_dir)
+        tools = make_recall_tools(memory, watch) + builtin_tools(settings, search)
         # Thinking off for the chat model: 2-10x faster in a live comparison and still used the calculator
-        # for arithmetic. Saving memories is the extractor's job, so it no longer depends on this model.
-        # The planner decides game lookups up front: with thinking off the chat model often skipped
-        # ask_game and invented facts, so that decision is no longer left to it.
+        # for arithmetic. The planner reads each message up front, saves the things the user says they own and
+        # runs the recall check itself: with thinking off the chat model often skipped tools and answered from
+        # memory, and recall facts must come from the official lists.
         loop = AgentLoop(router, ToolRegistry(settings.data_dir, tools),
                          profile_context=memory.context_for_prompt, plan_thinking=False,
-                         planner=LookupPlanner(router, memory.context_for_prompt), answer_tier=Tier.BALANCED)
-        extractor = extractor or MemoryExtractor(router, memory, knowledge.cached_sources,
-                                                 on_games_saved=knowledge.prewarm)
-        briefings = briefings or Briefings(memory, search, router, settings.data_dir)
+                         planner=RecallPlanner(router, memory.context_for_prompt), answer_tier=Tier.BALANCED)
 
     steam_client = steam or (SteamClient(settings.steam_api_key) if settings.steam_api_key else None)
     accounts = AccountStore(settings.data_dir, guest_ttl_days=settings.guest_ttl_days)
@@ -152,6 +170,10 @@ def create_app(loop: AgentLoop | None = None, settings: Settings | None = None,
     @app.exception_handler(AuthError)
     def auth_error(_: Request, e: AuthError) -> JSONResponse:
         return JSONResponse({"detail": str(e)}, status_code=e.status)
+
+    @app.exception_handler(RecallError)
+    def recall_error(_: Request, e: RecallError) -> JSONResponse:
+        return JSONResponse({"detail": str(e)}, status_code=422)
 
     @app.exception_handler(MemoryStoreError)
     def memory_error(_: Request, e: MemoryStoreError) -> JSONResponse:
@@ -395,6 +417,8 @@ def create_app(loop: AgentLoop | None = None, settings: Settings | None = None,
         uid = account.user_id
         prof = memory.get(uid, "profile")
         return {"profile": prof.summary() if prof else None,
+                "vehicles": [v.summary() for v in memory.list(uid, "vehicle")],
+                "products": [p.summary() for p in memory.list(uid, "product")],
                 "games": [g.summary() for g in memory.list(uid, "game")],
                 "creators": [c.summary() for c in memory.list(uid, "creator")]}
 
@@ -460,23 +484,61 @@ def create_app(loop: AgentLoop | None = None, settings: Settings | None = None,
         """Rebuild from the shared per-game news (cheap: news is fetched at most once per game per day)."""
         return need_briefings().build(account.user_id)
 
-    @app.post("/internal/briefings/run", include_in_schema=False)
-    def run_briefings(request: Request) -> dict:
-        """Daily job (Cloud Scheduler sends X-Lantern-Cron). 404 unless CRON_SECRET is set and matches."""
+    def active_users_for_cron(request: Request) -> list[str]:
+        """Daily jobs (Cloud Scheduler sends X-Lantern-Cron). 404 unless CRON_SECRET is set and matches."""
         sent = request.headers.get("x-lantern-cron", "")
         if not settings.cron_secret or not hmac.compare_digest(sent, settings.cron_secret):
             raise HTTPException(status_code=404, detail="Not found.")
         users_root = settings.data_dir / "users"
         active = [p.name for p in sorted(users_root.iterdir()) if p.is_dir()] if users_root.is_dir() else []
-        active = [uid for uid in active if accounts.get(uid) is not None]  # skips expired guests
-        result = need_briefings().run_all(active)
+        return [uid for uid in active if accounts.get(uid) is not None]  # skips expired guests
+
+    @app.post("/internal/briefings/run", include_in_schema=False)
+    def run_briefings(request: Request) -> dict:
+        result = need_briefings().run_all(active_users_for_cron(request))
         log.info("briefing run: %s", result)
+        return result
+
+    # ---- the recall watch -------------------------------------------------------------------
+    def need_watch() -> RecallWatch:
+        if watch is None:
+            raise HTTPException(status_code=503, detail="The recall watch isn't available on this server.")
+        return watch
+
+    @app.get("/api/recalls")
+    def recalls(account: Account = Depends(current_account)) -> dict:
+        """Everything that may affect the user's things. Cheap to call: recall data is cached per day."""
+        return need_watch().check(account.user_id)
+
+    @app.post("/api/vehicles")
+    def add_vehicle(req: VehicleCreate, account: Account = Depends(current_account)) -> dict:
+        w = need_watch()
+        item = w.save_vehicle(account.user_id, req.make, req.model, req.year, req.vin, source="user")
+        return {"item": item.summary(), "recalls": w.check(account.user_id)}
+
+    @app.post("/api/products")
+    def add_product(req: ProductCreate, account: Account = Depends(current_account)) -> dict:
+        w = need_watch()
+        item = w.save_product(account.user_id, req.product, req.brand, req.model, source="user")
+        return {"item": item.summary(), "recalls": w.check(account.user_id)}
+
+    @app.post("/api/recalls/status")
+    def recall_status(req: RecallStatusUpdate, account: Account = Depends(current_account)) -> dict:
+        """Only the user marks recalls fixed or not theirs: the assistant has no tool for it."""
+        w = need_watch()
+        w.set_status(account.user_id, req.kind, req.slug, req.recall_id, req.status)
+        return w.check(account.user_id)
+
+    @app.post("/internal/recalls/run", include_in_schema=False)
+    def run_recall_watch(request: Request) -> dict:
+        result = need_watch().run_all(active_users_for_cron(request))
+        log.info("recall watch run: %s", result)
         return result
 
     @app.get("/api/export")
     def export(account: Account = Depends(current_account)) -> RawResponse:
         return RawResponse(memory.export_zip(account.user_id), media_type="application/zip",
-                           headers={"Content-Disposition": 'attachment; filename="my-gaming-memory.zip"'})
+                           headers={"Content-Disposition": 'attachment; filename="my-lantern-data.zip"'})
 
     return app
 

@@ -53,10 +53,12 @@ def test_system_prompt_states_identity_tools_and_limits(settings):
     loop, llm = make_loop(settings, ["Hi."])
     loop.run_turn("demo", "who are you?")
     prompt = llm.calls[0]["messages"][0]["content"]
-    assert "You are Lantern, a personal AI for gamers" in prompt and "not a general-purpose assistant" in prompt
+    assert "You are Lantern, a personal AI that watches official U.S. safety recalls" in prompt
+    assert "not a general-purpose assistant" in prompt
     assert "- calculator: Evaluate an arithmetic expression exactly." in prompt
     assert "- web_search:" in prompt
-    assert "Spoiler:" in prompt and "Never state game facts" in prompt and "unless ask_game returned them" in prompt
+    assert "Never state recall or safety facts unless recall_check returned them" in prompt
+    assert "Never say their car has or hasn't" in prompt and "https://www.nhtsa.gov/recalls" in prompt
     assert "Nothing saved yet." in prompt  # no profile provider -> neutral placeholder
 
 

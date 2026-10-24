@@ -256,7 +256,16 @@ class MemoryStore:
         """A compact summary of the profile for the system prompt (progress drives spoiler safety)."""
         lines = []
         profile = self.get(user_id, "profile")
-        if profile and profile.meta:
+        if profile and profile.meta.get("location"):
+            lines.append(f"Location: {profile.meta['location']}")
+        for kind, label in (("vehicle", "Car"), ("product", "Product")):
+            for item in self.list(user_id, kind)[:30]:
+                m = item.meta
+                extra = ["VIN on file" if m.get("vin") else "",  # never send the VIN itself to the model
+                         f"{len(m['recall_status'])} recall(s) marked fixed or not theirs" if m.get("recall_status") else ""]
+                detail = "; ".join(e for e in extra if e)
+                lines.append(f"- {label}: {m.get('name', item.slug)}" + (f" ({detail})" if detail else ""))
+        if profile and any(profile.meta.get(k) for k in ("platforms", "play_style", "spoiler_preference")):
             p = profile.meta
             bits = [f"platforms: {', '.join(p['platforms'])}" if p.get("platforms") else "",
                     f"play style: {p['play_style']}" if p.get("play_style") else "",
