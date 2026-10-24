@@ -25,6 +25,10 @@ def _brief(r: dict[str, Any]) -> dict[str, Any]:
         keep["urgent"] = "DO NOT DRIVE until repaired (official NHTSA flag)"
     elif r["severity"] == "park_outside":
         keep["urgent"] = "PARK OUTSIDE, away from buildings, until repaired (fire risk, official NHTSA flag)"
+    elif r["severity"] == "stop_using":
+        keep["urgent"] = "STOP USING this product now (the official CPSC notice says so)"
+    if r.get("plain"):
+        keep["plain_summary"] = f"{r['plain']['what']} {r['plain']['todo']}"
     if r.get("new"):
         keep["new"] = True
     if "confirmed" in r and not r["confirmed"]:

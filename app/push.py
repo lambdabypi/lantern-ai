@@ -137,9 +137,11 @@ class Push:
             return 0
         urgent = [x for x in fresh if x[1]["severity"]]
         item, r = (urgent or fresh)[0]
-        title = ("Do not drive: " if r["severity"] == "park_it" else "New recall: ") + item["name"]
+        prefix = {"park_it": "Do not drive: ", "park_outside": "Park outside: ", "stop_using": "Stop using: "}
+        title = prefix.get(r["severity"], "New recall: ") + item["name"]
         more = f" (+{len(fresh) - 1} more)" if len(fresh) > 1 else ""
-        delivered = self.send(user_id, title, f"{r['title']}. Tap to see the free fix.{more}", "/#attention")
+        what = (r.get("plain") or {}).get("title") or r["title"]
+        delivered = self.send(user_id, title, f"{what}. Tap to see what to do.{more}", "/#attention")
         data = self._load(user_id)  # send() may have dropped dead subscriptions
         data["sent"] += [f"{i['slug']}|{x['id']}" for i, x in fresh]
         self._save(user_id, data)

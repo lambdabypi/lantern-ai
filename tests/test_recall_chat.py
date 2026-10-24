@@ -23,7 +23,7 @@ def watch_and_store(settings, replies=()):
     llm = ScriptedLLM(list(replies))
     store = MemoryStore(settings.data_dir)
     router = ModelRouter(settings, client=TokenFactoryClient(settings, openai_client=llm))
-    return RecallWatch(store, FakeClient(), router, settings.data_dir), store, llm
+    return RecallWatch(store, FakeClient(), router, settings.data_dir, plain_summaries=False), store, llm
 
 
 def plan_with(settings, reply):
@@ -117,10 +117,12 @@ def test_add_vehicle_and_product_then_mark_status(settings):
     assert r.json()["recalls"]["open"] == 3
     slug = r.json()["recalls"]["items"][0]["slug"]
     r = c.post("/api/recalls/status", json={"kind": "vehicle", "slug": slug, "recall_id": "20V314000", "status": "fixed"})
-    assert r.json()["open"] == 2 and r.json()["urgent"] == 0
+    assert r.json()["open"] == 2 and r.json()["urgent"] == 1          # the crib notice says "stop using it"
+    crib = next(i for i in r.json()["items"] if i["kind"] == "product")
+    assert crib["recalls"][0]["severity"] == "stop_using"
     assert "Recall 20V314000 marked fixed." in c.get(f"/api/memory/vehicle/{slug}").json()["text"]
     r = c.post("/api/recalls/status", json={"kind": "vehicle", "slug": slug, "recall_id": "20V314000", "status": "open"})
-    assert r.json()["urgent"] == 1
+    assert r.json()["urgent"] == 2
     profile = c.get("/api/profile").json()
     assert len(profile["vehicles"]) == 1 and len(profile["products"]) == 1
 

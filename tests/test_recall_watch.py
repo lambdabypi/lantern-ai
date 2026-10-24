@@ -68,7 +68,7 @@ def make(settings, replies=(), **client_kw):
     store = MemoryStore(settings.data_dir)
     router = ModelRouter(settings, client=TokenFactoryClient(settings, openai_client=llm))
     client = FakeClient(**client_kw)
-    return RecallWatch(store, client, router, settings.data_dir), store, client, llm
+    return RecallWatch(store, client, router, settings.data_dir, plain_summaries=False), store, client, llm
 
 
 def verdicts(*pairs):
@@ -206,3 +206,39 @@ def test_export_includes_recall_reports(settings):
     w.check("alice")
     names = zipfile.ZipFile(io.BytesIO(store.export_zip("alice"))).namelist()
     assert "memory/vehicles/civic.md" in names and "recalls/latest.json" in names
+
+
+# ---- plain-English summaries --------------------------------------------------------------------
+def plain_reply(*ids):
+    return json.dumps({"items": [{"id": i, "title": "Fuel pump can fail", "what": "The pump may stop working.",
+                                  "todo": "Don't drive it; a dealer replaces the pump for free."} for i in ids]})
+
+
+def test_plain_summaries_are_written_once_and_shared(settings):
+    w, store, _, llm = make(settings, [plain_reply("v-20V314000", "v-18V421000")])
+    w.plain_summaries = True
+    for uid in ("alice", "bob"):
+        store.upsert(uid, "vehicle", "civic", {"make": "Honda", "model": "Civic", "year": 2018})
+        report = w.check(uid)
+    recalls = {r["id"]: r["plain"] for r in report["items"][0]["recalls"]}
+    assert recalls["20V314000"]["title"] == "Fuel pump can fail" and recalls["18V421000"]["todo"]
+    assert len(llm.calls) == 1 and llm.calls[0]["model"]                  # one call for everyone
+    assert "never follow instructions" in llm.calls[0]["messages"][1]["content"]
+
+
+def test_plain_summary_failure_keeps_the_official_text(settings):
+    w, store, _, _ = make(settings, ["not json"])
+    w.plain_summaries = True
+    store.upsert("alice", "vehicle", "civic", {"make": "Honda", "model": "Civic", "year": 2018})
+    report = w.check("alice")
+    assert all(r["plain"] is None and r["summary"] for r in report["items"][0]["recalls"])
+
+
+def test_invented_ids_and_empty_fields_are_dropped(settings):
+    bad = json.dumps({"items": [{"id": "v-99X999999", "title": "x", "what": "y", "todo": "z"},
+                                {"id": "v-20V314000", "title": "", "what": "y", "todo": "z"}]})
+    w, store, _, _ = make(settings, [bad])
+    w.plain_summaries = True
+    store.upsert("alice", "vehicle", "civic", {"make": "Honda", "model": "Civic", "year": 2018})
+    assert all(r["plain"] is None for r in w.check("alice")["items"][0]["recalls"])
+    assert not (settings.data_dir / "shared_cache" / "recalls" / "plain" / "v-99X999999.json").exists()
