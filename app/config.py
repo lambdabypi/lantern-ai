@@ -41,6 +41,7 @@ class Settings:
     steam_api_key: str = ""          # optional: Steam Web API key for importing public Steam libraries
     model_balanced: str = ""         # Nemotron Super, writes answers from sources; empty = use MODEL_FAST
     public_base_url: str = ""        # e.g. https://lantern.example.com (Steam sign-in return address)
+    vapid_private_key: str = ""      # push notifications: base64 of a VAPID PEM key (python -m app.push); empty = off
 
     def require_secret_key(self) -> None:
         """The session-signing key must be set and long enough to resist guessing."""
@@ -100,6 +101,7 @@ def load_settings(env_file: str | Path | None = ".env") -> Settings:
         steam_api_key=get("STEAM_API_KEY"),
         public_base_url=get("PUBLIC_BASE_URL").rstrip("/"),
         model_balanced=get("MODEL_BALANCED"),
+        vapid_private_key=get("VAPID_PRIVATE_KEY"),
     )
 
 

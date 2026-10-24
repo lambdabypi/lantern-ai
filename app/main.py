@@ -33,6 +33,7 @@ from app.llm.router import ModelRouter, Tier
 from app.memory.extractor import MemoryExtractor
 from app.memory.history import HistoryStore
 from app.memory.store import KINDS, RECALL_STATUSES, MemoryStore, MemoryStoreError
+from app.push import Push, PushError
 from app.recall_watch import RecallWatch
 from app.steam_import import import_steam_library
 from app.tools.builtin import builtin_tools
@@ -116,6 +117,11 @@ class RecallStatusUpdate(BaseModel):
     status: str = Field(pattern="^(open|" + "|".join(RECALL_STATUSES) + ")$")
 
 
+class PushSubscription(BaseModel):
+    endpoint: str = Field(min_length=10, max_length=1000)
+    keys: dict[str, str] = Field(default_factory=dict)
+
+
 class MemoryText(BaseModel):
     text: str = Field(min_length=1, max_length=20_000)
 
@@ -137,7 +143,8 @@ class MeResponse(BaseModel):
 def create_app(loop: AgentLoop | None = None, settings: Settings | None = None,
                steam: SteamClient | None = None, openid_http: httpx.Client | None = None,
                extractor: MemoryExtractor | None = None, knowledge: GameKnowledge | None = None,
-               briefings: Briefings | None = None, watch: RecallWatch | None = None) -> FastAPI:
+               briefings: Briefings | None = None, watch: RecallWatch | None = None,
+               push: Push | None = None) -> FastAPI:
     _setup_logging()
     settings = settings or load_settings()
     settings.require_secret_key()
@@ -158,6 +165,9 @@ def create_app(loop: AgentLoop | None = None, settings: Settings | None = None,
                          profile_context=memory.context_for_prompt, plan_thinking=False,
                          planner=RecallPlanner(router, memory.context_for_prompt), answer_tier=Tier.BALANCED)
 
+    if push is None and settings.vapid_private_key:
+        push = Push(settings.data_dir, settings.vapid_private_key,
+                    settings.public_base_url or "https://github.com/lambdabypi/lantern-ai")
     steam_client = steam or (SteamClient(settings.steam_api_key) if settings.steam_api_key else None)
     accounts = AccountStore(settings.data_dir, guest_ttl_days=settings.guest_ttl_days)
     openid_clients: list[httpx.Client] = [openid_http] if openid_http else []  # created on first Steam sign-in
@@ -173,6 +183,10 @@ def create_app(loop: AgentLoop | None = None, settings: Settings | None = None,
 
     @app.exception_handler(RecallError)
     def recall_error(_: Request, e: RecallError) -> JSONResponse:
+        return JSONResponse({"detail": str(e)}, status_code=422)
+
+    @app.exception_handler(PushError)
+    def push_error(_: Request, e: PushError) -> JSONResponse:
         return JSONResponse({"detail": str(e)}, status_code=422)
 
     @app.exception_handler(MemoryStoreError)
@@ -531,9 +545,34 @@ def create_app(loop: AgentLoop | None = None, settings: Settings | None = None,
 
     @app.post("/internal/recalls/run", include_in_schema=False)
     def run_recall_watch(request: Request) -> dict:
-        result = need_watch().run_all(active_users_for_cron(request))
+        result = need_watch().run_all(active_users_for_cron(request), push.announce_new_recalls if push else None)
         log.info("recall watch run: %s", result)
         return result
+
+    # ---- push notifications ("Alert me on this phone") --------------------------------------
+    def need_push() -> Push:
+        if push is None:
+            raise HTTPException(status_code=503, detail="Notifications aren't set up on this server.")
+        return push
+
+    @app.get("/api/push")
+    def push_info(account: Account = Depends(current_account)) -> dict:
+        if push is None:
+            return {"available": False, "enabled": False, "public_key": None}
+        return {"available": True, "enabled": push.enabled_for(account.user_id), "public_key": push.public_key}
+
+    @app.post("/api/push/subscribe")
+    def push_subscribe(req: PushSubscription, account: Account = Depends(current_account)) -> dict:
+        p = need_push()
+        p.subscribe(account.user_id, req.model_dump())
+        sent = p.send(account.user_id, "Lantern alerts are on",
+                      "You'll get a notification here when a new recall affects your things.", "/#attention")
+        return {"ok": True, "test_sent": sent}
+
+    @app.post("/api/push/unsubscribe")
+    def push_unsubscribe(req: PushSubscription, account: Account = Depends(current_account)) -> dict:
+        need_push().unsubscribe(account.user_id, req.endpoint)
+        return {"ok": True}
 
     @app.get("/api/export")
     def export(account: Account = Depends(current_account)) -> RawResponse:

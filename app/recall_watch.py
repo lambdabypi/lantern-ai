@@ -18,7 +18,7 @@ import re
 from dataclasses import asdict
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from app.auth.users import user_dir, validate_user_id
 from app.llm.client import LLMError
@@ -314,9 +314,11 @@ class RecallWatch:
         return data or None
 
     # ---- scheduled ----------------------------------------------------------------------------
-    def run_all(self, active_user_ids: list[str]) -> dict[str, int]:
-        """Check every active user's things (called daily by Cloud Scheduler)."""
-        checked = flagged = 0
+    def run_all(self, active_user_ids: list[str],
+                on_report: Callable[[str, dict[str, Any]], int] | None = None) -> dict[str, int]:
+        """Check every active user's things (called daily by Cloud Scheduler). on_report(user_id, report), e.g. a
+        push notification for new recalls, returns how many alerts it sent; its failures never stop the run."""
+        checked = flagged = alerted = 0
         for uid in active_user_ids:
             try:
                 validate_user_id(uid)
@@ -327,7 +329,12 @@ class RecallWatch:
                 continue
             checked += 1
             flagged += report["open"]
-        return {"users": checked, "open_recalls": flagged}
+            if on_report:
+                try:
+                    alerted += on_report(uid, report)
+                except Exception:  # noqa: BLE001 - one user's failed alert must not stop everyone else's check
+                    log.exception("alert for %s failed", uid)
+        return {"users": checked, "open_recalls": flagged, "alerts_sent": alerted}
 
     # ---- files --------------------------------------------------------------------------------
     def _user_path(self, user_id: str, name: str) -> Path:

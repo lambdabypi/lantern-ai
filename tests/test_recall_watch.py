@@ -196,7 +196,7 @@ def test_run_all_skips_people_with_nothing_to_watch(settings):
     w, store, _, _ = make(settings)
     store.upsert("alice", "vehicle", "civic", {"make": "Honda", "model": "Civic", "year": 2018})
     store.upsert("bob", "profile", None, {"location": "Boston"})
-    assert w.run_all(["alice", "bob", "../evil"]) == {"users": 1, "open_recalls": 2}
+    assert w.run_all(["alice", "bob", "../evil"]) == {"users": 1, "open_recalls": 2, "alerts_sent": 0}
     assert w.latest("alice")["open"] == 2 and w.latest("bob") is None
 
 

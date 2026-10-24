@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "personal-ai"
 version = "0.1.0"
-description = "An open-source personal AI with visible memory and pluggable skills, built on NVIDIA Nemotron via Nebius Token Factory."
+description = "Lantern: a personal AI that knows what you own and watches for safety recalls, built on NVIDIA Nemotron via Nebius Token Factory."
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.11"
@@ -17,6 +17,7 @@ dependencies = [
     "uvicorn[standard]>=0.30",
     "pyyaml>=6.0",
     "httpx>=0.27",
+    "pywebpush>=2.0",
 ]
 
 [project.optional-dependencies]
