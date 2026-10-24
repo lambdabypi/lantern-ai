@@ -288,3 +288,22 @@ def test_games_with_no_sources_are_not_rediscovered_every_time(settings):
     first = len(discovery())
     gk.ask("alice", "Obscure Game", "how do I run")
     assert first == 2 + 1 and len(discovery()) == first + 1  # 2 discovery + 1 general-web fallback, then fallback only
+
+
+def test_shared_cache_only_accepts_hex_digest_keys(settings):
+    gk, _, _ = make(settings, searches={})
+    good = "a" * 64
+    gk._shared_set(good, {"passages": []})
+    assert gk._shared_get(good) == {"passages": []}
+    for bad in ("../../users/alice/account", "A" * 64, "a" * 63):
+        assert gk._shared_get(bad) is None
+        with pytest.raises(ValueError):
+            gk._shared_set(bad, {})
+
+
+def test_failed_shared_cache_write_does_not_break_the_answer(settings, monkeypatch):
+    gk, _, _ = make(settings, searches={})
+    gk.answers_dir.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setattr("app.tools.game_knowledge.os.replace", lambda *a: (_ for _ in ()).throw(OSError("bucket")))
+    gk._shared_set("b" * 64, {"passages": []})          # logged, not raised
+    assert list(gk.answers_dir.iterdir()) == []         # no stray .tmp left behind

@@ -11,6 +11,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -36,6 +37,9 @@ FALLBACK_NOTE = ("The game's own sources had nothing on this, so these passages 
                  "Tell the player that in your answer. ")
 EXTRACT_WAIT_S = 2.5        # past this, answer from search snippets (the read still finishes and is cached)
 SHARED_CACHE_TTL_S = 86400  # retrieved wiki passages are public facts: share them across players for a day
+_CACHE_KEY = re.compile(r"[0-9a-f]{64}")
+
+log = logging.getLogger(__name__)
 TIME_SENSITIVE = {"current", "currently", "now", "today", "tonight", "week", "latest", "new", "newest",
                   "update", "updates", "patch", "patches", "event", "events", "sale", "sales", "season"}
 _EXTRACT_POOL = ThreadPoolExecutor(max_workers=4, thread_name_prefix="extract")
@@ -290,18 +294,30 @@ class GameKnowledge:
         except SearchError:
             return {}, False
 
+    def _shared_path(self, key: str, suffix: str) -> Path:
+        if not _CACHE_KEY.fullmatch(key):  # keys are sha256 hex digests; never build paths from anything else
+            raise ValueError("invalid shared cache key")
+        return self.answers_dir / f"{key}{suffix}"
+
     def _shared_get(self, key: str) -> dict[str, Any] | None:
         try:
-            entry = json.loads((self.answers_dir / f"{key}.json").read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
+            entry = json.loads(self._shared_path(key, ".json").read_text(encoding="utf-8"))
+        except (OSError, ValueError):  # JSONDecodeError is a ValueError
             return None
-        return entry["value"] if time.time() - entry.get("ts", 0) < SHARED_CACHE_TTL_S else None
+        if not isinstance(entry, dict) or time.time() - entry.get("ts", 0) >= SHARED_CACHE_TTL_S:
+            return None
+        return entry.get("value")
 
     def _shared_set(self, key: str, value: dict[str, Any]) -> None:
-        self.answers_dir.mkdir(parents=True, exist_ok=True)
-        tmp = self.answers_dir / f"{key}.tmp"
-        tmp.write_text(json.dumps({"ts": time.time(), "value": value}, ensure_ascii=False), encoding="utf-8")
-        os.replace(tmp, self.answers_dir / f"{key}.json")
+        path = self._shared_path(key, ".json")
+        tmp = self._shared_path(key, ".tmp")
+        try:
+            self.answers_dir.mkdir(parents=True, exist_ok=True)
+            tmp.write_text(json.dumps({"ts": time.time(), "value": value}, ensure_ascii=False), encoding="utf-8")
+            os.replace(tmp, path)
+        except OSError as e:  # the cache is an optimisation: a failed write must not lose the answer
+            log.warning("shared cache write failed: %s", e)
+            tmp.unlink(missing_ok=True)
 
 
 def make_game_tools(knowledge: GameKnowledge) -> list[Tool]:
