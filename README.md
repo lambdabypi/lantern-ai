@@ -117,3 +117,5 @@ NVIDIA OpenShell, NemoClaw, Hermes Agent and Nebius Serverless were each checked
 ## License
 
 MIT
+
+The fonts in `app/web/fonts/` (Geist and Instrument Serif) are under the SIL Open Font License 1.1; their licence files are next to them. Lantern serves them itself, so no third-party font service is contacted.

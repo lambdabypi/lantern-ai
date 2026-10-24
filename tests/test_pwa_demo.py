@@ -26,6 +26,10 @@ def test_installable_app_files_are_served(settings):
     icon = c.get("/icons/icon-192.png")
     assert icon.status_code == 200 and icon.content.startswith(b"\x89PNG")
     assert c.get("/icons/../main.py").status_code == 404 and c.get("/icons/secret.png").status_code == 404
+    font = c.get("/fonts/geist-latin-wght-normal.woff2")
+    assert font.status_code == 200 and font.content.startswith(b"wOF2") and font.headers["content-type"] == "font/woff2"
+    assert "Open Font License" in c.get("/fonts/OFL-geist.txt").text
+    assert c.get("/fonts/other.woff2").status_code == 404
     page = c.get("/").text
     assert 'rel="manifest"' in page and "apple-touch-icon" in page
 

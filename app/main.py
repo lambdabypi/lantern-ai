@@ -52,6 +52,8 @@ def _setup_logging() -> None:
 
 WEB_DIR = Path(__file__).parent / "web"
 ICONS = {"icon-192.png", "icon-512.png", "maskable-512.png", "apple-touch-icon.png"}
+FONTS = {"geist-latin-wght-normal.woff2", "instrument-serif-latin-400-normal.woff2",
+         "instrument-serif-latin-400-italic.woff2", "OFL-geist.txt", "OFL-instrument-serif.txt"}  # all SIL OFL 1.1
 MAX_HISTORY_MESSAGES = 20  # recent messages sent to the model each turn
 USER_SESSION_S = 14 * 86400
 
@@ -240,6 +242,13 @@ def create_app(loop: AgentLoop | None = None, settings: Settings | None = None, 
             raise HTTPException(status_code=404, detail="Not found.")
         return FileResponse(WEB_DIR / "icons" / name, media_type="image/png",
                             headers={"Cache-Control": "public, max-age=86400"})
+
+    @app.get("/fonts/{name}", include_in_schema=False)
+    def font(name: str) -> FileResponse:
+        if name not in FONTS:
+            raise HTTPException(status_code=404, detail="Not found.")
+        kind = "font/woff2" if name.endswith(".woff2") else "text/plain; charset=utf-8"
+        return FileResponse(WEB_DIR / "fonts" / name, media_type=kind, headers={"Cache-Control": "public, max-age=2592000"})
 
     # ---- auth -------------------------------------------------------------------------------
     @app.post("/api/auth/guest", response_model=MeResponse)
