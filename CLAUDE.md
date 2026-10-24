@@ -5,7 +5,16 @@
 
 ## What we're building
 
-**Lantern: a personal AI for gamers. It knows your games, where you're up to, and where the answers live.** (Pivoted on 23 Oct from a general-purpose assistant. See the decision log.)
+> **Pivot on 24 Oct 2026: Lantern becomes a recall watch for the things you own** (see the decision log and "Build order: recall watch" below). The gamer design that follows is the previous product. Its machinery (accounts, memory store, `ask_game` retrieval, daily briefing job, streaming chat, Cloud Run deploy) is reused; game- and Steam-specific parts leave the UI.
+>
+> **Lantern: a personal AI that knows what you own and watches for safety recalls.**
+> 1. **Your things, as visible memory:** cars (by make/model/year or VIN) and household products (brand, product, model), one Markdown file each, saved from chat or added in the UI.
+> 2. **Daily recall watch:** checks NHTSA (cars) and CPSC (household products) every day and tells you in plain words what's wrong, how serious it is ("Do Not Drive" first) and how to get the free fix. You mark each recall "fixed" or "doesn't apply".
+> 3. **Ask about your stuff:** answers from the manufacturer's own support and manual pages (Tavily, the `ask_game` pipeline), cited.
+> - U.S. only. NHTSA matches by model, not by your exact car: always link the official VIN check (nhtsa.gov/recalls) and never say a specific car is or isn't fixed.
+> - Data sources (verified live 24 Oct, free, no key): `api.nhtsa.gov/recalls/recallsByVehicle?make=&model=&modelYear=` (dates DD/MM/YYYY; `parkIt`/`parkOutSide` flags; spelling must match `api.nhtsa.gov/products/vehicle/models?...&issueType=r`), `vpic.nhtsa.dot.gov/api/vehicles/DecodeVinValues/<vin>?format=json`, `www.saferproducts.gov/RestWebServices/Recall?format=json&RecallDateStart=YYYY-MM-DD` (~42 recalls / 128 KB per 30 days). **CPSC silently ignores unknown parameters and returns everything** (`Title=` gave all 1,539 since 2023; valid: `RecallTitle`, `ProductName`, `RecallDateStart`), so fetch the recent list once a day for the site and match locally.
+
+**Previous product (23 Oct): Lantern, a personal AI for gamers. It knows your games, where you're up to, and where the answers live.** (Pivoted on 23 Oct from a general-purpose assistant. See the decision log.)
 
 1. **Ask anything about your game (the core feature).** Answers come from *that game's own* sources (official wiki, patch notes, community wiki), are cited, and are pitched to your progress, so there are no spoilers unless you ask for them. Big games like Warframe have far too much information for a wiki search; this makes it one question away.
 2. **Your gamer profile, as visible memory:** games you play (with status and progress), platforms, and favourite streamers and creators. It's saved from chat ("I'm at Malenia in Elden Ring") and stored as plain files you can view, edit, delete and export.
@@ -159,6 +168,16 @@ Already done and reused: skeleton, Token Factory client, router (thinking switch
 | G6 | 23 Oct | ✅ Deployed on **Google Cloud Run** (see `deploy/README.md`): https://lantern-976584717995.us-central1.run.app. Still to do: README rewrite (26–27 Oct) |
 | G7 | 27–28 Oct | Demo video, polish, submit. 29–30 Oct is buffer |
 
+## Build order: recall watch (24–28 Oct)
+
+| # | When | Work |
+|---|---|---|
+| R1 | 24 Oct | Recall clients (`app/tools/recalls.py`): NHTSA by vehicle, VIN decode, CPSC daily list (shared, cached per day), with mocked tests |
+| R2 | 25 Oct | "Things you own" memory (`things/<slug>.md`), matching (name rules find candidates, Nano with thinking off confirms), daily recall watch on the briefing job, chat tools and extractor |
+| R3 | 26 Oct | UI: My stuff, Needs attention (Do Not Drive first), add a car by VIN, mark fixed / doesn't apply; ask about your stuff (manufacturer sources); fake demo household; deploy + daily Cloud Scheduler job |
+| R4 | 27 Oct | README, live checks, video |
+| R5 | 28 Oct | Submit (track: Best Apps and Agents or Personal AI, decide in R4). 29–30 Oct buffer |
+
 ## How to work with me
 
 - Work in small, reviewable steps. One feature per commit, with a clear commit message.
@@ -191,3 +210,4 @@ Already done and reused: skeleton, Token Factory client, router (thinking switch
 | 23 Oct 2026 | **Hosting moved from a Nebius VM to Google Cloud Run (free tier)**, at Shreyas's request, on his personal account (project `lantern-ai-85172`, budget alert at $1). Cloud Run gen2, 0–1 instances, user data in a private Cloud Storage bucket mounted at `/data`, secrets in Secret Manager, a fresh production `APP_SECRET_KEY`. All inference stays on Nebius Token Factory, which satisfies the hackathon's runtime requirement; the README must say clearly that Cloud Run only hosts the web app. This frees the ~$92 of Nebius credits. Deploy from PowerShell with `deploy/cloudrun.ps1` (Git Bash mangles `/data`). Verified live: guest, streamed cited answer, background save to the bucket, Secure cookies, https Steam realm |
 | 23 Oct 2026 | **Daily caps protect the public demo's credits:** 30 messages per guest, 100 per signed-in player, 300 site-wide, and 60 Tavily credits site-wide (cache hits are free), all reset at midnight UTC and configurable (0 = unlimited). Checked before any model call; the Tavily budget is enforced inside WebSearch. **Tavily account is on the free "Researcher" plan: 1,000 credits a month (109 used on 23 Oct), not the 9,000 assumed earlier.** Spend to 23 Oct: Token Factory ≈ $0.15 logged (under $1 total), Google Cloud ≈ $0 (one 42 s build, 67 MB image) |
 | 24 Oct 2026 | **Published on GitHub** as `lambdabypi/lantern-ai` (public, MIT). Before publishing, the full history was scanned (no keys, `.env` or user data ever committed), commit authors were rewritten to the GitHub noreply address, and a real SteamID was scrubbed from a test fixture. The repo-local git config now uses the noreply email. The backlog lives in GitHub Project #12, with labels P0/P1/P2 plus feature/quality/security/infra/docs/submission. **Work from the P0 issues; reference issue numbers in commits** |
+| 24 Oct 2026 | **Pivot: Lantern becomes a recall watch for the things you own.** Research (24 Oct): gaming help is real but crowded (Hinty, Questie, ApolloTrail) and hard for non-gaming judges to feel. Recalls are a measurable harm judges grasp at once: ~55–58M U.S. vehicles (1 in 5) have an unrepaired recall (CARFAX 2025); CPSC consumer response averages under 10%, with 6% correction for press-release-only recalls vs 50% with direct notice. A personal AI that knows what you own *is* direct notice. Official rules read: Stage One is pass/fail on track fit; any track is acceptable; the video must not show third-party trademarks or copyrighted material (no logos, game art or screenshots of other sites). Reuses ~70% of the code; U.S. only; no vision. LeanGate is a private project and is never entered |
