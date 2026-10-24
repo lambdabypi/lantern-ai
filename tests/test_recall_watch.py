@@ -280,6 +280,6 @@ def test_opening_the_app_again_writes_nothing(settings, monkeypatch):
     store.upsert("alice", "product", "Voomf crib mattress", {"brand": "Voomf", "product": "crib mattress"})
     w.check("alice")
     writes = []
-    monkeypatch.setattr(rw, "_write_json", lambda path, value: writes.append(path.name))
+    monkeypatch.setattr(rw, "write_json", lambda path, value: writes.append(path.name))
     w.check("alice", write_plain=False)
     assert writes == []                                # bucket writes are slow; nothing changed, so none

@@ -101,9 +101,9 @@ class WebSearch:
     ) -> list[dict[str, str]]:
         """Pull the passages most relevant to `query` from each page: [{url, content}].
 
-        Uses advanced extraction: game wikis often block the basic fetcher (seen with the
-        Warframe wikis). Pages that still fail are simply left out; callers fall back to
-        search snippets. Billed as 2 credits per 5 URLs.
+        Uses advanced extraction: some sites block the basic fetcher (first seen with game wikis;
+        makers' recall pages vary too). Pages that still fail are simply left out; callers fall back
+        to search snippets. Billed as 2 credits per 5 URLs.
         """
         urls = [u for u in urls if u][:5]
         if not urls:

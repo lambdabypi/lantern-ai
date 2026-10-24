@@ -23,9 +23,10 @@ Telling owners directly makes them roughly 8× more likely to act. A personal AI
 | 2 | **Daily recall watch.** Every day Lantern checks NHTSA (vehicles) and the CPSC (household products) for everything you own. **Home** shows what needs attention in plain words: "Don't drive the 2006 Ford Ranger until it's repaired" comes first. Mark each recall *fixed* or *not mine*. |
 | 3 | **Alerts on your phone or computer.** Turn on notifications and Lantern tells you when a new recall affects your things. Standard browser push: no phone number, no app store. Appearance follows your device (light or dark), or pick one in the menu. |
 | 4 | **Book the free fix.** Recall repairs are free at any authorized dealer for your car's brand. Lantern finds dealers near you and drafts the booking message (car, VIN, every recall number, "please confirm the parts are in stock"). **You send it yourself** by email, text or WhatsApp; Lantern never sends anything for you. |
-| 5 | **Ask, by typing or talking.** "Is my car safe to drive?" Answers come only from the official recall data, with links. Tap the mic to talk, and turn on "Read answers aloud". |
-| 6 | **Plain English, with the official text one tap away.** NVIDIA Nemotron rewrites each recall notice in everyday words ("Driver air bag may explode", "Park outside and away from buildings until the free repair is done"), once per recall for everyone, using only what the notice says. |
-| 7 | **Learn.** Short, sourced answers: what a safety recall is, whether the fix is free (and the 15-year rule), what "Do not drive", "Park outside" and "Stop using" mean, where to find your VIN, what happens to your data. |
+| 5 | **Ask, by typing or talking.** "Is my car safe to drive?" Answers come only from the official recall data, with links. "Where is the VIN on my Ranger?" or "How do I fold the stroller?" is answered from the maker's own website (and nhtsa.gov / cpsc.gov), with links to the pages used. If that thing has an urgent recall, the answer says so first. Tap the mic to talk, and turn on "Read answers aloud". |
+| 6 | **How to actually get the fix.** "Show me how to get the fix" on any recall reads the maker's own recall page and turns it into numbered steps (where to register, what they send, what to do meanwhile), with the source linked. Notices say a remedy exists; this says how. |
+| 7 | **Plain English, with the official text one tap away.** NVIDIA Nemotron rewrites each recall notice in everyday words ("Driver air bag may explode", "Park outside and away from buildings until the free repair is done"), once per recall for everyone, using only what the notice says. |
+| 8 | **Learn.** Short, sourced answers: what a safety recall is, whether the fix is free (and the 15-year rule), what "Do not drive", "Park outside" and "Stop using" mean, where to find your VIN, what happens to your data. |
 
 **What Lantern can't know:** NHTSA lists recalls by make, model and year. Whether *your* car's recall has already been repaired is only shown on [nhtsa.gov/recalls](https://www.nhtsa.gov/recalls) by VIN, which has no public API. Lantern says "your model is covered by this recall", links that official check, and never claims a specific car is fixed or unfixed.
 
@@ -38,7 +39,16 @@ All free and public, with no API key needed (checked live on 24 Oct 2026):
 | NHTSA Recalls API (`api.nhtsa.gov/recalls/recallsByVehicle`) | Vehicle recalls by make, model and year, including "park it" and "park outside" flags |
 | NHTSA vPIC (`vpic.nhtsa.dot.gov/api`) | Decoding a VIN into make, model and year |
 | CPSC Recalls API (`saferproducts.gov/RestWebServices/Recall`) | Household product recalls. Lantern fetches the recent list once a day for everyone and matches it against each person's things locally |
-| **Tavily** | Finding authorized dealers near the user for "Book the free fix" (basic search, cached, within a daily site-wide credit budget) |
+| **Tavily** | Reading the makers' own pages (see below), and finding authorized dealers near the user for "Book the free fix" |
+
+### How Lantern uses Tavily
+
+Official recall notices say *that* there is a free remedy. The maker's own pages say *how* to get it, and answer everyday questions about the things you own. Lantern reads those pages with Tavily (`app/maker_pages.py`):
+
+- **How to get the fix.** For household products, the CPSC notice names the maker's recall page in its contact details (1,272 of 1,289 notices since 2023 had a web address). Lantern reads it, plus the CPSC's own page, with **Tavily Extract** (a query about the remedy, the 3 most relevant passages per page). For cars, NHTSA gives no link, so a **Tavily Search restricted with `include_domains`** to the carmaker's sites and nhtsa.gov (which hosts the owner letters) finds the page first. Nemotron Super then writes numbered steps using only what the pages say, with the sources linked. Each recall's steps are shared by everyone and kept for 14 days.
+- **Ask about your stuff.** A question about one of your things is searched only on that maker's sites plus nhtsa.gov or cpsc.gov (`include_domains`), then the best two pages are read with Extract, and the answer cites them. A product's maker site is found once with one search and saved in that product's file as `sources`, where you can see and change it. If the maker's sites have nothing, Lantern searches the wider web and says so.
+- **Dealers.** One basic search finds authorized dealers near the city or ZIP you type.
+- **Budget.** About 3 credits for a new remedy or question (search 1, advanced extract 2); answers are cached, and the whole site has a daily Tavily credit cap. Web pages are treated as untrusted data: the prompts tell the model never to follow instructions inside them.
 
 ## How we use NVIDIA Nemotron and Nebius Token Factory
 
@@ -98,7 +108,7 @@ Deployment (Cloud Run, Cloud Storage for user data, Secret Manager, a daily Clou
 - **Visible memory:** everything Lantern remembers is a Markdown file you can view, edit, delete and download as a zip.
 - **Ask before acting:** Lantern never sends a message or books anything. Booking messages open in your own email, text or WhatsApp app for you to send.
 - **Only you mark recalls fixed:** the assistant has no tool for it, so a web page or a confused model can't hide a recall from you.
-- **Where your data goes:** messages go to Nebius Token Factory to generate replies; searches go to Tavily (for dealers, only your car's make and the city or ZIP you type); recall lookups send only a make, model and year (or a VIN, to decode it) to NHTSA. VINs are never put in model prompts.
+- **Where your data goes:** messages go to Nebius Token Factory to generate replies; searches go to Tavily (for dealers, only your car's make and the city or ZIP you type; for maker pages, the thing's name and your question, never your VIN); recall lookups send only a make, model and year (or a VIN, to decode it) to NHTSA. VINs are never put in model prompts.
 - **Voice** uses your browser's built-in speech recognition and speech synthesis. In Chrome, speech recognition is done by Google's servers; Lantern says so the first time you tap the mic. Typing works everywhere.
 - **Push notifications** go through your browser's push service (Google, Mozilla, Apple or Microsoft). Lantern only sends a short title and line, never your list of things.
 

@@ -483,6 +483,18 @@
   .fix dl { margin: 0; display: grid; gap: 10px; }
   .fix dt { font-weight: 600; font-size: .78rem; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
   .fix dd { margin: 2px 0 0; }
+  .howbox { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; }
+  .chipbtn.how { border-color: color-mix(in srgb, var(--glow) 70%, var(--border));
+                 background: linear-gradient(180deg, color-mix(in srgb, var(--glow) 14%, var(--surface)), var(--surface)); font-weight: 560; }
+  .howload { margin: 0; color: var(--muted); display: flex; gap: 10px; align-items: center; }
+  .howload::before { content: ""; width: 14px; height: 14px; border-radius: 50%; border: 2px solid var(--glow); border-right-color: transparent;
+                     animation: spin .8s linear infinite; }
+  .howsteps { border-radius: 14px; padding: 12px 14px; background: color-mix(in srgb, var(--glow) 9%, var(--surface));
+              border: 1px solid color-mix(in srgb, var(--glow) 35%, var(--border)); animation: rise .4s both; }
+  .howsteps h4 { margin: 0 0 6px; font-size: .78rem; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); font-weight: 600; }
+  .howsteps ol { margin: 0 0 8px; padding-left: 1.3em; display: grid; gap: 4px; }
+  .howsteps p { margin: 4px 0 0; }
+  .howsteps p.ai { display: block; margin-top: 10px; }
   .ai { font-size: .82rem; color: var(--muted); margin: 0; display: flex; gap: 6px; align-items: center; }
   .ai::before { content: "✦"; color: var(--glow); text-shadow: 0 0 8px var(--glow); }
   details.official summary { cursor: pointer; color: var(--accent); min-height: 44px; display: flex; align-items: center; }
@@ -1663,6 +1675,10 @@ function recallRow(item, rc, cardSeverity) {
   if (isPossible(item, rc) && rc.why) add("Why it may match", rc.why);
   fix.appendChild(dl);
   if (rc.plain) fix.appendChild(el("p", "ai", "Plain-English summary by NVIDIA Nemotron, from the official notice"));
+  const how = el("div", "howbox");
+  how.appendChild(button("Show me how to get the fix", "chipbtn how", () => loadRemedy(item, rc, how)));
+  how.appendChild(el("span", "hint", " Reads the maker's own recall page"));
+  fix.appendChild(how);
   const off = el("details", "official");
   off.appendChild(el("summary", "", "Read the official notice"));
   const ob = el("div", "body");
@@ -1679,6 +1695,38 @@ function recallRow(item, rc, cardSeverity) {
   fix.appendChild(actions);
   d.appendChild(fix);
   return d;
+}
+// "How do I actually get it fixed?": the maker's recall page, read with Tavily, turned into steps by Nemotron.
+async function loadRemedy(item, rc, box) {
+  const site = item.kind === "vehicle" ? `${makeOf(item)}'s site and nhtsa.gov` : "the maker's recall page";
+  box.replaceChildren(el("p", "howload", `Reading ${site} with Tavily…`));
+  let res, data;
+  try { ({ res, data } = await api("/api/recalls/remedy", { method: "POST", body: { kind: item.kind, slug: item.slug, recall_id: rc.id } })); }
+  catch { res = { ok: false }; }
+  if (!res.ok) {
+    box.replaceChildren(el("p", "error", detail(data, "Couldn't read the maker's page right now.")),
+                        button("Try again", "chipbtn", () => loadRemedy(item, rc, box)));
+    return;
+  }
+  const out = el("div", "howsteps");
+  out.appendChild(el("h4", "", "How to get the fix"));
+  if (data.steps.length) {
+    const ol = el("ol");
+    data.steps.forEach(s => ol.appendChild(el("li", "", s)));
+    out.appendChild(ol);
+  } else {
+    out.appendChild(el("p", "", data.note || "The maker's page didn't spell out the steps."));
+  }
+  if (data.meanwhile) out.appendChild(el("p", "", "Until then: " + data.meanwhile));
+  if (data.contact) out.appendChild(el("p", "", "Contact: " + data.contact));
+  if (data.sources.length) {
+    const src = el("p", "ai");
+    src.append(el("span", "", data.steps.length ? "Steps by NVIDIA Nemotron from " : "Checked "));
+    data.sources.forEach((s, i) => { if (i) src.append(", "); src.appendChild(link(s.url, s.site)); });
+    src.append(el("span", "", ` · read with Tavily, ${data.checked}`));
+    out.appendChild(src);
+  }
+  box.replaceChildren(out);
 }
 function doneCard(item, rc) {
   const c = el("div", "card");
@@ -1938,6 +1986,8 @@ function inline(parent, text) {
 }
 function renderAnswer(container, text) {
   container.replaceChildren();
+  // Some models wrap citations as 【url】 or 【1†L1-L9】: keep the link, drop the markers.
+  text = text.replace(/【\s*(https?:\/\/[^】\s]+)\s*】/g, " $1").replace(/【[^】]*】/g, "");
   let list = null;
   for (const raw of text.split("\n")) {
     const line = raw.trimEnd();
@@ -1963,7 +2013,7 @@ function add(text, cls) {
   $("suggest").hidden = true;
   return div;
 }
-const SUGGESTIONS = ["Is my car safe to drive?", "We also have a baby crib and a stroller", "Explain my most urgent recall simply", "How do I get a recall fixed?"];
+const SUGGESTIONS = ["Is my car safe to drive?", "Where is the VIN on my car?", "Explain my most urgent recall simply", "How do I get my recall fixed?"];
 function renderSuggestions() {
   $("suggest").replaceChildren(...SUGGESTIONS.map((s, i) => {
     const b = button(s, "chipbtn", () => { $("msg").value = s; $("chatForm").requestSubmit(); });

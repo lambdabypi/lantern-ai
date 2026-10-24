@@ -31,6 +31,7 @@ from app.fix_helper import draft_message, find_dealers
 from app.push import Push, PushError
 from app.recall_watch import RecallWatch
 from app.tools.builtin import builtin_tools
+from app.maker_pages import MakerError, MakerPages, make_ask_maker_tool
 from app.tools.recall_tools import make_recall_tools, save_things
 from app.tools.recalls import RecallClient, RecallError
 from app.tools.web_search import WebSearch
@@ -100,6 +101,12 @@ class VehicleCreate(BaseModel):
     year: int | None = Field(default=None, ge=1950, le=2100)
 
 
+class RemedyRequest(BaseModel):
+    kind: str = Field(max_length=10)
+    slug: str = Field(max_length=64)
+    recall_id: str = Field(max_length=20)
+
+
 class ThingsText(BaseModel):
     text: str = Field(min_length=1, max_length=2000)
 
@@ -142,7 +149,8 @@ class MeResponse(BaseModel):
 
 
 def create_app(loop: AgentLoop | None = None, settings: Settings | None = None, watch: RecallWatch | None = None,
-               push: Push | None = None, search: WebSearch | None = None) -> FastAPI:
+               push: Push | None = None, search: WebSearch | None = None,
+               makers: MakerPages | None = None) -> FastAPI:
     _setup_logging()
     settings = settings or load_settings()
     settings.require_secret_key()
@@ -154,14 +162,21 @@ def create_app(loop: AgentLoop | None = None, settings: Settings | None = None, 
     if loop is None:
         router = ModelRouter(settings)
         watch = watch or RecallWatch(memory, RecallClient(), router, settings.data_dir)
-        tools = make_recall_tools(memory, watch) + builtin_tools(settings, search)
+        makers = makers or MakerPages(search, router, settings.data_dir)
+        tools = (make_recall_tools(memory, watch) + [make_ask_maker_tool(memory, makers, watch)]
+                 + builtin_tools(settings, search))
+
+        def thing_named(user_id: str, text: str) -> str | None:
+            item = MakerPages.find(memory, user_id, text)
+            return item.meta.get("name", item.slug) if item else None
         # Thinking off for the chat model: 2-10x faster in a live comparison and still used the calculator
         # for arithmetic. The planner reads each message up front, saves the things the user says they own and
         # runs the recall check itself: with thinking off the chat model often skipped tools and answered from
         # memory, and recall facts must come from the official lists.
         loop = AgentLoop(router, ToolRegistry(settings.data_dir, tools),
                          profile_context=memory.context_for_prompt, plan_thinking=False,
-                         planner=RecallPlanner(router, memory.context_for_prompt), answer_tier=Tier.BALANCED)
+                         planner=RecallPlanner(router, memory.context_for_prompt, thing_named),
+                         answer_tier=Tier.BALANCED)
 
     if push is None and settings.vapid_private_key:
         push = Push(settings.data_dir, settings.vapid_private_key,
@@ -469,6 +484,24 @@ def create_app(loop: AgentLoop | None = None, settings: Settings | None = None, 
         w = need_watch()
         item = w.save_product(account.user_id, req.product, req.brand, req.model, source="user")
         return {"item": item.summary(), "recalls": w.check(account.user_id)}
+
+    @app.post("/api/recalls/remedy")
+    def remedy(req: RemedyRequest, account: Account = Depends(current_account)) -> dict:
+        """How to actually get this recall's free fix, from the maker's own recall page (read with Tavily, steps
+        written by Nemotron Super from what the page says). Shared per recall and kept for 14 days."""
+        if makers is None:
+            raise HTTPException(status_code=503, detail="Reading makers' pages isn't available here.")
+        w = need_watch()
+        report = w.check(account.user_id, write_plain=False)
+        item = next((i for i in report["items"] if i["kind"] == req.kind and i["slug"] == req.slug), None)
+        rc = next((r for r in (item or {}).get("recalls", []) if r["id"].upper() == req.recall_id.upper()), None)
+        if item is None or rc is None:
+            raise HTTPException(status_code=404, detail="That recall isn't on your list.")
+        file = memory.get(account.user_id, req.kind, req.slug)
+        try:
+            return makers.remedy(req.kind, file.meta if file else {}, rc)
+        except MakerError as e:
+            raise HTTPException(status_code=502, detail=str(e)) from e
 
     @app.post("/api/things")
     def add_things(req: ThingsText, account: Account = Depends(current_account)) -> dict:

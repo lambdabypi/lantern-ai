@@ -32,8 +32,9 @@ RECALL_STATUSES = ("fixed", "not_mine")  # anything else is open
 # Fields each kind may hold (beyond the automatic created/updated/source/confidence).
 FIELDS: dict[str, dict[str, type | tuple]] = {
     "vehicle": {"name": str, "make": str, "model": str, "year": int, "vin": str, "trim": str,
-                "nhtsa_model": str, "recall_status": dict},
-    "product": {"name": str, "brand": str, "product": str, "model": str, "bought": str, "recall_status": dict},
+                "nhtsa_model": str, "recall_status": dict, "sources": list},
+    "product": {"name": str, "brand": str, "product": str, "model": str, "bought": str, "recall_status": dict,
+                "sources": list},  # sources: the maker's own sites, used to answer questions about this thing
     "profile": {"location": str},
 }
 NAME_FIELD = {"vehicle": "name", "product": "name"}

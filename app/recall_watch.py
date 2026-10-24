@@ -24,7 +24,7 @@ from app.auth.users import user_dir, validate_user_id
 from app.llm.client import LLMError
 from app.llm.parsing import extract_json
 from app.llm.router import ModelRouter, Tier
-from app.fileio import write_atomic
+from app.fileio import write_json
 from app.memory.store import MemoryItem, MemoryStore, MemoryStoreError, slugify
 from app.tools.recalls import NHTSA_VIN_CHECK, ProductRecall, RecallClient, RecallError, normalise_vin
 
@@ -150,7 +150,7 @@ class RecallWatch:
         except (OSError, ValueError):
             pass
         value = fetch()
-        _write_json(path, value)
+        write_json(path, value)
         return value
 
     def vehicle_recalls(self, make: str, model: str, year: int) -> list[dict[str, Any]]:
@@ -251,7 +251,7 @@ class RecallWatch:
             known = len(decisions)
             items.extend(self._product_entry(user_id, p, feed, decisions) for p in products)
             if len(decisions) != known:  # writes to the bucket are slow (upload + rename): only when something changed
-                _write_json(self._user_path(user_id, "matches.json"), decisions)
+                write_json(self._user_path(user_id, "matches.json"), decisions)
 
         # "New" means it appeared after Lantern started watching that item: recalls found on an item's first
         # check are its baseline, not news.
@@ -265,7 +265,7 @@ class RecallWatch:
                 first = seen.setdefault(prefix + r["id"], "baseline" if baseline else today)
                 r["new"] = r["status"] == "open" and first != "baseline" and first >= recent
         if len(seen) != known:
-            _write_json(self._user_path(user_id, "seen.json"), seen)
+            write_json(self._user_path(user_id, "seen.json"), seen)
         pending = self._add_plain(items, write_plain) if self.plain_summaries else 0
         open_recalls = [r for i in items for r in i["recalls"] if r["status"] == "open"]
         report = {
@@ -275,7 +275,7 @@ class RecallWatch:
             "note": " ".join(notes) or None, "vin_check_url": NHTSA_VIN_CHECK, "plain_pending": pending,
         }
         if write_plain:  # a full check (daily run, a new item, the plain-English pass); page loads only read
-            _write_json(self._user_path(user_id, "latest.json"), report)
+            write_json(self._user_path(user_id, "latest.json"), report)
         return report
 
     # ---- plain English, shared per recall ---------------------------------------------------------
@@ -309,7 +309,7 @@ class RecallWatch:
                 if key in written:
                     r["plain"] = written[key]
         for key, value in written.items():
-            _write_json(folder / f"{key}.json", value)
+            write_json(folder / f"{key}.json", value)
         return 0
 
     def _write_plain(self, recalls: dict[str, dict[str, Any]]) -> dict[str, dict[str, str]]:
@@ -376,7 +376,7 @@ class RecallWatch:
             todo = [r for r in undecided if r.number not in shared]
             if todo:
                 shared.update(self._confirm(p.meta, todo))
-                _write_json(shared_path, shared)
+                write_json(shared_path, shared)
             for r in undecided:
                 if r.number in shared:
                     decisions[f"{fp}|{r.number}"] = shared[r.number]
@@ -473,5 +473,3 @@ def _sort(recalls: list[dict[str, Any]]) -> None:
     recalls.sort(key=lambda r: (r["status"] != "open", order[r["severity"]]))  # stable: keeps date order
 
 
-def _write_json(path: Path, value: Any) -> None:
-    write_atomic(path, json.dumps(value, ensure_ascii=False))

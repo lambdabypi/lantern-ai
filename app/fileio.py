@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import json
 import os
 from pathlib import Path
+from typing import Any
 
 
 def write_atomic(path: Path, text: str) -> None:
@@ -17,3 +19,8 @@ def write_atomic(path: Path, text: str) -> None:
     except OSError:
         tmp.unlink(missing_ok=True)
         raise
+
+
+def write_json(path: Path, value: Any) -> None:
+    """write_atomic for a JSON value (UTF-8, not ASCII-escaped)."""
+    write_atomic(path, json.dumps(value, ensure_ascii=False))
