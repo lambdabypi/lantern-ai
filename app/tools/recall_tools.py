@@ -36,22 +36,28 @@ def _brief(r: dict[str, Any]) -> dict[str, Any]:
     return keep
 
 
+def save_things(watch: RecallWatch, user_id: str, things: list[Any]) -> tuple[list[str], list[str]]:
+    """Save cars and products (as read from chat or the "what do you own?" box). Returns saved names and problems."""
+    saved, problems = [], []
+    for thing in (things or [])[:MAX_ADD]:
+        if not isinstance(thing, dict):
+            continue
+        try:
+            if thing.get("type") == "vehicle":
+                item = watch.save_vehicle(user_id, str(thing.get("make") or ""), str(thing.get("model") or ""),
+                                          thing.get("year"), str(thing.get("vin") or ""))
+            else:
+                item = watch.save_product(user_id, str(thing.get("product") or ""),
+                                          str(thing.get("brand") or ""), str(thing.get("model") or ""))
+            saved.append(item.meta.get("name", item.slug))
+        except (RecallError, MemoryStoreError, ValueError) as e:
+            problems.append(str(e))
+    return saved, problems
+
+
 def make_recall_tools(store: MemoryStore, watch: RecallWatch) -> list[Tool]:
     def recall_check(args: dict[str, Any], ctx: ToolContext) -> dict[str, Any]:
-        saved, problems = [], []
-        for thing in (args.get("add") or [])[:MAX_ADD]:
-            if not isinstance(thing, dict):
-                continue
-            try:
-                if thing.get("type") == "vehicle":
-                    item = watch.save_vehicle(ctx.user_id, str(thing.get("make") or ""), str(thing.get("model") or ""),
-                                              thing.get("year"), str(thing.get("vin") or ""))
-                else:
-                    item = watch.save_product(ctx.user_id, str(thing.get("product") or ""),
-                                              str(thing.get("brand") or ""), str(thing.get("model") or ""))
-                saved.append(item.meta.get("name", item.slug))
-            except (RecallError, MemoryStoreError, ValueError) as e:
-                problems.append(str(e))
+        saved, problems = save_things(watch, ctx.user_id, args.get("add") or [])
         if str(args.get("location") or "").strip():
             store.upsert(ctx.user_id, "profile", None, {"location": str(args["location"]).strip()[:80]})
         report = watch.check(ctx.user_id)

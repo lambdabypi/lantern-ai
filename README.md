@@ -19,7 +19,7 @@ Telling owners directly makes them roughly 8× more likely to act. A personal AI
 
 | | Feature |
 |---|---|
-| 1 | **Your things, as visible memory.** Cars (by VIN, or year, make and model) and household products, one Markdown file each. Saved from chat ("we have a 2018 Civic and a crib") or added in the app. |
+| 1 | **Your things, as visible memory.** Cars (by VIN, or year, make and model) and household products, one Markdown file each. Say or type everything at once in the **What do you own?** box ("our 2018 Civic, a Graco stroller and a crib"): Nemotron Nano picks out each car and product. Also saved from chat, or added one at a time in the app. |
 | 2 | **Daily recall watch.** Every day Lantern checks NHTSA (vehicles) and the CPSC (household products) for everything you own. **Home** shows what needs attention in plain words: "Don't drive the 2006 Ford Ranger until it's repaired" comes first. Mark each recall *fixed* or *not mine*. |
 | 3 | **Alerts on your phone or computer.** Turn on notifications and Lantern tells you when a new recall affects your things. Standard browser push: no phone number, no app store. Appearance follows your device (light or dark), or pick one in the menu. |
 | 4 | **Book the free fix.** Recall repairs are free at any authorized dealer for your car's brand. Lantern finds dealers near you and drafts the booking message (car, VIN, every recall number, "please confirm the parts are in stock"). **You send it yourself** by email, text or WhatsApp; Lantern never sends anything for you. |

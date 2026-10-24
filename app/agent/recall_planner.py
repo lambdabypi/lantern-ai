@@ -60,18 +60,31 @@ class RecallPlanner:
         self.router = router
         self.context = context
 
+    def _read(self, user: str, purpose: str) -> dict[str, Any] | None:
+        try:
+            r = self.router.complete([{"role": "system", "content": PROMPT}, {"role": "user", "content": user}],
+                                     Tier.FAST, purpose=purpose, thinking=False, temperature=0, max_tokens=400)
+            data = extract_json(r.text)
+        except (LLMError, ValueError):
+            return None
+        return data if isinstance(data, dict) else None
+
+    def owned(self, text: str) -> list[dict[str, Any]] | None:
+        """The things named in the "what do you own?" box (typed or spoken). None if the model call failed."""
+        data = self._read("What they own (from their files):\n(nothing yet)\n\nRecent conversation:\n(none)\n\n"
+                          "Latest message (typed or spoken into the app's \"What do you own?\" box, so everything "
+                          f"named in it is something they own):\n{text[:2000]}", purpose="things:read")
+        if data is None:
+            return None
+        return [c for c in (_clean_thing(t) for t in (data.get("add") or [])[:5]) if c]
+
     def __call__(self, user_id: str, message: str, history: list[dict[str, Any]]) -> Plan:
         recent = "\n".join(f"{m['role']}: {str(m['content'])[:300]}" for m in history[-4:])
         things = self.context(user_id) if self.context else "unknown"
         user = (f"What they own (from their files):\n{things}\n\nRecent conversation:\n{recent or '(none)'}\n\n"
                 f"Latest message:\n{message[:2000]}")
-        try:
-            r = self.router.complete([{"role": "system", "content": PROMPT}, {"role": "user", "content": user}],
-                                     Tier.FAST, purpose="agent:route", thinking=False, temperature=0, max_tokens=300)
-            data = extract_json(r.text)
-        except (LLMError, ValueError):
-            return Plan(note=NO_CHECK_NOTE)
-        if not isinstance(data, dict):
+        data = self._read(user, purpose="agent:route")
+        if data is None:
             return Plan(note=NO_CHECK_NOTE)
         add = [c for c in (_clean_thing(t) for t in (data.get("add") or [])[:5]) if c]
         location = str(data.get("location") or "").strip()

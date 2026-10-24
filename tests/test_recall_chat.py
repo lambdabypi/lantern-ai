@@ -158,3 +158,33 @@ def test_users_cannot_see_each_others_things(settings):
     assert bob.get("/api/recalls").json()["items"] == [] and bob.get("/api/profile").json()["vehicles"] == []
     slug = alice.get("/api/profile").json()["vehicles"][0]["slug"]
     assert bob.get(f"/api/memory/vehicle/{slug}").status_code == 404
+
+
+def things_app(settings, reply):
+    app_watch, store, _ = watch_and_store(settings, [json.dumps({"matches": [{"recall": "26669", "match": True, "why": "same"}]})])
+    loop, _ = make_loop(settings, [])
+    llm = ScriptedLLM([reply])
+    loop.planner = RecallPlanner(ModelRouter(settings, client=TokenFactoryClient(settings, openai_client=llm)))
+    return TestClient(create_app(loop=loop, settings=settings, watch=app_watch)), store, llm
+
+
+def test_what_do_you_own_box_saves_everything_named(settings):
+    c, store, llm = things_app(settings, json.dumps({"add": [
+        {"type": "vehicle", "make": "Honda", "model": "Civic", "year": 2018},
+        {"type": "product", "brand": "Voomf", "product": "crib mattress"}], "check": True, "location": ""}))
+    c.post("/api/auth/guest")
+    r = c.post("/api/things", json={"text": "our 2018 Honda Civic and a Voomf crib mattress"})
+    assert r.status_code == 200 and r.json()["saved"] == ["2018 Honda Civic", "Voomf crib mattress"]
+    assert r.json()["recalls"]["open"] == 3
+    assert "everything named in it is something they own" in llm.calls[0]["messages"][1]["content"]
+    assert len(store.list(c.get("/api/me").json()["user_id"], "product")) == 1
+
+
+def test_what_do_you_own_box_explains_when_nothing_is_found(settings):
+    c, _, _ = things_app(settings, json.dumps({"add": [], "check": False, "location": ""}))
+    c.post("/api/auth/guest")
+    r = c.post("/api/things", json={"text": "hello there"})
+    assert r.status_code == 422 and "couldn't find anything you own" in r.json()["detail"]
+    c2, _, _ = things_app(settings, "not json")
+    c2.post("/api/auth/guest")
+    assert c2.post("/api/things", json={"text": "a crib"}).status_code == 502

@@ -77,6 +77,9 @@
   .bar { display: flex; align-items: center; justify-content: space-between; padding: calc(12px + env(safe-area-inset-top)) 0 8px; }
   .brand { display: flex; gap: 10px; align-items: center; font-family: var(--serif); font-weight: 400; font-size: 1.6rem; letter-spacing: -.01em; }
   .brand svg { width: 30px; height: 30px; }
+  a.brand { color: var(--text); text-decoration: none; border-radius: 12px; padding: 2px 6px 2px 2px; margin-left: -2px; transition: opacity .2s; }
+  a.brand:hover { opacity: .78; }
+  .bar-actions { display: flex; gap: 8px; align-items: center; }
   .iconbtn { background: var(--surface); border: 1px solid var(--border); border-radius: 999px; min-width: 44px; height: 44px;
              padding: 0 14px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; }
   .menu { position: absolute; right: 16px; top: 64px; background: var(--surface); border: 1px solid var(--border);
@@ -197,14 +200,6 @@
            backdrop-filter: blur(22px) saturate(1.4); -webkit-backdrop-filter: blur(22px) saturate(1.4); border-radius: 28px;
            box-shadow: inset 0 1px 0 color-mix(in srgb, white 70%, transparent), 0 24px 60px rgba(60,45,20,.10); }
   .composer-card { padding: 16px; max-width: 620px; margin: 0 auto; }
-  .kind-row { text-align: center; }
-  .kind-toggle { position: relative; display: inline-flex; padding: 4px; border-radius: 999px; background: color-mix(in srgb, var(--text) 6%, transparent); margin-bottom: 14px; }
-  .kind-toggle button { position: relative; z-index: 1; border: none; background: none; min-height: 40px; padding: 0 18px; border-radius: 999px; cursor: pointer;
-                        color: var(--muted); font-weight: 560; transition: color .25s; display: inline-flex; gap: 8px; align-items: center; }
-  .kind-toggle button svg { width: 18px; height: 18px; }
-  .kind-toggle button[aria-pressed="true"] { color: var(--text); }
-  .kind-toggle .thumb { position: absolute; z-index: 0; top: 4px; bottom: 4px; border-radius: 999px; background: var(--surface);
-                        box-shadow: 0 2px 10px rgba(0,0,0,.08); transition: left .35s cubic-bezier(.3,.7,.2,1), width .35s cubic-bezier(.3,.7,.2,1); }
   .prompt { position: relative; display: flex; align-items: center; gap: 6px; padding: 6px 6px 6px 22px; border-radius: 999px; background: var(--surface);
             box-shadow: 0 12px 34px rgba(60,45,20,.12), inset 0 0 0 1px var(--border); }
   .prompt::before { content: ""; position: absolute; inset: -2px; border-radius: inherit; padding: 2px; pointer-events: none;
@@ -218,12 +213,21 @@
   @keyframes turn { to { --a: 360deg; } }
   .prompt input { border: none; background: transparent; box-shadow: none; padding: 0; min-height: 52px; font-size: max(16px, 1.08rem); flex: 1; min-width: 0; }
   .prompt input:focus { box-shadow: none; outline: none; }
-  .prompt .sep { width: 1px; align-self: stretch; margin: 10px 4px; background: var(--border); }
   .prompt .go { flex: none; width: 52px; height: 52px; border-radius: 50%; border: none; cursor: pointer; color: #fff;
                 background: radial-gradient(circle at 30% 25%, #4f8a76, var(--accent-fill, #2f5d50)); box-shadow: 0 8px 20px rgba(47,93,80,.35);
                 display: inline-flex; align-items: center; justify-content: center; transition: transform .15s; }
   .prompt .go:hover { transform: scale(1.05); } .prompt .go:active { transform: scale(.95); }
   .prompt .go:disabled { opacity: .6; }
+  .own-label { display: block; margin: 2px 6px 12px; font-weight: 600; font-size: 1.05rem; letter-spacing: -.01em; }
+  .own-label span { display: block; margin-top: 2px; font-weight: 400; font-size: .9rem; color: var(--muted); }
+  .prompt .mic { flex: none; width: 44px; height: 44px; border-radius: 50%; border: 1px solid var(--border); background: var(--surface);
+                 color: var(--text); cursor: pointer; display: inline-flex; align-items: center; justify-content: center; transition: background .2s, color .2s; }
+  .prompt .mic:hover { background: var(--bg); }
+  .prompt .mic[aria-pressed="true"] { background: var(--danger-fill); color: #fff; border-color: transparent; animation: listen 1.2s infinite; }
+  .voice-note { margin: 10px 6px 0; font-size: .88rem; color: var(--muted); }
+  .quick-add { margin: 16px 0 4px; }
+  .quick-add .error { min-height: 0; margin-top: 6px; }
+  .quick-add .prompt { box-shadow: inset 0 0 0 1px var(--border); }
   .examples { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-top: 14px; }
   .examples button { border: 1px solid color-mix(in srgb, var(--border) 80%, transparent); background: color-mix(in srgb, var(--surface) 70%, transparent);
                      border-radius: 999px; padding: 6px 14px; min-height: 38px; font-size: .9rem; color: var(--muted); cursor: pointer; transition: all .2s; }
@@ -261,42 +265,93 @@
   #welcome .error { text-align: center; }
 
 
-  /* An example of what Lantern shows, beside the prompt on wide screens. Made-up item, no brand names. */
-  .preview { display: none; position: relative; margin: 0; }
-  .preview::before { content: ""; position: absolute; inset: 8% 4% 4% 8%; border-radius: 50%; z-index: -1; filter: blur(50px);
-                     background: radial-gradient(closest-side, color-mix(in srgb, var(--glow) 55%, transparent), transparent); animation: breathe 7s ease-in-out infinite; }
-  .pv-tag { position: absolute; top: 12px; right: 30px; font-size: .74rem; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
-  .pv-notif { display: grid; grid-template-columns: 40px 1fr auto; gap: 4px 12px; align-items: center; padding: 14px 16px; border-radius: 20px;
-              margin: 14px 26px 0 0; animation: drop .8s cubic-bezier(.2,.8,.2,1.15) 1.1s both; }
-  .pv-notif .app { grid-row: span 2; width: 40px; height: 40px; border-radius: 11px; display: grid; place-items: center;
-                   background: radial-gradient(circle at 50% 70%, #fff3d4, #ffcf7f 55%, #f0a43c); box-shadow: 0 4px 12px rgba(240,150,40,.35); }
-  .pv-notif .app svg { width: 26px; height: 32px; }
-  .pv-notif b { font-size: .95rem; font-weight: 600; } .pv-notif time { font-size: .78rem; color: var(--muted); }
-  .pv-notif span:last-child { grid-column: 2 / -1; color: var(--muted); font-size: .9rem; line-height: 1.35; }
-  @keyframes drop { from { opacity: 0; transform: translateY(-26px) scale(.96); } to { opacity: 1; transform: none; } }
-  .pv-card { position: relative; overflow: hidden; margin: 16px 0 0 34px; padding: 20px 22px 20px 26px; border-radius: 24px;
-             background: var(--surface); box-shadow: 0 1px 0 rgba(255,255,255,.8) inset, 0 30px 70px rgba(60,45,20,.16), 0 0 0 1px color-mix(in srgb, var(--border) 70%, transparent);
-             animation: rise .9s cubic-bezier(.2,.7,.2,1) .5s both, float 8s ease-in-out 1.6s infinite; }
-  .pv-card::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 6px; background: linear-gradient(var(--danger-fill), #e0563f); }
-  .pv-card::after { content: ""; position: absolute; inset: 0; pointer-events: none;
-                    background: linear-gradient(105deg, transparent 35%, rgba(255,214,140,.28) 50%, transparent 65%); transform: translateX(-120%);
-                    animation: scan 5.5s ease-in-out 2.4s infinite; }
-  @keyframes scan { 0%, 55% { transform: translateX(-120%); } 85%, 100% { transform: translateX(120%); } }
-  .pv-card h3 { font-family: var(--serif); font-weight: 400; font-size: 1.75rem; line-height: 1.1; margin: 4px 0 2px; letter-spacing: -.01em; }
-  .pv-card .who { color: var(--muted); font-size: .86rem; margin: 0 0 12px; }
-  .pv-card dl { margin: 0; display: grid; gap: 10px; }
-  .pv-card dt { font-weight: 600; font-size: .72rem; color: var(--muted); text-transform: uppercase; letter-spacing: .07em; }
-  .pv-card dd { margin: 2px 0 0; font-size: .96rem; }
-  .pv-card .pv-actions { display: flex; gap: 14px; margin-top: 16px; align-items: center; }
-  .pv-card .pv-btn { border-radius: 999px; padding: 9px 16px; font-size: .9rem; font-weight: 600; color: #fff;
-                     background: linear-gradient(180deg, #3f7565, #2f5d50); box-shadow: 0 6px 14px rgba(47,93,80,.3); }
-  .pv-card .pv-link { font-size: .88rem; color: var(--accent); }
-  .pv-ok { display: flex; align-items: center; gap: 12px; margin: 16px 40px 0 0; padding: 13px 16px; border-radius: 18px; font-size: .92rem;
-           animation: rise .9s cubic-bezier(.2,.7,.2,1) 1.6s both; }
-  .pv-ok .tick { width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; flex: none; color: #fff;
-                 background: linear-gradient(135deg, #3aa36f, #1d6b45); box-shadow: 0 4px 12px rgba(29,107,69,.3); }
-  .pv-ok small { display: block; color: var(--muted); font-size: .8rem; }
-  .side-note { display: none; }
+  /* "How it works": an illustration in its own panel (a phone with a made-up household), beside the prompt on wide
+     screens. It cycles through three steps: the alert, the plain-English card, telling the family and asking. */
+  .preview { display: none; position: relative; margin: 0; padding: 22px 22px 18px; border-radius: 32px;
+             background: linear-gradient(160deg, color-mix(in srgb, var(--surface) 72%, transparent), color-mix(in srgb, var(--surface) 38%, transparent));
+             border: 1px solid color-mix(in srgb, var(--border) 80%, transparent);
+             box-shadow: inset 0 1px 0 color-mix(in srgb, white 60%, transparent), 0 30px 80px rgba(60,45,20,.12);
+             backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px); }
+  .pv-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 16px; }
+  .pv-head h2 { margin: 0; font-family: var(--serif); font-weight: 400; font-size: 1.6rem; letter-spacing: -.01em; }
+  .pv-chip { font-size: .72rem; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--muted);
+             border: 1px dashed color-mix(in srgb, var(--muted) 60%, transparent); border-radius: 999px; padding: 4px 10px; white-space: nowrap; }
+  .pv-stage { position: relative; display: grid; place-items: center; padding: 6px 0 4px; }
+  .pv-stage::before { content: ""; position: absolute; width: 70%; aspect-ratio: 1; border-radius: 50%; filter: blur(46px); z-index: 0;
+                      background: radial-gradient(closest-side, color-mix(in srgb, var(--glow) 60%, transparent), transparent); animation: breathe 7s ease-in-out infinite; }
+  .phone { position: relative; z-index: 1; width: 284px; height: 520px; border-radius: 46px; padding: 10px; background: #15191a;
+           box-shadow: 0 0 0 1.5px #3a4140 inset, 0 40px 80px rgba(30,20,5,.28), 0 8px 20px rgba(30,20,5,.18); }
+  .phone::before { content: ""; position: absolute; top: 18px; left: 50%; transform: translateX(-50%); width: 88px; height: 24px; border-radius: 999px;
+                   background: #15191a; z-index: 3; }
+  .screen { position: relative; height: 100%; border-radius: 37px; overflow: hidden; background: #f6f3ec; color: #1b1f1d; font-size: .84rem; line-height: 1.4; }
+  .scene { position: absolute; inset: 0; padding: 52px 14px 14px; display: flex; flex-direction: column; gap: 10px;
+           opacity: 0; transform: translateY(14px) scale(.985); transition: opacity .55s ease, transform .7s cubic-bezier(.2,.7,.2,1); pointer-events: none; }
+  .scene.on { opacity: 1; transform: none; }
+  /* scene 1: the lock screen */
+  .scene.lock { align-items: stretch; color: #fff;
+                background: radial-gradient(90% 60% at 50% 100%, #f6b453, transparent 70%), radial-gradient(80% 60% at 20% 10%, #3f6e60, transparent 70%), #213a33; }
+  .lock .clock { text-align: center; font-family: var(--serif); font-size: 4.2rem; line-height: 1; margin-top: 8px; letter-spacing: -.02em; }
+  .lock .date { text-align: center; opacity: .85; margin-top: -4px; margin-bottom: 14px; }
+  .note { display: grid; grid-template-columns: 34px 1fr auto; gap: 2px 10px; align-items: center; padding: 11px 12px; border-radius: 18px;
+          background: rgba(255,255,255,.78); color: #1b1f1d; backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); box-shadow: 0 8px 24px rgba(0,0,0,.14); }
+  .scene.on .note { animation: drop .7s cubic-bezier(.2,.8,.2,1.15) both; }
+  .scene.on .note + .note { animation-delay: .35s; }
+  .note .app { grid-row: span 2; width: 34px; height: 34px; border-radius: 9px; display: grid; place-items: center;
+               background: radial-gradient(circle at 50% 70%, #fff3d4, #ffcf7f 55%, #f0a43c); }
+  .note .app svg { width: 22px; height: 28px; }
+  .note b { font-weight: 600; } .note time { font-size: .72rem; color: #59625d; }
+  .note span:last-child { grid-column: 2 / -1; color: #3d4441; }
+  .note.quiet { opacity: .92; }
+  @keyframes drop { from { opacity: 0; transform: translateY(-22px) scale(.96); } to { opacity: 1; transform: none; } }
+  /* scenes 2 and 3: inside the app */
+  .mini-bar { display: flex; align-items: center; gap: 6px; font-family: var(--serif); font-size: 1.15rem; }
+  .mini-bar svg { width: 16px; height: 20px; }
+  .mini-status { border-radius: 16px; padding: 10px 12px; background: #fdecea; color: #a3200f; font-family: var(--serif); font-size: 1.15rem; line-height: 1.15; }
+  .mini-card { position: relative; overflow: hidden; border-radius: 18px; padding: 12px 12px 12px 16px; background: #fff;
+               box-shadow: 0 1px 2px rgba(0,0,0,.04), 0 10px 24px rgba(40,30,10,.08); }
+  .mini-card::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 5px; background: linear-gradient(#b42318, #e0563f); }
+  .mini-card::after { content: ""; position: absolute; inset: 0; pointer-events: none; transform: translateX(-120%);
+                      background: linear-gradient(105deg, transparent 35%, rgba(255,214,140,.35) 50%, transparent 65%); }
+  .scene.on .mini-card::after { animation: scan 2.2s ease-in-out .6s both; }
+  @keyframes scan { to { transform: translateX(120%); } }
+  .mini-card h3 { font-family: var(--serif); font-weight: 400; font-size: 1.3rem; line-height: 1.1; margin: 6px 0 2px; }
+  .mini-card .badges { margin: 0; gap: 6px; } .mini-card .badge { font-size: .7rem; padding: 2px 8px; }
+  .mini-card dt { font-size: .64rem; font-weight: 600; letter-spacing: .07em; text-transform: uppercase; color: #59625d; margin-top: 8px; }
+  .mini-card dd { margin: 1px 0 0; }
+  .mini-ai { font-size: .7rem; color: #59625d; margin: 8px 0 0; }
+  .mini-ai::before { content: "✦ "; color: #e8962c; }
+  .mini-actions { display: flex; gap: 6px; margin-top: 10px; }
+  .mini-btn { border-radius: 999px; padding: 6px 11px; font-size: .74rem; font-weight: 600; background: #fff; border: 1px solid #ddd8cc; white-space: nowrap; }
+  .mini-btn.go { background: #2f5d50; color: #fff; border-color: #2f5d50; }
+  .mini-row { display: flex; align-items: center; gap: 10px; border-radius: 14px; padding: 9px 11px; background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.04); }
+  .mini-row .tick { width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; flex: none; color: #fff; background: #1d6b45; font-size: .7rem; }
+  .mini-row small { display: block; color: #59625d; font-size: .7rem; }
+  .sheet { margin-top: auto; border-radius: 20px; background: #fff; padding: 12px; box-shadow: 0 -10px 30px rgba(40,30,10,.1); }
+  .scene.on .sheet { animation: sheetup .6s cubic-bezier(.2,.8,.2,1) .25s both; }
+  @keyframes sheetup { from { transform: translateY(40px); opacity: 0; } to { transform: none; opacity: 1; } }
+  .sheet .lbl { font-size: .7rem; color: #59625d; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; }
+  .sheet .apps { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-top: 8px; text-align: center; font-size: .68rem; }
+  .sheet .apps i { display: grid; place-items: center; width: 38px; height: 38px; margin: 0 auto 4px; border-radius: 12px; font-style: normal; font-size: 1rem; color: #fff; }
+  .bubble { max-width: 86%; padding: 8px 11px; border-radius: 16px; }
+  .bubble.me { align-self: flex-end; background: #2f5d50; color: #fff; border-bottom-right-radius: 5px; }
+  .bubble.lan { align-self: flex-start; background: #fff; border-bottom-left-radius: 5px; box-shadow: 0 1px 2px rgba(0,0,0,.05); }
+  .bubble.lan small { display: block; color: #59625d; font-size: .68rem; margin-top: 4px; }
+  .scene.on .bubble { animation: rise .5s cubic-bezier(.2,.7,.2,1) both; }
+  .scene.on .bubble.lan { animation-delay: .5s; }
+  .typing { font-size: .7rem; color: #59625d; }
+  /* the step picker under the phone */
+  .pv-steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 16px; }
+  .pv-steps button { position: relative; overflow: hidden; text-align: left; border: 1px solid color-mix(in srgb, var(--border) 80%, transparent);
+                     background: color-mix(in srgb, var(--surface) 55%, transparent); border-radius: 16px; padding: 10px 12px 12px; cursor: pointer;
+                     color: var(--muted); font-size: .84rem; line-height: 1.3; transition: background .25s, color .25s, border-color .25s; }
+  .pv-steps button b { display: block; color: var(--text); font-weight: 600; font-size: .9rem; margin-bottom: 2px; }
+  .pv-steps button[aria-pressed="true"] { background: var(--surface); border-color: color-mix(in srgb, var(--glow) 70%, var(--border)); color: var(--text); }
+  .pv-steps button::after { content: ""; position: absolute; left: 0; bottom: 0; height: 3px; width: 0; background: linear-gradient(90deg, var(--glow), #f08a3c); }
+  .pv-steps button[aria-pressed="true"]::after { animation: progress var(--pv-ms, 5200ms) linear both; }
+  .preview.paused .pv-steps button::after { animation: none; width: 0; }
+  @keyframes progress { to { width: 100%; } }
+  .pv-foot { margin: 12px 2px 0; font-size: .8rem; color: var(--muted); }
+    .side-note { display: none; }
 
   /* ---------- wide screens: a full-width landing and, once signed in, a sidebar app ---------- */
   @media (min-width: 1024px) {
@@ -311,10 +366,9 @@
     #welcome > .landing-hero { grid-column: 1; grid-row: 1; text-align: left; padding-top: clamp(24px, 7vh, 80px); }
     #welcome > #startForm { grid-column: 1; grid-row: 2; margin: 0; max-width: 600px; }
     #welcome > .landing-actions { grid-column: 1; grid-row: 3; justify-content: flex-start; }
-    #welcome > .preview { display: block; grid-column: 2; grid-row: 1 / 4; align-self: center; padding-top: 40px; }
+    #welcome > .preview { display: block; grid-column: 2; grid-row: 1 / 4; align-self: center; margin-top: 12px; }
     #welcome h1 { margin-left: 0; font-size: clamp(3.4rem, 5.6vw, 5.4rem); }
     .landing-lead { margin-left: 0; font-size: 1.14rem; }
-    .kind-row { text-align: left; }
     .examples { justify-content: flex-start; }
     #welcome .error { text-align: left; }
     .stats { grid-template-columns: 1fr 1fr; margin-top: clamp(56px, 10vh, 110px); gap: 18px; }
@@ -600,12 +654,15 @@
 <main id="app">
   <canvas id="field" aria-hidden="true"></canvas>
   <header class="bar">
-    <div class="brand"><svg class="lantern" aria-hidden="true"><use href="#lantern"/></svg><span>Lantern</span></div>
+    <a class="brand" id="brandLink" href="/"><svg class="lantern" aria-hidden="true"><use href="#lantern"/></svg><span>Lantern</span></a>
+    <span class="bar-actions">
+    <button type="button" class="iconbtn" id="backBtn" hidden>Your list <span aria-hidden="true">→</span></button>
     <button type="button" class="iconbtn" id="signInBtn" hidden>Sign in</button>
     <div id="topActions" hidden>
       <button type="button" class="iconbtn" id="menuBtn" aria-expanded="false" aria-controls="menu">
         <span aria-hidden="true">☰</span><span>Menu</span></button>
     </div>
+    </span>
   </header>
   <div class="menu" id="menu" hidden>
     <button type="button" id="mKeep" hidden>Keep my list (free account)</button>
@@ -628,30 +685,14 @@
     </div>
 
     <form id="startForm" class="glass composer-card reveal" style="--i:4" novalidate>
-      <div class="kind-row">
-        <div class="kind-toggle" role="group" aria-label="What do you want to check?">
-          <span class="thumb" aria-hidden="true"></span>
-          <button type="button" data-kind="vehicle" aria-pressed="true">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 17h14M6 17v2M18 17v2M4 13l2-5a2 2 0 0 1 2-1h8a2 2 0 0 1 2 1l2 5v4H4z"/><circle cx="8" cy="14" r="1"/><circle cx="16" cy="14" r="1"/></svg>
-            A car</button>
-          <button type="button" data-kind="product" aria-pressed="false">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 10h18v8H3zM5 18v2M19 18v2M3 10V6M21 10V6M7 10V7M11 10V7M15 10V7M19 10V7"/></svg>
-            Baby &amp; home</button>
-        </div>
-      </div>
-      <div class="prompt" data-part="vehicle">
-        <label class="sr-only" for="carInput">Your car: year, make and model, or the VIN</label>
-        <input id="carInput" name="car" placeholder="2018 Honda Civic, or paste the VIN" autocomplete="off" autocapitalize="words" spellcheck="false">
+      <label class="own-label" for="ownInput">What do you own?
+        <span>Cars, cribs, strollers, high chairs, heaters, appliances, toys… Type it or say it, as many as you like.</span></label>
+      <div class="prompt">
+        <input id="ownInput" name="owned" placeholder="Our 2018 Honda Civic, a crib and a space heater" autocomplete="off" maxlength="2000" spellcheck="false">
+        <button type="button" class="mic" id="ownMic" aria-label="Say what you own" aria-pressed="false" hidden><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v4"/></svg></button>
         <button class="go" type="submit" aria-label="Check for recalls"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M5 12h13M13 6l6 6-6 6"/></svg></button>
       </div>
-      <div class="prompt" data-part="product" hidden>
-        <label class="sr-only" for="productInput">What is it?</label>
-        <input id="productInput" name="product" placeholder="What is it? (crib mattress…)" autocomplete="off" maxlength="80">
-        <span class="sep" aria-hidden="true"></span>
-        <label class="sr-only" for="brandInput">Brand</label>
-        <input id="brandInput" name="brand" placeholder="Brand" autocomplete="off" maxlength="60" style="max-width:9em">
-        <button class="go" type="submit" aria-label="Check this product"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M5 12h13M13 6l6 6-6 6"/></svg></button>
-      </div>
+      <p class="voice-note" id="ownNote" hidden></p>
       <div class="examples" id="examples"></div>
       <div class="error" id="startError" role="alert"></div>
     </form>
@@ -662,32 +703,54 @@
         See an example household</button>
       <button class="ghost-pill" type="button" data-learn="what">What is a safety recall?</button>
     </div>
+    <section class="preview" id="preview" aria-labelledby="pvTitle">
+      <div class="pv-head"><h2 id="pvTitle">How it works</h2><span class="pv-chip">Illustration</span></div>
+      <div class="pv-stage" aria-hidden="true">
+        <div class="phone"><div class="screen">
+          <div class="scene lock on" data-scene="0">
+            <div class="clock">7:41</div><div class="date">Tuesday morning</div>
+            <div class="note"><span class="app"><svg viewBox="0 0 120 160" aria-hidden="true"><use href="#lantern"/></svg></span><b>Lantern</b><time>now</time>
+              <span>New recall: your space heater. Stop using it. It can overheat and start a fire.</span></div>
+            <div class="note quiet"><span class="app"><svg viewBox="0 0 120 160" aria-hidden="true"><use href="#lantern"/></svg></span><b>Lantern</b><time>6:00</time>
+              <span>Daily check done. Your car has no open recalls.</span></div>
+          </div>
+          <div class="scene" data-scene="1">
+            <div class="mini-bar"><svg viewBox="0 0 120 160" aria-hidden="true"><use href="#lantern"/></svg>Lantern</div>
+            <div class="mini-status">Stop using your space heater</div>
+            <div class="mini-card">
+              <div class="badges"><span class="badge stop_using">Stop using</span><span class="badge new">New</span></div>
+              <h3>Space heater can overheat</h3>
+              <dl><dt>What's wrong</dt><dd>The cord can get too hot and melt, which can start a fire.</dd>
+                  <dt>What to do tonight</dt><dd>Unplug it and put it away. The maker refunds it for free.</dd></dl>
+              <p class="mini-ai">Plain words by NVIDIA Nemotron</p>
+              <div class="mini-actions"><span class="mini-btn go">Get it fixed for free</span><span class="mini-btn">Share</span></div>
+            </div>
+            <div class="mini-row"><span class="tick">✓</span><span>Your car: no open recalls<small>Checked with NHTSA today</small></span></div>
+            <div class="mini-row"><span class="tick">✓</span><span>Crib mattress: no open recalls<small>Checked with the CPSC today</small></span></div>
+          </div>
+          <div class="scene" data-scene="2">
+            <div class="mini-bar"><svg viewBox="0 0 120 160" aria-hidden="true"><use href="#lantern"/></svg>Ask</div>
+            <div class="bubble me">My dad has the same heater. Is it OK on the low setting?</div>
+            <div class="bubble lan">No. The notice says to stop using it on any setting and contact the maker for a refund.<small>✦ From the official notice</small></div>
+            <div class="sheet">
+              <span class="lbl">Send it to him</span>
+              <div class="apps">
+                <span><i style="background:#3aa36f">✉</i>Text</span><span><i style="background:#25a35a">☏</i>WhatsApp</span>
+                <span><i style="background:#3d7a68">@</i>Email</span><span><i style="background:#8a7f6a">⧉</i>Copy</span>
+              </div>
+            </div>
+          </div>
+        </div></div>
+      </div>
+      <div class="pv-steps" role="group" aria-label="Steps">
+        <button type="button" data-step="0" aria-pressed="true"><b>1 · It tells you</b>An alert the day a recall matches</button>
+        <button type="button" data-step="1" aria-pressed="false"><b>2 · In plain words</b>What's wrong and what to do</button>
+        <button type="button" data-step="2" aria-pressed="false"><b>3 · Share and ask</b>Text your family, ask questions</button>
+      </div>
+      <p class="pv-foot">An illustration with a made-up household. Real notices come from NHTSA and the CPSC; Lantern never sends texts itself, you do.</p>
+    </section>
 
-    <figure class="preview" aria-label="An example of what Lantern shows">
-      <span class="pv-tag">Example</span>
-      <div class="glass pv-notif">
-        <span class="app"><svg viewBox="0 0 120 160" aria-hidden="true"><use href="#lantern"/></svg></span>
-        <b>Lantern</b><time>now</time>
-        <span>New recall for your space heater. Stop using it: it can overheat and start a fire.</span>
-      </div>
-      <div class="pv-card">
-        <div class="badges"><span class="badge stop_using">Stop using</span><span class="badge new">New</span></div>
-        <h3>Space heater can overheat</h3>
-        <p class="who">Your space heater · official notice from the CPSC</p>
-        <dl>
-          <div><dt>What's wrong</dt><dd>The power cord can get too hot and melt, which can start a fire.</dd></div>
-          <div><dt>What to do tonight</dt><dd>Unplug it and put it away. The maker gives you a refund for free.</dd></div>
-        </dl>
-        <p class="ai" style="margin-top:12px">Plain words by NVIDIA Nemotron; the official text is one tap away</p>
-        <div class="pv-actions"><span class="pv-btn">Get it fixed for free</span><span class="pv-link">Official notice ↗</span></div>
-      </div>
-      <div class="glass pv-ok">
-        <span class="tick"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5L20 7"/></svg></span>
-        <span>Your car: no open recalls<small>Checked with NHTSA today</small></span>
-      </div>
-    </figure>
-
-    <div class="stats">
+      <div class="stats">
       <div class="glass stat reveal" style="--i:6">
         <div class="num grad">1 in 5</div>
         <p>cars on U.S. roads has a safety recall that was never fixed.</p>
@@ -738,6 +801,17 @@
   <section id="stuff" hidden aria-labelledby="stuffTitle">
     <h1 id="stuffTitle">My stuff</h1>
     <p class="hint">Everything Lantern watches. Each thing is a small file you can see, change or download.</p>
+    <form class="quick-add card" id="quickAdd" novalidate>
+      <label class="own-label" for="quickInput">Add more things
+        <span>Type or say them, like "a stroller, a baby monitor and a dehumidifier".</span></label>
+      <div class="prompt">
+        <input id="quickInput" name="owned" placeholder="A stroller and a baby monitor" autocomplete="off" maxlength="2000" spellcheck="false">
+        <button type="button" class="mic" id="quickMic" aria-label="Say what you own" aria-pressed="false" hidden><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v4"/></svg></button>
+        <button class="go" type="submit" aria-label="Add and check"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M5 12h13M13 6l6 6-6 6"/></svg></button>
+      </div>
+      <p class="voice-note" id="quickNote" hidden></p>
+      <div class="error" id="quickError" role="alert"></div>
+    </form>
     <h2>Cars</h2>
     <div class="stack" id="carList"></div>
     <details class="more card" style="margin-top:12px" id="addCarBox">
@@ -1075,6 +1149,8 @@ const field = (() => {
 const STEPS = {
   vehicle: ["Looking up your car", "Asking NHTSA for its recalls", "Writing plain-English summaries with NVIDIA Nemotron"],
   product: ["Reading the CPSC's list of product recalls", "Matching it to your product with Nemotron", "Writing a plain-English summary"],
+  things: ["Reading what you own with NVIDIA Nemotron", "Asking NHTSA about any cars", "Checking the CPSC's product recalls",
+           "Writing plain-English summaries"],
   demo: ["Setting up an example household", "Asking NHTSA about two cars", "Checking the CPSC for a crib mattress and a heater",
          "Writing plain-English summaries with NVIDIA Nemotron"],
 };
@@ -1093,14 +1169,55 @@ function startSweep(kind) {
   };
 }
 
+// ---- "How it works": cycles the illustration's three steps while the landing is shown; click a step to pick it --
+const preview = (() => {
+  const box = $("preview"), scenes = [...box.querySelectorAll(".scene")], steps = [...box.querySelectorAll(".pv-steps button")];
+  const MS = 5200;
+  let i = 0, timer = null;
+  box.style.setProperty("--pv-ms", MS + "ms");
+  const show = (n) => {
+    i = n;
+    scenes.forEach((s, j) => s.classList.toggle("on", j === n));
+    steps.forEach((b, j) => {
+      b.setAttribute("aria-pressed", String(j === n));
+      if (j === n) { b.style.animation = "none"; void b.offsetWidth; b.style.animation = ""; }  // restart the progress bar
+    });
+  };
+  const start = () => { stop(); if (!reduceMotion) timer = setInterval(() => show((i + 1) % scenes.length), MS); };
+  const stop = () => { clearInterval(timer); timer = null; };
+  box.classList.toggle("paused", reduceMotion);
+  steps.forEach((b, n) => b.addEventListener("click", () => { show(n); start(); }));
+  return { run(on) { if (on) { show(0); start(); } else stop(); } };
+})();
+
 // ---- views ----------------------------------------------------------------------------------
 const TABS = ["home", "stuff", "ask", "learn"];
-function setLanding(on) { document.body.classList.toggle("landing", on); $("signInBtn").hidden = !on; field.run(on); }
+function setLanding(on) {
+  document.body.classList.toggle("landing", on);
+  $("signInBtn").hidden = !on || !!me;        // signed in: "Your list" goes back instead
+  $("backBtn").hidden = !on || !me;
+  $("topActions").hidden = on || !me;
+  field.run(on);
+  preview.run(on);
+}
+// The brand opens the landing page; signed-in people keep their session and get "Your list" to go back.
+$("brandLink").addEventListener("click", (e) => {
+  e.preventDefault();
+  closeMenu();
+  if (!me) { $("scroller").scrollTo({ top: 0, behavior: "smooth" }); return; }
+  transition(() => {
+    TABS.forEach(t => $(t).hidden = true);
+    $("welcome").hidden = false; $("tabbar").hidden = true;
+    setLanding(true);
+    $("scroller").scrollTo({ top: 0, behavior: "instant" });
+  });
+  history.replaceState(null, "", "#start");
+});
+$("backBtn").addEventListener("click", () => showApp(me));
 function showWelcome(message = "") {
   me = null;
-  requestAnimationFrame(moveThumb);
   TABS.forEach(t => $(t).hidden = true);
-  $("welcome").hidden = false; $("tabbar").hidden = true; $("topActions").hidden = true;
+  $("welcome").hidden = false; $("tabbar").hidden = true;
   setLanding(true);
   $("authError").textContent = message;
   if (message) $("startError").textContent = message;
@@ -1227,49 +1344,63 @@ $("keepForm").addEventListener("submit", async (e) => {
 
 // ---- landing: one prompt bar for a car or a product, or the example ------------------------------
 const start = $("startForm");
-start.dataset.kind = "vehicle";
-const EXAMPLES = { vehicle: ["2018 Honda Civic", "2006 Ford Ranger", "2019 Hyundai Tucson"],
-                   product: [["crib mattress", "KEAWIS"], ["crib mattress", "Voomf"], ["space heater", "Lasko"]] };
+const EXAMPLES = ["2018 Honda Civic", "A Graco stroller and a crib", "2019 Hyundai Tucson and a Lasko space heater"];
 function renderExamples() {
-  const box = $("examples"), kind = start.dataset.kind;
-  box.replaceChildren(el("span", "lbl", "Try"), ...EXAMPLES[kind].map(ex => {
-    const label = kind === "vehicle" ? ex : `${ex[1]} ${ex[0]}`;
-    return button(label, "", () => {
-      if (kind === "vehicle") $("carInput").value = ex; else { $("productInput").value = ex[0]; $("brandInput").value = ex[1]; }
-      start.requestSubmit();
-    });
-  }));
+  $("examples").replaceChildren(el("span", "lbl", "Try"), ...EXAMPLES.map(ex => button(ex, "", () => {
+    $("ownInput").value = ex; start.requestSubmit();
+  })));
 }
-function moveThumb() {
-  const on = start.querySelector('.kind-toggle button[aria-pressed="true"]'), thumb = start.querySelector(".kind-toggle .thumb");
-  thumb.style.left = on.offsetLeft + "px"; thumb.style.width = on.offsetWidth + "px";
-}
-start.querySelectorAll(".kind-toggle button").forEach(b => b.addEventListener("click", () => {
-  start.querySelectorAll(".kind-toggle button").forEach(x => x.setAttribute("aria-pressed", String(x === b)));
-  start.dataset.kind = b.dataset.kind;
-  start.querySelectorAll("[data-part]").forEach(p => p.hidden = p.dataset.part !== b.dataset.kind);
-  $("startError").textContent = "";
-  moveThumb(); renderExamples();
-  (b.dataset.kind === "vehicle" ? $("carInput") : $("productInput")).focus();
-}));
-window.addEventListener("resize", moveThumb);
 renderExamples();
 
-// "2018 Honda Civic", "Honda Civic 2018", "2016 Land Rover Range Rover" or a 17-character VIN
-const TWO_WORD_MAKES = ["land rover", "alfa romeo", "aston martin", "mercedes benz", "rolls royce"];
-function parseCar(text) {
-  const s = (text || "").trim().replace(/\s+/g, " ");
-  const vin = s.replace(/[\s-]/g, "").toUpperCase();
-  if (/^[A-HJ-NPR-Z0-9]{17}$/.test(vin)) return { vin };
-  let year = null, rest = "", m = s.match(/^((?:19|20)\d{2})\s+(.+)$/);
-  if (m) { year = +m[1]; rest = m[2]; } else if ((m = s.match(/^(.+?)\s+((?:19|20)\d{2})$/))) { year = +m[2]; rest = m[1]; }
-  if (!year) return { error: "Add the year, like \"2018 Honda Civic\", or paste the 17-character VIN." };
-  const two = TWO_WORD_MAKES.find(k => rest.toLowerCase().replace("-", " ").startsWith(k + " "));
-  const make = two ? rest.slice(0, two.length) : rest.split(" ")[0];
-  const model = rest.slice(make.length).trim();
-  if (!model) return { error: `Add the model too, like "${year} ${make} Civic".` };
-  return { year, make, model };
+// Voice: the browser's own speech recognition fills the box; people check the words, then press the arrow.
+const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+function dictate(btn, input, note) {
+  if (!SpeechRec) return;
+  btn.hidden = false;
+  let rec = null;
+  btn.addEventListener("click", () => {
+    if (rec) { try { rec.stop(); } catch {} return; }
+    rec = new SpeechRec();
+    rec.lang = "en-US"; rec.interimResults = true; rec.continuous = false;
+    const before = input.value.trim();
+    let heard = "";
+    rec.onresult = (e) => {
+      let interim = "";
+      for (let i = e.resultIndex; i < e.results.length; i++) {
+        if (e.results[i].isFinal) heard += e.results[i][0].transcript; else interim += e.results[i][0].transcript;
+      }
+      input.value = [before, (heard + interim).trim()].filter(Boolean).join(", ");
+    };
+    rec.onerror = (e) => { if (e.error !== "no-speech" && e.error !== "aborted") note.textContent = "Voice didn't work (" + e.error + "). You can type instead."; };
+    rec.onend = () => {
+      btn.setAttribute("aria-pressed", "false"); rec = null;
+      if (heard.trim()) { note.textContent = "Got it. Check the words, then press the arrow."; input.focus(); }
+      else if (note.textContent.startsWith("Listening")) note.hidden = true;
+    };
+    try {
+      rec.start(); btn.setAttribute("aria-pressed", "true");
+      note.hidden = false;
+      note.textContent = "Listening… say everything you own, then pause. (Voice uses your browser's own speech service; in Chrome, that's Google's.)";
+    } catch { rec = null; }
+  });
 }
+dictate($("ownMic"), $("ownInput"), $("ownNote"));
+dictate($("quickMic"), $("quickInput"), $("quickNote"));
+
+// Anything someone owns, in their own words. A pasted VIN is checked straight away; everything else is read by
+// Nemotron Nano on the server (/api/things), which picks out each car and product.
+async function addOwned(text) {
+  const vin = text.replace(/[\s-]/g, "").toUpperCase();
+  if (/^[A-HJ-NPR-Z0-9]{17}$/.test(vin)) {
+    const { res, data } = await api("/api/vehicles", { method: "POST", body: { vin } });
+    if (!res.ok) throw new Error(detail(data, "Couldn't check that VIN."));
+    return { saved: [data.item.name || "your car"], problems: [], recalls: data.recalls };
+  }
+  const { res, data } = await api("/api/things", { method: "POST", body: { text } });
+  if (!res.ok) throw new Error(detail(data, "Couldn't add that."));
+  return data;
+}
+
 function vinToggle(btn, ymm, vin, form) {
   btn.dataset.label = btn.textContent;
   btn.addEventListener("click", () => {
@@ -1305,25 +1436,19 @@ function carProblem(body) {
 }
 start.addEventListener("submit", async (e) => {
   e.preventDefault();
-  const isCar = start.dataset.kind === "vehicle";
-  let body;
-  if (isCar) {
-    body = parseCar($("carInput").value);
-    if (body.error) { $("startError").textContent = body.error; return; }
-  } else {
-    body = { product: $("productInput").value.trim(), brand: $("brandInput").value.trim(), model: "" };
-    if (!body.product) { $("startError").textContent = "Say what it is, for example: crib mattress, stroller, space heater."; return; }
-  }
-  $("startError").textContent = "";
+  const text = $("ownInput").value.trim();
+  if (!text) { $("startError").textContent = "Type or say what you own, like: our 2018 Honda Civic, a crib and a space heater."; return; }
+  $("startError").textContent = ""; $("ownNote").hidden = true;
   start.querySelectorAll(".go").forEach(b => b.disabled = true);
-  const done = startSweep(isCar ? "vehicle" : "product");
+  const done = startSweep("things");
   try {
     await ensureSession();
-    const { res, data } = await api(isCar ? "/api/vehicles" : "/api/products", { method: "POST", body });
-    if (!res.ok) throw new Error(detail(data, "Couldn't check that."));
+    const out = await addOwned(text);
     await done(true);
+    $("ownInput").value = "";
     location.hash = "#home";
-    showApp(me); renderRecalls(data.recalls); focusStatus();
+    showApp(me); renderRecalls(out.recalls); focusStatus();
+    if (out.problems && out.problems.length) toast(out.problems[0]);
   } catch (err) {
     await done(false);
     $("startError").textContent = err.message;
@@ -1331,7 +1456,31 @@ start.addEventListener("submit", async (e) => {
     start.querySelectorAll(".go").forEach(b => b.disabled = false);
   }
 });
+$("quickAdd").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const form = e.currentTarget, text = $("quickInput").value.trim();
+  if (!text) { $("quickError").textContent = "Type or say what you own first."; return; }
+  $("quickError").textContent = ""; $("quickNote").hidden = true;
+  form.querySelector(".go").disabled = true;
+  const done = startSweep("things");
+  try {
+    const out = await addOwned(text);
+    await done(true);
+    $("quickInput").value = "";
+    renderRecalls(out.recalls);
+    loadStuff();
+    toast("Added " + out.saved.join(", ") + "." + (out.problems && out.problems.length ? " " + out.problems[0] : ""));
+  } catch (err) {
+    await done(false);
+    $("quickError").textContent = err.message;
+  } finally {
+    form.querySelector(".go").disabled = false;
+  }
+});
 $("demoBtn").addEventListener("click", async () => {
+  if (me && !confirm(me.kind === "guest"
+      ? "The example opens in a new guest session, so you'd leave this one. To keep your list, use \"Keep my list\" in the menu first. Open the example?"
+      : "The example opens in a guest session, so you'll be signed out. Your list stays in your account. Open the example?")) return;
   $("demoBtn").disabled = true;
   const done = startSweep("demo");
   try {

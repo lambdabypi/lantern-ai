@@ -31,7 +31,7 @@ from app.fix_helper import draft_message, find_dealers
 from app.push import Push, PushError
 from app.recall_watch import RecallWatch
 from app.tools.builtin import builtin_tools
-from app.tools.recall_tools import make_recall_tools
+from app.tools.recall_tools import make_recall_tools, save_things
 from app.tools.recalls import RecallClient, RecallError
 from app.tools.web_search import WebSearch
 from app.tools.registry import ToolRegistry
@@ -98,6 +98,10 @@ class VehicleCreate(BaseModel):
     make: str = Field(default="", max_length=40)
     model: str = Field(default="", max_length=40)
     year: int | None = Field(default=None, ge=1950, le=2100)
+
+
+class ThingsText(BaseModel):
+    text: str = Field(min_length=1, max_length=2000)
 
 
 class ProductCreate(BaseModel):
@@ -465,6 +469,32 @@ def create_app(loop: AgentLoop | None = None, settings: Settings | None = None, 
         w = need_watch()
         item = w.save_product(account.user_id, req.product, req.brand, req.model, source="user")
         return {"item": item.summary(), "recalls": w.check(account.user_id)}
+
+    @app.post("/api/things")
+    def add_things(req: ThingsText, account: Account = Depends(current_account)) -> dict:
+        """Everything someone owns in their own words, typed or spoken ("our 2018 Civic, a Graco stroller and a
+        crib"). Nemotron Nano picks out each thing, then each is saved and checked. Counts as one message toward
+        the daily caps, because it calls the model."""
+        w = need_watch()
+        reader = getattr(loop, "planner", None)
+        if not isinstance(reader, RecallPlanner):
+            raise HTTPException(status_code=503, detail="Reading free text isn't available here. Add a car or a product instead.")
+        if not quota.try_consume(account.user_id, "messages", message_cap(account)) or \
+                not site_quota.try_consume("messages", settings.site_messages_per_day or None):
+            raise HTTPException(status_code=429, detail="Today's message limit is used up. Add things one at a time "
+                                                        "in My stuff, or come back tomorrow (it resets at midnight UTC).")
+        things = reader.owned(req.text.strip())
+        if things is None:
+            raise HTTPException(status_code=502, detail="Lantern couldn't read that just now. Try again, or type one "
+                                                        "thing, like \"2018 Honda Civic\".")
+        if not things:
+            raise HTTPException(status_code=422, detail="I couldn't find anything you own in that. Try something like "
+                                                        "\"a 2018 Honda Civic, a crib and a space heater\". For a car "
+                                                        "I need the year, make and model, or the VIN.")
+        saved, problems = save_things(w, account.user_id, things)
+        if not saved:
+            raise HTTPException(status_code=422, detail=" ".join(problems) or "Nothing could be saved.")
+        return {"saved": saved, "problems": problems, "recalls": w.check(account.user_id)}
 
     @app.post("/api/demo")
     def demo(account: Account = Depends(current_account)) -> dict:
