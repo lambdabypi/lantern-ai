@@ -4,7 +4,6 @@ Layout inside data/users/<id>/memory/:
     profile.md
     vehicles/<slug>.md     make, model, year, optional VIN; recall_status per NHTSA campaign
     products/<slug>.md     brand, product, model; recall_status per CPSC recall number
-    games/, creators/      from the earlier gaming version (kept until the UI moves over)
 
 Files are plain text the user can read, edit, delete and export. Every path is resolved and
 checked to stay inside the user's memory folder, and only known fields are accepted.
@@ -26,10 +25,8 @@ import yaml
 from app.auth.users import user_dir
 from app.fileio import write_atomic
 
-KINDS = {"vehicle": "vehicles", "product": "products", "game": "games", "creator": "creators"}
-GAME_STATUSES = ("playing", "backlog", "finished", "dropped")
-SPOILER_PREFERENCES = ("strict", "relaxed")
-SOURCES = ("chat", "steam", "user", "vin")
+KINDS = {"vehicle": "vehicles", "product": "products"}
+SOURCES = ("chat", "user", "vin")
 RECALL_STATUSES = ("fixed", "not_mine")  # anything else is open
 
 # Fields each kind may hold (beyond the automatic created/updated/source/confidence).
@@ -37,12 +34,9 @@ FIELDS: dict[str, dict[str, type | tuple]] = {
     "vehicle": {"name": str, "make": str, "model": str, "year": int, "vin": str, "trim": str,
                 "nhtsa_model": str, "recall_status": dict},
     "product": {"name": str, "brand": str, "product": str, "model": str, "bought": str, "recall_status": dict},
-    "game": {"title": str, "status": str, "progress": str, "platform": str, "steam_appid": int,
-             "playtime_hours": (int, float), "achievements": str, "last_played": str, "sources": list},
-    "creator": {"name": str, "platforms": list, "links": list},
-    "profile": {"location": str, "platforms": list, "play_style": str, "spoiler_preference": str, "steam_id": str},
+    "profile": {"location": str},
 }
-NAME_FIELD = {"vehicle": "name", "product": "name", "game": "title", "creator": "name"}
+NAME_FIELD = {"vehicle": "name", "product": "name"}
 _SLUG = re.compile(r"^[a-z0-9][a-z0-9-]{0,63}$")
 _FRONT = re.compile(r"\A---\r?\n(.*?)\r?\n---\r?\n?(.*)\Z", re.DOTALL)
 MAX_NOTE_CHARS = 2000
@@ -122,10 +116,6 @@ def _clean(kind: str, values: dict[str, Any], strict: bool) -> dict[str, Any]:
         else:
             value = str(value).strip()[:500]
         out[key] = value
-    if kind == "game" and "status" in out and out["status"] not in GAME_STATUSES:
-        raise MemoryStoreError(f"status must be one of: {', '.join(GAME_STATUSES)}.")
-    if kind == "profile" and "spoiler_preference" in out and out["spoiler_preference"] not in SPOILER_PREFERENCES:
-        raise MemoryStoreError(f"spoiler_preference must be one of: {', '.join(SPOILER_PREFERENCES)}.")
     return out
 
 
@@ -252,33 +242,17 @@ class MemoryStore:
         return buf.getvalue()
 
     # ---- prompt context --------------------------------------------------------------------
-    def context_for_prompt(self, user_id: str, max_games: int = 15) -> str:
-        """A compact summary of the profile for the system prompt (progress drives spoiler safety)."""
+    def context_for_prompt(self, user_id: str, max_items: int = 30) -> str:
+        """A compact list of the household's things for the system prompt. VINs are never included."""
         lines = []
         profile = self.get(user_id, "profile")
         if profile and profile.meta.get("location"):
             lines.append(f"Location: {profile.meta['location']}")
         for kind, label in (("vehicle", "Car"), ("product", "Product")):
-            for item in self.list(user_id, kind)[:30]:
+            for item in self.list(user_id, kind)[:max_items]:
                 m = item.meta
-                extra = ["VIN on file" if m.get("vin") else "",  # never send the VIN itself to the model
+                extra = ["VIN on file" if m.get("vin") else "",
                          f"{len(m['recall_status'])} recall(s) marked fixed or not theirs" if m.get("recall_status") else ""]
                 detail = "; ".join(e for e in extra if e)
                 lines.append(f"- {label}: {m.get('name', item.slug)}" + (f" ({detail})" if detail else ""))
-        if profile and any(profile.meta.get(k) for k in ("platforms", "play_style", "spoiler_preference")):
-            p = profile.meta
-            bits = [f"platforms: {', '.join(p['platforms'])}" if p.get("platforms") else "",
-                    f"play style: {p['play_style']}" if p.get("play_style") else "",
-                    f"spoilers: {p.get('spoiler_preference', 'strict')}"]
-            lines.append("Profile: " + "; ".join(b for b in bits if b))
-        games = sorted(self.list(user_id, "game"),
-                       key=lambda g: (g.meta.get("status") != "playing", g.meta.get("title", "").lower()))
-        for g in games[:max_games]:
-            m = g.meta
-            detail = ", ".join(b for b in [m.get("status", ""), f"progress: {m['progress']}" if m.get("progress") else "",
-                                           m.get("platform", "")] if b)
-            lines.append(f"- Game: {m.get('title', g.slug)} ({detail})" if detail else f"- Game: {m.get('title', g.slug)}")
-        creators = self.list(user_id, "creator")
-        if creators:
-            lines.append("Favourite creators: " + ", ".join(c.meta.get("name", c.slug) for c in creators[:20]))
         return "\n".join(lines) if lines else "Nothing saved yet."

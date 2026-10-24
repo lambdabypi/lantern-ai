@@ -34,7 +34,7 @@ def test_guest_message_cap(settings):
         assert c.post("/api/chat", json={"message": "hi there"}).json()["stop_reason"] == "done"
     blocked = c.post("/api/chat", json={"message": "hi there"}).json()
     assert blocked["stop_reason"] == "quota" and "limit of 2 messages" in blocked["answer"]
-    assert "sign in with Steam" in blocked["answer"]
+    assert "Create an account for more" in blocked["answer"]
     assert len(llm.calls) == 2 and c.get("/api/me").json()["messages_left_today"] == 0
 
 
@@ -96,7 +96,7 @@ def test_guest_creation_is_limited_per_network(settings):
     hdr = {"X-Forwarded-For": "203.0.113.7"}
     assert [c.post("/api/auth/guest", headers=hdr).status_code for _ in range(3)] == [200, 200, 429]
     r = c.post("/api/auth/guest", headers=hdr)
-    assert "Too many guest accounts" in r.json()["detail"] and "Steam" in r.json()["detail"]
+    assert "Too many guest sessions" in r.json()["detail"] and "Create an account" in r.json()["detail"]
     assert c.post("/api/auth/guest", headers={"X-Forwarded-For": "198.51.100.9"}).status_code == 200  # other network
 
 

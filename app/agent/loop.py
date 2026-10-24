@@ -125,7 +125,7 @@ class AgentLoop:
         self.profile_context = profile_context  # user_id -> compact profile summary for the prompt
         # Thinking for the calls made after tool results arrive (writing the answer from them).
         # False by default: live, Nano spent all 4,096 output tokens (49 s) on hidden reasoning after
-        # ask_game and returned nothing. Tool choice keeps the model's default thinking.
+        # a lookup and returned nothing. Tool choice keeps the model's default thinking.
         self.answer_thinking = answer_thinking
         self.plan_thinking = plan_thinking  # thinking for the first call (choosing tools); None = model default
         # planner(user_id, message, history) -> Plan(tool, args, note): decides lookups before the model answers
@@ -167,7 +167,7 @@ class AgentLoop:
         on_event: Callable[[dict[str, Any]], None] | None = None,
     ) -> TurnResult:
         """Run one turn. on_event, if given, receives live progress for streaming UIs:
-        {"type": "status", "text": "Searching the Warframe wiki…"} before each tool runs, and
+        {"type": "status", "text": "Checking official recall lists…"} before each tool runs, and
         {"type": "delta", "text": ...} as answer text arrives."""
         on_delta = (lambda text: on_event({"type": "delta", "text": text})) if on_event else None
         tier = Tier.REASONING if escalate else Tier.FAST

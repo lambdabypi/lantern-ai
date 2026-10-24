@@ -1,4 +1,4 @@
-"""FastAPI entrypoint: the chat page, auth (accounts, guests, tokens) and the JSON chat API.
+"""FastAPI entrypoint: the app page, auth (accounts, guests, tokens), chat, the recall watch and push.
 
 Run:  uvicorn app.main:create_app --factory --reload
 """
@@ -8,41 +8,30 @@ from __future__ import annotations
 import hmac
 import json
 import logging
-import secrets
 import threading
-from dataclasses import asdict
 from pathlib import Path
 from queue import Queue
-from urllib.parse import quote
 
-import httpx
-
-from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Request, Response
-from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Response as RawResponse, StreamingResponse
+from fastapi import Depends, FastAPI, HTTPException, Request, Response
+from fastapi.responses import FileResponse, JSONResponse, Response as RawResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
 from app.agent.recall_planner import RecallPlanner
 from app.agent.loop import AgentLoop, TurnResult
 from app.auth.accounts import Account, AccountStore, AuthError
 from app.auth.quota import DailyQuota, SiteQuota
-from app.auth import steam_openid
 from app.auth.sessions import COOKIE_NAME, SessionSigner
-from app.briefing import Briefings
 from app.config import Settings, load_settings
 from app.llm.router import ModelRouter, Tier
-from app.memory.extractor import MemoryExtractor
 from app.memory.history import HistoryStore
 from app.memory.store import KINDS, RECALL_STATUSES, MemoryStore, MemoryStoreError
 from app.demo import load_demo_household
 from app.fix_helper import draft_message, find_dealers
 from app.push import Push, PushError
 from app.recall_watch import RecallWatch
-from app.steam_import import import_steam_library
 from app.tools.builtin import builtin_tools
-from app.tools.game_knowledge import GameKnowledge
 from app.tools.recall_tools import make_recall_tools
 from app.tools.recalls import RecallClient, RecallError
-from app.tools.steam import SteamClient, SteamError
 from app.tools.web_search import WebSearch
 from app.tools.registry import ToolRegistry
 
@@ -58,11 +47,12 @@ def _setup_logging() -> None:
         app_log.addHandler(handler)
         app_log.setLevel(logging.INFO)
         app_log.propagate = False
+
+
 WEB_DIR = Path(__file__).parent / "web"
 ICONS = {"icon-192.png", "icon-512.png", "maskable-512.png", "apple-touch-icon.png"}
 MAX_HISTORY_MESSAGES = 20  # recent messages sent to the model each turn
 USER_SESSION_S = 14 * 86400
-STEAM_STATE_COOKIE = "pai_steam_state"
 
 
 class Credentials(BaseModel):
@@ -135,10 +125,6 @@ class MemoryText(BaseModel):
     text: str = Field(min_length=1, max_length=20_000)
 
 
-class SteamImportRequest(BaseModel):
-    profile: str = Field(min_length=2, max_length=200)
-
-
 class MeResponse(BaseModel):
     user_id: str
     kind: str
@@ -146,13 +132,9 @@ class MeResponse(BaseModel):
     ultra_left_today: int | None  # None = no daily limit
     messages_left_today: int | None = None
     display_name: str | None = None
-    steam_enabled: bool = False
 
 
-def create_app(loop: AgentLoop | None = None, settings: Settings | None = None,
-               steam: SteamClient | None = None, openid_http: httpx.Client | None = None,
-               extractor: MemoryExtractor | None = None, knowledge: GameKnowledge | None = None,
-               briefings: Briefings | None = None, watch: RecallWatch | None = None,
+def create_app(loop: AgentLoop | None = None, settings: Settings | None = None, watch: RecallWatch | None = None,
                push: Push | None = None, search: WebSearch | None = None) -> FastAPI:
     _setup_logging()
     settings = settings or load_settings()
@@ -177,9 +159,7 @@ def create_app(loop: AgentLoop | None = None, settings: Settings | None = None,
     if push is None and settings.vapid_private_key:
         push = Push(settings.data_dir, settings.vapid_private_key,
                     settings.public_base_url or "https://github.com/lambdabypi/lantern-ai")
-    steam_client = steam or (SteamClient(settings.steam_api_key) if settings.steam_api_key else None)
     accounts = AccountStore(settings.data_dir, guest_ttl_days=settings.guest_ttl_days)
-    openid_clients: list[httpx.Client] = [openid_http] if openid_http else []  # created on first Steam sign-in
     signer = SessionSigner(settings.app_secret_key)
     quota = DailyQuota(settings.data_dir)
     accounts.cleanup_expired_guests()
@@ -204,7 +184,7 @@ def create_app(loop: AgentLoop | None = None, settings: Settings | None = None,
 
     # ---- identity ---------------------------------------------------------------------------
     def current_account(request: Request) -> Account:
-        """Bearer token (desktop companion) or session cookie (browser). 401 otherwise."""
+        """Bearer token (personal access token) or session cookie (browser). 401 otherwise."""
         header = request.headers.get("authorization", "")
         if header.lower().startswith("bearer "):
             account = accounts.verify_token(header[7:].strip())
@@ -230,7 +210,7 @@ def create_app(loop: AgentLoop | None = None, settings: Settings | None = None,
         cap = message_cap(account)
         messages_left = None if cap is None else max(0, cap - quota.used(account.user_id, "messages"))
         return MeResponse(user_id=account.user_id, kind=account.kind, expires_ts=account.expires_ts,
-                          ultra_left_today=left, steam_enabled=steam_client is not None,
+                          ultra_left_today=left,
                           display_name=account.display_name, messages_left_today=messages_left)
 
     def message_cap(account: Account) -> int | None:
@@ -270,8 +250,8 @@ def create_app(loop: AgentLoop | None = None, settings: Settings | None = None,
         log.info("guest sign-up; X-Forwarded-For entries: %d",
                  len([e for e in request.headers.get("x-forwarded-for", "").split(",") if e.strip()]))
         if not site_quota.try_consume(f"guests:{network}", settings.guests_per_ip_per_day or None):
-            raise AuthError("Too many guest accounts from your network today. Sign in through Steam or create "
-                            "an account, or try again tomorrow.", status=429)
+            raise AuthError("Too many guest sessions from your network today. Create an account, or try again "
+                            "tomorrow.", status=429)
         return start_session(response, accounts.create_guest())
 
     @app.post("/api/auth/register", response_model=MeResponse)
@@ -282,51 +262,6 @@ def create_app(loop: AgentLoop | None = None, settings: Settings | None = None,
     def login(creds: Credentials, response: Response) -> MeResponse:
         return start_session(response, accounts.authenticate(creds.username, creds.password))
 
-    # ---- Sign in through Steam (OpenID 2.0) --------------------------------------------------
-    def base_url(request: Request) -> str:
-        return settings.public_base_url or str(request.base_url).rstrip("/")
-
-    @app.get("/auth/steam/start", include_in_schema=False)
-    def steam_start(request: Request) -> RedirectResponse:
-        state = secrets.token_urlsafe(16)  # ties Steam's answer to this browser (stops login CSRF)
-        base = base_url(request)
-        response = RedirectResponse(
-            steam_openid.login_url(f"{base}/auth/steam/callback?state={state}", base), status_code=303)
-        response.set_cookie(STEAM_STATE_COOKIE, state, max_age=600, httponly=True, samesite="lax",
-                            secure=settings.cookie_secure, path="/auth/steam")
-        return response
-
-    @app.get("/auth/steam/callback", include_in_schema=False)
-    def steam_callback(request: Request, background: BackgroundTasks) -> RedirectResponse:
-        def fail(message: str) -> RedirectResponse:
-            r = RedirectResponse("/?auth_error=" + quote(message), status_code=303)
-            r.delete_cookie(STEAM_STATE_COOKIE, path="/auth/steam")
-            return r
-
-        params = dict(request.query_params)
-        state = params.get("state", "")
-        if not state or not hmac.compare_digest(state, request.cookies.get(STEAM_STATE_COOKIE, "")):
-            return fail("That Steam sign-in expired or was started somewhere else. Please try again.")
-        try:
-            if not openid_clients:
-                openid_clients.append(httpx.Client(timeout=steam_openid.TIMEOUT_S))
-            steam_id = steam_openid.verify(params, f"{base_url(request)}/auth/steam/callback?state={state}",
-                                           openid_clients[0])
-        except AuthError as e:
-            return fail(str(e))
-        account, created = accounts.get_or_create_steam(
-            steam_id, steam_client.player_name(steam_id) if steam_client else None)
-        if created and steam_client:
-            try:  # first sign-in: bring their library in straight away
-                import_steam_library(memory, steam_client, account.user_id, steam_id)
-                prewarm_later(background, account.user_id, unsourced_games(account.user_id))
-            except SteamError:
-                pass  # e.g. private game details; they can import later from My games
-        response = RedirectResponse("/", status_code=303)
-        start_session(response, account)
-        response.delete_cookie(STEAM_STATE_COOKIE, path="/auth/steam")
-        return response
-
     @app.post("/api/auth/logout")
     def logout(response: Response) -> dict[str, bool]:
         response.delete_cookie(COOKIE_NAME, path="/")
@@ -336,7 +271,7 @@ def create_app(loop: AgentLoop | None = None, settings: Settings | None = None,
     def me(account: Account = Depends(current_account)) -> MeResponse:
         return me_for(account)
 
-    # ---- personal access tokens (for the desktop companion) ---------------------------------
+    # ---- personal access tokens (for scripts and other clients) ---------------------------------
     @app.get("/api/tokens")
     def list_tokens(account: Account = Depends(current_account)) -> list[dict]:
         return accounts.list_tokens(account.user_id)
@@ -370,11 +305,11 @@ def create_app(loop: AgentLoop | None = None, settings: Settings | None = None,
                            "Untick it to keep chatting with the fast model, or create an account.", "reasoning")
         cap = message_cap(account)
         if not quota.try_consume(account.user_id, "messages", cap):
-            more = " Create an account or sign in with Steam for more, or" if account.is_guest else ""
+            more = " Create an account for more, or" if account.is_guest else ""
             return blocked(f"You've reached today's limit of {cap} messages.{more} Come back tomorrow (it resets "
                            "at midnight UTC).")
         if not site_quota.try_consume("messages", settings.site_messages_per_day or None):
-            return blocked("Lantern's demo has reached its daily limit across all players. It resets at "
+            return blocked("Lantern's demo has reached its daily limit across all users. It resets at "
                            "midnight UTC. Sorry!")
         return None
 
@@ -394,19 +329,14 @@ def create_app(loop: AgentLoop | None = None, settings: Settings | None = None,
         )
 
     @app.post("/api/chat", response_model=ChatResponse)
-    def chat(req: ChatRequest, background: BackgroundTasks,
-             account: Account = Depends(current_account)) -> ChatResponse:
+    def chat(req: ChatRequest, account: Account = Depends(current_account)) -> ChatResponse:
         message = check_message(req)
         if (blocked := quota_block(req, account)) is not None:
             return blocked
-        response = run_chat_turn(req, account, message)
-        if extractor is not None:  # saves games/progress/creators after the reply is sent: no extra wait
-            background.add_task(extractor.run, account.user_id, message)
-        return response
+        return run_chat_turn(req, account, message)
 
     @app.post("/api/chat/stream")
-    def chat_stream(req: ChatRequest, background: BackgroundTasks,
-                    account: Account = Depends(current_account)) -> StreamingResponse:
+    def chat_stream(req: ChatRequest, account: Account = Depends(current_account)) -> StreamingResponse:
         """Server-sent events: {"type": "status"|"delta"|"done"|"error", ...}. The turn runs in a worker
         thread so status lines and answer text reach the browser the moment they exist."""
         message = check_message(req)
@@ -432,9 +362,7 @@ def create_app(loop: AgentLoop | None = None, settings: Settings | None = None,
             while (event := queue.get()) is not None:
                 yield _sse(event)
 
-        if extractor is not None and blocked is None:
-            background.add_task(extractor.run, account.user_id, message)
-        return StreamingResponse(events(), media_type="text/event-stream", background=background,
+        return StreamingResponse(events(), media_type="text/event-stream",
                                  headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
     @app.post("/api/reset")
@@ -446,7 +374,7 @@ def create_app(loop: AgentLoop | None = None, settings: Settings | None = None,
     def history(account: Account = Depends(current_account)) -> list[dict[str, str]]:
         return history_store.recent(account.user_id, MAX_HISTORY_MESSAGES)
 
-    # ---- visible memory ("Your gaming profile") ---------------------------------------------
+    # ---- visible memory (My stuff) ---------------------------------------------
     def check_kind(kind: str) -> str:
         if kind not in (*KINDS, "profile"):
             raise HTTPException(status_code=404, detail="Unknown memory type.")
@@ -458,17 +386,12 @@ def create_app(loop: AgentLoop | None = None, settings: Settings | None = None,
         prof = memory.get(uid, "profile")
         return {"profile": prof.summary() if prof else None,
                 "vehicles": [v.summary() for v in memory.list(uid, "vehicle")],
-                "products": [p.summary() for p in memory.list(uid, "product")],
-                "games": [g.summary() for g in memory.list(uid, "game")],
-                "creators": [c.summary() for c in memory.list(uid, "creator")]}
+                "products": [p.summary() for p in memory.list(uid, "product")]}
 
     @app.post("/api/memory/{kind}")
-    def create_memory(kind: str, req: MemoryCreate, background: BackgroundTasks,
-                      account: Account = Depends(current_account)) -> dict:
-        item = memory.upsert(account.user_id, check_kind(kind), req.name, req.fields, note=req.note, source="user")
-        if kind == "game":
-            prewarm_later(background, account.user_id, [item.meta.get("title", req.name)])
-        return item.summary()
+    def create_memory(kind: str, req: MemoryCreate, account: Account = Depends(current_account)) -> dict:
+        return memory.upsert(account.user_id, check_kind(kind), req.name, req.fields, note=req.note,
+                             source="user").summary()
 
     @app.get("/api/memory/{kind}/{slug}")
     def read_memory(kind: str, slug: str, account: Account = Depends(current_account)) -> dict[str, str]:
@@ -488,42 +411,6 @@ def create_app(loop: AgentLoop | None = None, settings: Settings | None = None,
             raise HTTPException(status_code=404, detail="Not found.")
         return {"ok": True}
 
-    def unsourced_games(user_id: str) -> list[str]:
-        return [g.meta.get("title", g.slug) for g in memory.list(user_id, "game") if not g.meta.get("sources")]
-
-    def prewarm_later(background: BackgroundTasks, user_id: str, titles: list[str]) -> None:
-        """Find wiki sources for these games after the response is sent (first questions get faster)."""
-        if knowledge is not None and titles:
-            background.add_task(knowledge.prewarm, user_id, titles)
-
-    @app.post("/api/steam/import")
-    def steam_import(req: SteamImportRequest, background: BackgroundTasks,
-                     account: Account = Depends(current_account)) -> dict:
-        if steam_client is None:
-            raise HTTPException(status_code=503, detail="Steam import isn't set up on this server (no STEAM_API_KEY).")
-        try:
-            result = import_steam_library(memory, steam_client, account.user_id, req.profile)
-        except SteamError as e:
-            raise HTTPException(status_code=422, detail=str(e)) from None
-        prewarm_later(background, account.user_id, unsourced_games(account.user_id))
-        return asdict(result)
-
-    # ---- "What's new for me" ------------------------------------------------------------------
-    def need_briefings() -> Briefings:
-        if briefings is None:
-            raise HTTPException(status_code=503, detail="Briefings aren't available on this server.")
-        return briefings
-
-    @app.get("/api/briefing")
-    def briefing(account: Account = Depends(current_account)) -> dict:
-        """Today's briefing for the player's games (built on first look, then reused)."""
-        return need_briefings().today(account.user_id)
-
-    @app.post("/api/briefing/refresh")
-    def refresh_briefing(account: Account = Depends(current_account)) -> dict:
-        """Rebuild from the shared per-game news (cheap: news is fetched at most once per game per day)."""
-        return need_briefings().build(account.user_id)
-
     def active_users_for_cron(request: Request) -> list[str]:
         """Daily jobs (Cloud Scheduler sends X-Lantern-Cron). 404 unless CRON_SECRET is set and matches."""
         sent = request.headers.get("x-lantern-cron", "")
@@ -532,12 +419,6 @@ def create_app(loop: AgentLoop | None = None, settings: Settings | None = None,
         users_root = settings.data_dir / "users"
         active = [p.name for p in sorted(users_root.iterdir()) if p.is_dir()] if users_root.is_dir() else []
         return [uid for uid in active if accounts.get(uid) is not None]  # skips expired guests
-
-    @app.post("/internal/briefings/run", include_in_schema=False)
-    def run_briefings(request: Request) -> dict:
-        result = need_briefings().run_all(active_users_for_cron(request))
-        log.info("briefing run: %s", result)
-        return result
 
     # ---- the recall watch -------------------------------------------------------------------
     def need_watch() -> RecallWatch:

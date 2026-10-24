@@ -8,7 +8,6 @@ from fastapi.testclient import TestClient
 from app.main import create_app
 from tests.conftest import tool_call
 from tests.test_agent_loop import make_loop
-from tests.test_extractor import extractor_with
 
 
 def sse_events(response) -> list[dict]:
@@ -33,15 +32,6 @@ def test_stream_sends_status_then_text_then_done(settings):
     done = events[-1]
     assert done["answer"] == "12 × 7 = 84." and done["tool_calls"][0]["name"] == "calculator"
     assert [m["content"] for m in c.get("/api/history").json()] == ["12*7?", "12 × 7 = 84."]
-
-
-def test_stream_runs_the_memory_extractor_after_finishing(settings):
-    loop, _ = make_loop(settings, ["Nice!"])
-    ex, _, _ = extractor_with(settings, [json.dumps({"games": [{"title": "Hades", "status": "playing"}],
-                                                     "creators": [], "platforms": []})])
-    c = signed_in(create_app(loop=loop, settings=settings, extractor=ex))
-    c.post("/api/chat/stream", json={"message": "I just started Hades"})
-    assert [g["title"] for g in c.get("/api/profile").json()["games"]] == ["Hades"]
 
 
 def test_stream_respects_the_guest_ultra_quota(settings):

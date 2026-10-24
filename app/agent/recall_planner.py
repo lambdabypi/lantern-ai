@@ -1,6 +1,6 @@
 """Decide before each turn whether to save things and check recalls, and run it ourselves.
 
-Same reason as the gaming planner before it: with thinking off (needed for speed), small models often skip
+Why: with thinking off (needed for speed), small models often skip
 tool calls and answer from memory. Recall facts must come from the official lists, so one small Nano call
 (thinking off, JSON) reads the message, pulls out anything the user says they own, and the loop runs
 recall_check itself.
@@ -8,9 +8,9 @@ recall_check itself.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Any, Callable
 
-from app.agent.lookup import Plan
 from app.llm.client import LLMError
 from app.llm.parsing import extract_json
 from app.llm.router import ModelRouter, Tier
@@ -34,6 +34,13 @@ Reply with only JSON:
 NO_CHECK_NOTE = ("(Note from the app, not the user: no recall data was looked up for this message. Don't state "
                  "recall or safety facts from memory. If they're just chatting or thanking you, reply briefly and "
                  "naturally; only offer a recall check if their message is about safety or their things.)")
+
+
+@dataclass
+class Plan:
+    tool: str | None = None              # a tool the loop should run before the model answers
+    args: dict[str, Any] | None = None
+    note: str | None = None              # appended to the user's message for the model only
 
 
 def _clean_thing(t: Any) -> dict[str, Any] | None:
