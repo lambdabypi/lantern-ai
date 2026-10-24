@@ -2,7 +2,8 @@
 #
 # One-time setup, already done for project lantern-ai-85172 (see deploy/README.md):
 #   project + billing + $1 budget, APIs enabled, bucket <project>-data, service account lantern-run,
-#   secrets token-factory-api-key / tavily-api-key / steam-api-key / app-secret-key in Secret Manager.
+#   secrets token-factory-api-key / tavily-api-key / app-secret-key / vapid-private-key / cron-secret in Secret Manager.
+#   The daily recall check is a Cloud Scheduler job (see deploy/README.md).
 #
 # Usage (PowerShell, from the repo root):
 #   $env:CLOUDSDK_ACTIVE_CONFIG_NAME = "lantern"   # gcloud configuration using the personal account
@@ -27,7 +28,7 @@ $deployArgs = @(
     "--min-instances", "0", "--max-instances", "1", "--memory", "512Mi", "--cpu", "1",
     "--timeout", "300", "--concurrency", "20", "--execution-environment", "gen2",
     "--set-env-vars", $envs,
-    "--set-secrets", "TOKEN_FACTORY_API_KEY=token-factory-api-key:latest,TAVILY_API_KEY=tavily-api-key:latest,STEAM_API_KEY=steam-api-key:latest,APP_SECRET_KEY=app-secret-key:latest",
+    "--set-secrets", "TOKEN_FACTORY_API_KEY=token-factory-api-key:latest,TAVILY_API_KEY=tavily-api-key:latest,APP_SECRET_KEY=app-secret-key:latest,VAPID_PRIVATE_KEY=vapid-private-key:latest,CRON_SECRET=cron-secret:latest",
     # The container runs as uid 10001, so the bucket is mounted with that owner.
     "--add-volume", "name=data,type=cloud-storage,bucket=$Project-data,mount-options=uid=10001;gid=10001",
     "--add-volume-mount", "volume=data,mount-path=/data"

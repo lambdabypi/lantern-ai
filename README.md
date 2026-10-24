@@ -4,7 +4,9 @@
 
 Built for the **Nebius x NVIDIA Global AI Hackathon**. All AI runs on **NVIDIA Nemotron** models through **Nebius Token Factory**.
 
-> **Work in progress, built in public.** Lantern pivoted from a gaming assistant to a recall watch on 24 Oct 2026. The recall data clients are done; the features marked *(in progress)* are being built now. Backlog: [GitHub Project](https://github.com/users/lambdabypi/projects/12).
+**Try it:** https://lantern-976584717995.us-central1.run.app. Tap **See a demo household** (made-up people, real recall data), or type your own car. No sign-up. On a phone, add it to your Home Screen to use it like an app.
+
+> Built in public. Lantern pivoted from a gaming assistant to a recall watch on 24 Oct 2026; the earlier code is in the git history. Backlog: [GitHub Project](https://github.com/users/lambdabypi/projects/12).
 
 ## Why
 
@@ -15,14 +17,13 @@ Telling owners directly makes them roughly 8× more likely to act. A personal AI
 
 ## What it does
 
-| | Feature | Status |
-|---|---|---|
-| 1 | **Your things, as visible memory.** Cars (by VIN, or make, model and year) and household products, one Markdown file each. Saved from chat ("we have a 2018 Civic and a crib") or added in the app. | *(in progress)* |
-| 2 | **Daily recall watch.** Checks NHTSA (vehicles) and the CPSC (household products) every day. "Do Not Drive" and "park outside" recalls come first. Mark each one fixed or doesn't apply. | *(in progress)* |
-| 3 | **Book the free fix.** Recall repairs are free at any authorized dealer for your car's brand. Lantern finds dealers near you and drafts a booking message with your VIN and the recall numbers. Nothing is sent without your confirmation. | *(in progress)* |
-| 4 | **Ask about your stuff.** Answers from the manufacturer's own support and manual pages, with citations. | *(in progress)* |
-| – | Recall data clients for NHTSA, VIN decoding and the CPSC ([app/tools/recalls.py](app/tools/recalls.py)) | ✅ done |
-| – | Accounts, guests, per-user isolation, streaming chat, daily usage caps, hosting on Cloud Run | ✅ done (from the earlier version) |
+| | Feature |
+|---|---|
+| 1 | **Your things, as visible memory.** Cars (by VIN, or year, make and model) and household products, one Markdown file each. Saved from chat ("we have a 2018 Civic and a crib") or added in the app. |
+| 2 | **Daily recall watch.** Every day Lantern checks NHTSA (vehicles) and the CPSC (household products) for everything you own. **Home** shows what needs attention in plain words: "Don't drive the 2006 Ford Ranger until it's repaired" comes first. Mark each recall *fixed* or *not mine*. |
+| 3 | **Alerts on your phone.** Turn on notifications and Lantern tells you when a new recall affects your things. Standard browser push: no phone number, no app store. |
+| 4 | **Book the free fix.** Recall repairs are free at any authorized dealer for your car's brand. Lantern finds dealers near you and drafts the booking message (car, VIN, every recall number, "please confirm the parts are in stock"). **You send it yourself** by email, text or WhatsApp; Lantern never sends anything for you. |
+| 5 | **Ask, by typing or talking.** "Is my car safe to drive?" Answers come only from the official recall data, with links. Tap the mic to talk, and turn on "Read answers aloud". |
 
 **What Lantern can't know:** NHTSA lists recalls by make, model and year. Whether *your* car's recall has already been repaired is only shown on [nhtsa.gov/recalls](https://www.nhtsa.gov/recalls) by VIN, which has no public API. Lantern says "your model is covered by this recall", links that official check, and never claims a specific car is fixed or unfixed.
 
@@ -35,7 +36,7 @@ All free and public, with no API key needed (checked live on 24 Oct 2026):
 | NHTSA Recalls API (`api.nhtsa.gov/recalls/recallsByVehicle`) | Vehicle recalls by make, model and year, including "park it" and "park outside" flags |
 | NHTSA vPIC (`vpic.nhtsa.dot.gov/api`) | Decoding a VIN into make, model and year |
 | CPSC Recalls API (`saferproducts.gov/RestWebServices/Recall`) | Household product recalls. Lantern fetches the recent list once a day for everyone and matches it against each person's things locally |
-| **Tavily** | Manufacturer support pages for "ask about your stuff", finding authorized dealers, recall news |
+| **Tavily** | Finding authorized dealers near the user for "Book the free fix" (basic search, cached, within a daily site-wide credit budget) |
 
 ## How we use NVIDIA Nemotron and Nebius Token Factory
 
@@ -43,8 +44,8 @@ Every LLM call goes to the **Nebius Token Factory** OpenAI-compatible API. Lante
 
 | Model | Used for |
 |---|---|
-| Nemotron 3 Nano (`MODEL_FAST`), thinking off | Deciding whether a turn needs a lookup, saving things from chat, confirming that a recall matches something you own |
-| Nemotron 3 Super (`MODEL_BALANCED`), thinking off | Writing answers from looked-up sources |
+| Nemotron 3 Nano (`MODEL_FAST`), thinking off | Reading each message first: pulling out the things you say you own and deciding whether to check recalls; confirming that a CPSC recall really matches a product you own; small talk |
+| Nemotron 3 Super (`MODEL_BALANCED`), thinking off | Writing answers from the official recall data it was given |
 | Nemotron 3 Ultra (`MODEL_REASONING`) | "Think harder" only |
 
 Reasoning is switched per call with `chat_template_kwargs.enable_thinking`. Every call is logged with its model and token counts (`data/logs/llm_usage.jsonl`).
@@ -83,7 +84,9 @@ Try the recall clients against the live government APIs:
 python -c "from app.tools.recalls import RecallClient; c=RecallClient(); v=c.decode_vin('1HGCM82633A004352'); print(v, len(c.vehicle_recalls(v.make, v.model, v.year)), 'recalls')"
 ```
 
-Deployment (Cloud Run, Cloud Storage for user data, Secret Manager): see [deploy/README.md](deploy/README.md).
+Turn on push notifications locally by generating a key: `python -m app.push`, then put the output in `.env` as `VAPID_PRIVATE_KEY`.
+
+Deployment (Cloud Run, Cloud Storage for user data, Secret Manager, a daily Cloud Scheduler job): see [deploy/README.md](deploy/README.md).
 
 ## Accounts and privacy
 
@@ -91,8 +94,11 @@ Deployment (Cloud Run, Cloud Storage for user data, Secret Manager): see [deploy
 - **Accounts:** username and password (hashed with scrypt). No email address and no tracking.
 - **Isolation:** every user's data lives only in `data/users/<id>/`, and `tests/test_isolation.py` proves users can't see each other's data.
 - **Visible memory:** everything Lantern remembers is a Markdown file you can view, edit, delete and download as a zip.
-- **Ask before acting:** Lantern never sends a message or books anything without your explicit confirmation.
-- **Where your data goes:** messages go to Nebius Token Factory to generate replies; searches go to Tavily; recall lookups send only a make, model and year (or a VIN, to decode it) to NHTSA. Nothing else leaves the app.
+- **Ask before acting:** Lantern never sends a message or books anything. Booking messages open in your own email, text or WhatsApp app for you to send.
+- **Only you mark recalls fixed:** the assistant has no tool for it, so a web page or a confused model can't hide a recall from you.
+- **Where your data goes:** messages go to Nebius Token Factory to generate replies; searches go to Tavily (for dealers, only your car's make and the city or ZIP you type); recall lookups send only a make, model and year (or a VIN, to decode it) to NHTSA. VINs are never put in model prompts.
+- **Voice** uses your browser's built-in speech recognition and speech synthesis. In Chrome, speech recognition is done by Google's servers; Lantern says so the first time you tap the mic. Typing works everywhere.
+- **Push notifications** go through your browser's push service (Google, Mozilla, Apple or Microsoft). Lantern only sends a short title and line, never your list of things.
 
 ## How the agent works
 
