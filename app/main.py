@@ -27,6 +27,7 @@ from app.auth.accounts import Account, AccountStore, AuthError
 from app.auth.quota import DailyQuota, SiteQuota
 from app.auth import steam_openid
 from app.auth.sessions import COOKIE_NAME, SessionSigner
+from app.briefing import Briefings
 from app.config import Settings, load_settings
 from app.llm.router import ModelRouter, Tier
 from app.memory.extractor import MemoryExtractor
@@ -113,7 +114,8 @@ class MeResponse(BaseModel):
 
 def create_app(loop: AgentLoop | None = None, settings: Settings | None = None,
                steam: SteamClient | None = None, openid_http: httpx.Client | None = None,
-               extractor: MemoryExtractor | None = None, knowledge: GameKnowledge | None = None) -> FastAPI:
+               extractor: MemoryExtractor | None = None, knowledge: GameKnowledge | None = None,
+               briefings: Briefings | None = None) -> FastAPI:
     _setup_logging()
     settings = settings or load_settings()
     settings.require_secret_key()
@@ -136,6 +138,7 @@ def create_app(loop: AgentLoop | None = None, settings: Settings | None = None,
                          planner=LookupPlanner(router, memory.context_for_prompt), answer_tier=Tier.BALANCED)
         extractor = extractor or MemoryExtractor(router, memory, knowledge.cached_sources,
                                                  on_games_saved=knowledge.prewarm)
+        briefings = briefings or Briefings(memory, search, router, settings.data_dir)
 
     steam_client = steam or (SteamClient(settings.steam_api_key) if settings.steam_api_key else None)
     accounts = AccountStore(settings.data_dir, guest_ttl_days=settings.guest_ttl_days)
@@ -440,6 +443,35 @@ def create_app(loop: AgentLoop | None = None, settings: Settings | None = None,
             raise HTTPException(status_code=422, detail=str(e)) from None
         prewarm_later(background, account.user_id, unsourced_games(account.user_id))
         return asdict(result)
+
+    # ---- "What's new for me" ------------------------------------------------------------------
+    def need_briefings() -> Briefings:
+        if briefings is None:
+            raise HTTPException(status_code=503, detail="Briefings aren't available on this server.")
+        return briefings
+
+    @app.get("/api/briefing")
+    def briefing(account: Account = Depends(current_account)) -> dict:
+        """Today's briefing for the player's games (built on first look, then reused)."""
+        return need_briefings().today(account.user_id)
+
+    @app.post("/api/briefing/refresh")
+    def refresh_briefing(account: Account = Depends(current_account)) -> dict:
+        """Rebuild from the shared per-game news (cheap: news is fetched at most once per game per day)."""
+        return need_briefings().build(account.user_id)
+
+    @app.post("/internal/briefings/run", include_in_schema=False)
+    def run_briefings(request: Request) -> dict:
+        """Daily job (Cloud Scheduler sends X-Lantern-Cron). 404 unless CRON_SECRET is set and matches."""
+        sent = request.headers.get("x-lantern-cron", "")
+        if not settings.cron_secret or not hmac.compare_digest(sent, settings.cron_secret):
+            raise HTTPException(status_code=404, detail="Not found.")
+        users_root = settings.data_dir / "users"
+        active = [p.name for p in sorted(users_root.iterdir()) if p.is_dir()] if users_root.is_dir() else []
+        active = [uid for uid in active if accounts.get(uid) is not None]  # skips expired guests
+        result = need_briefings().run_all(active)
+        log.info("briefing run: %s", result)
+        return result
 
     @app.get("/api/export")
     def export(account: Account = Depends(current_account)) -> RawResponse:

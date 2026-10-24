@@ -223,6 +223,8 @@ class MemoryStore:
         for extra in (base / "history.jsonl", base / "logs" / "audit.jsonl"):
             if extra.exists() and not extra.is_symlink():
                 wanted.append(extra)
+        if (base / "briefings").is_dir():
+            wanted += [p for p in sorted((base / "briefings").glob("*.json")) if not p.is_symlink()]
         buf = io.BytesIO()
         with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
             for path in wanted:

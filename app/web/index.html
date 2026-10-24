@@ -89,6 +89,14 @@
   .msg a { color: var(--accent); }
   .msg a.cite { font-size: .8rem; white-space: nowrap; text-decoration: none; padding: 0 4px; margin-left: 2px;
                 border-radius: 6px; background: var(--user); }
+  details.briefing { background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+                     padding: 10px 14px; margin-bottom: 12px; }
+  details.briefing summary { cursor: pointer; }
+  details.briefing .sub { font-size: .8rem; color: var(--muted); font-weight: normal; }
+  .briefing h4 { margin: 10px 0 4px; font-size: .95rem; }
+  .briefing ul { margin: 0; padding-left: 18px; }
+  .briefing li { margin: 4px 0; font-size: .9rem; }
+  .briefing .when { font-size: .75rem; color: var(--muted); margin-left: 4px; }
   details.spoiler { margin-top: 6px; background: var(--warn-bg); border-radius: 8px; padding: 6px 10px; }
   details.spoiler summary { cursor: pointer; color: var(--warn); font-size: .85rem; }
   a.ghost { text-decoration: none; display: inline-block; margin-top: 16px; }
@@ -133,6 +141,11 @@
 
   <section id="chat" hidden>
     <div class="notice" id="guestNotice" hidden></div>
+    <details class="briefing" id="briefing" hidden>
+      <summary><strong>What's new for your games</strong> <span class="sub" id="briefingMeta"></span></summary>
+      <div id="briefingBody"></div>
+      <button type="button" class="link" id="briefingRefresh">Refresh</button>
+    </details>
     <section id="log" aria-live="polite"><p class="empty" id="empty">Tell me what you're playing, or ask anything about a game.</p></section>
     <form id="form">
       <div class="row">
@@ -242,6 +255,7 @@ function showChat(me) {
   $("ultraLeft").textContent = me.ultra_left_today === null ? "" : ` · ${me.ultra_left_today} left today`;
   $("steamForm").hidden = !me.steam_enabled;
   showTab("chat");
+  loadBriefing();
 }
 
 async function refreshMe() {
@@ -589,6 +603,47 @@ $("steamForm").addEventListener("submit", async (e) => {
     $("steamBtn").disabled = false;
   }
 });
+
+// ---- "What's new for your games" ---------------------------------------------------------
+function renderBriefing(b) {
+  const box = $("briefing"), body = $("briefingBody");
+  const items = b.games.reduce((n, g) => n + g.items.length, 0);
+  $("briefingMeta").textContent = b.games.length ? `· ${items} update${items === 1 ? "" : "s"} · ${b.date}` : "";
+  body.replaceChildren();
+  if (!b.games.length) {
+    body.appendChild(el("p", "hint", "Mark games as Playing on My games (or import from Steam) to get a daily briefing."));
+  }
+  for (const g of b.games) {
+    body.appendChild(el("h4", "", g.title));
+    if (!g.items.length) { body.appendChild(el("p", "hint", "Nothing new this week.")); continue; }
+    const ul = el("ul");
+    for (const it of g.items) {
+      const li = el("li");
+      li.appendChild(el("strong", "", it.headline));
+      if (it.summary) li.appendChild(document.createTextNode(" — " + it.summary));
+      if (it.date) li.appendChild(el("span", "when", it.date));
+      li.appendChild(link(it.url, siteName(it.url), true));
+      ul.appendChild(li);
+    }
+    body.appendChild(ul);
+  }
+  if (b.note) body.appendChild(el("p", "hint", b.note));
+  box.hidden = false;
+  box.open = items > 0 && !sessionStorageGet("briefingClosed");
+}
+
+function sessionStorageGet(key) { try { return sessionStorage.getItem(key); } catch { return null; } }
+$("briefing").addEventListener("toggle", () => {
+  try { if (!$("briefing").open) sessionStorage.setItem("briefingClosed", "1"); } catch { /* private mode */ }
+});
+
+async function loadBriefing(refresh = false) {
+  $("briefing").hidden = false;
+  $("briefingMeta").textContent = "· checking the news…";
+  const { res, data } = await api(refresh ? "/api/briefing/refresh" : "/api/briefing", { method: refresh ? "POST" : "GET" });
+  if (res.ok) renderBriefing(data); else $("briefingMeta").textContent = "· couldn't load right now";
+}
+$("briefingRefresh").addEventListener("click", () => loadBriefing(true));
 
 // Errors from the Steam sign-in redirect arrive as ?auth_error=...
 const authError = new URLSearchParams(location.search).get("auth_error");

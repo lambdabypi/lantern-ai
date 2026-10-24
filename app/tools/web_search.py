@@ -48,19 +48,27 @@ class WebSearch:
         depth: Depth = "basic",
         max_results: int = 5,
         include_domains: list[str] | None = None,
+        topic: str | None = None,
+        time_range: str | None = None,
         use_cache: bool = True,
     ) -> list[dict[str, Any]]:
-        """Return a list of results, each with at least title, url and content.
+        """Return a list of results, each with at least title, url and content (news results also carry
+        published_date).
 
-        include_domains restricts results to those sites (e.g. a game's own wiki).
+        include_domains restricts results to those sites (e.g. a game's own wiki); topic="news" with
+        time_range ("day", "week", "month") finds recent articles.
         """
         key = cache_key({"query": query, "depth": depth, "max_results": max_results,
-                         "include_domains": sorted(include_domains or [])})
+                         "include_domains": sorted(include_domains or []), "topic": topic, "time_range": time_range})
         if use_cache and (hit := self._cache.get(key)) is not None:
             self.cached_searches += 1
             return hit
 
-        extra = {"include_domains": list(include_domains)} if include_domains else {}
+        extra: dict[str, Any] = {"include_domains": list(include_domains)} if include_domains else {}
+        if topic:
+            extra["topic"] = topic
+        if time_range:
+            extra["time_range"] = time_range
         self._check_budget(_CREDITS[depth])
         try:
             resp = self._client.search(
@@ -75,7 +83,8 @@ class WebSearch:
             self.live_searches += 1
 
         results = [
-            {"title": r.get("title", ""), "url": r.get("url", ""), "content": r.get("content", "")}
+            {"title": r.get("title", ""), "url": r.get("url", ""), "content": r.get("content", ""),
+             **({"published_date": r["published_date"]} if r.get("published_date") else {})}
             for r in resp.get("results", [])
         ]
         if use_cache:
