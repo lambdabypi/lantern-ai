@@ -24,6 +24,8 @@ Telling owners directly makes them roughly 8× more likely to act. A personal AI
 | 3 | **Alerts on your phone.** Turn on notifications and Lantern tells you when a new recall affects your things. Standard browser push: no phone number, no app store. |
 | 4 | **Book the free fix.** Recall repairs are free at any authorized dealer for your car's brand. Lantern finds dealers near you and drafts the booking message (car, VIN, every recall number, "please confirm the parts are in stock"). **You send it yourself** by email, text or WhatsApp; Lantern never sends anything for you. |
 | 5 | **Ask, by typing or talking.** "Is my car safe to drive?" Answers come only from the official recall data, with links. Tap the mic to talk, and turn on "Read answers aloud". |
+| 6 | **Plain English, with the official text one tap away.** NVIDIA Nemotron rewrites each recall notice in everyday words ("Driver air bag may explode", "Park outside and away from buildings until the free repair is done"), once per recall for everyone, using only what the notice says. |
+| 7 | **Learn.** Short, sourced answers: what a safety recall is, whether the fix is free (and the 15-year rule), what "Do not drive", "Park outside" and "Stop using" mean, where to find your VIN, what happens to your data. |
 
 **What Lantern can't know:** NHTSA lists recalls by make, model and year. Whether *your* car's recall has already been repaired is only shown on [nhtsa.gov/recalls](https://www.nhtsa.gov/recalls) by VIN, which has no public API. Lantern says "your model is covered by this recall", links that official check, and never claims a specific car is fixed or unfixed.
 
@@ -45,7 +47,7 @@ Every LLM call goes to the **Nebius Token Factory** OpenAI-compatible API. Lante
 | Model | Used for |
 |---|---|
 | Nemotron 3 Nano (`MODEL_FAST`), thinking off | Reading each message first: pulling out the things you say you own and deciding whether to check recalls; confirming that a CPSC recall really matches a product you own; small talk |
-| Nemotron 3 Super (`MODEL_BALANCED`), thinking off | Writing answers from the official recall data it was given |
+| Nemotron 3 Super (`MODEL_BALANCED`), thinking off | Writing answers from the official recall data it was given; rewriting each recall notice in plain English (once per recall, shared by everyone, cached) |
 | Nemotron 3 Ultra (`MODEL_REASONING`) | "Think harder" only |
 
 Reasoning is switched per call with `chat_template_kwargs.enable_thinking`. Every call is logged with its model and token counts (`data/logs/llm_usage.jsonl`).
@@ -90,7 +92,7 @@ Deployment (Cloud Run, Cloud Storage for user data, Secret Manager, a daily Clou
 
 ## Accounts and privacy
 
-- **Try it as a guest:** one click, no sign-up. Each guest gets their own isolated space, deleted automatically after 7 days.
+- **Try it as a guest:** one click, no sign-up. Each guest gets their own isolated space, deleted automatically after 7 days, unless they tap **Keep my list** to turn it into a free account (username and password only).
 - **Accounts:** username and password (hashed with scrypt). No email address and no tracking.
 - **Isolation:** every user's data lives only in `data/users/<id>/`, and `tests/test_isolation.py` proves users can't see each other's data.
 - **Visible memory:** everything Lantern remembers is a Markdown file you can view, edit, delete and download as a zip.
