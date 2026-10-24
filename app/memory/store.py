@@ -1,9 +1,10 @@
-"""Visible memory: one Markdown file (YAML front matter + notes) per game, creator and profile.
+"""Visible memory: one Markdown file (YAML front matter + notes) per thing the user owns, and their profile.
 
 Layout inside data/users/<id>/memory/:
     profile.md
-    games/<slug>.md
-    creators/<slug>.md
+    vehicles/<slug>.md     make, model, year, optional VIN; recall_status per NHTSA campaign
+    products/<slug>.md     brand, product, model; recall_status per CPSC recall number
+    games/, creators/      from the earlier gaming version (kept until the UI moves over)
 
 Files are plain text the user can read, edit, delete and export. Every path is resolved and
 checked to stay inside the user's memory folder, and only known fields are accepted.
@@ -12,7 +13,6 @@ checked to stay inside the user's memory folder, and only known fields are accep
 from __future__ import annotations
 
 import io
-import os
 import re
 import threading
 import zipfile
@@ -24,20 +24,25 @@ from typing import Any
 import yaml
 
 from app.auth.users import user_dir
+from app.fileio import write_atomic
 
-KINDS = {"game": "games", "creator": "creators"}
+KINDS = {"vehicle": "vehicles", "product": "products", "game": "games", "creator": "creators"}
 GAME_STATUSES = ("playing", "backlog", "finished", "dropped")
 SPOILER_PREFERENCES = ("strict", "relaxed")
-SOURCES = ("chat", "steam", "user")
+SOURCES = ("chat", "steam", "user", "vin")
+RECALL_STATUSES = ("fixed", "not_mine")  # anything else is open
 
 # Fields each kind may hold (beyond the automatic created/updated/source/confidence).
 FIELDS: dict[str, dict[str, type | tuple]] = {
+    "vehicle": {"name": str, "make": str, "model": str, "year": int, "vin": str, "trim": str,
+                "nhtsa_model": str, "recall_status": dict},
+    "product": {"name": str, "brand": str, "product": str, "model": str, "bought": str, "recall_status": dict},
     "game": {"title": str, "status": str, "progress": str, "platform": str, "steam_appid": int,
              "playtime_hours": (int, float), "achievements": str, "last_played": str, "sources": list},
     "creator": {"name": str, "platforms": list, "links": list},
-    "profile": {"platforms": list, "play_style": str, "spoiler_preference": str, "steam_id": str},
+    "profile": {"location": str, "platforms": list, "play_style": str, "spoiler_preference": str, "steam_id": str},
 }
-NAME_FIELD = {"game": "title", "creator": "name"}
+NAME_FIELD = {"vehicle": "name", "product": "name", "game": "title", "creator": "name"}
 _SLUG = re.compile(r"^[a-z0-9][a-z0-9-]{0,63}$")
 _FRONT = re.compile(r"\A---\r?\n(.*?)\r?\n---\r?\n?(.*)\Z", re.DOTALL)
 MAX_NOTE_CHARS = 2000
@@ -100,7 +105,9 @@ def _clean(kind: str, values: dict[str, Any], strict: bool) -> dict[str, Any]:
         if value is None or value == "":
             continue
         expected = allowed[key]
-        if expected is list:
+        if expected is dict:
+            value = _recall_status(value)
+        elif expected is list:
             value = [str(v) for v in value] if isinstance(value, list) else [str(value)]
         elif expected is int:
             try:
@@ -119,6 +126,21 @@ def _clean(kind: str, values: dict[str, Any], strict: bool) -> dict[str, Any]:
         raise MemoryStoreError(f"status must be one of: {', '.join(GAME_STATUSES)}.")
     if kind == "profile" and "spoiler_preference" in out and out["spoiler_preference"] not in SPOILER_PREFERENCES:
         raise MemoryStoreError(f"spoiler_preference must be one of: {', '.join(SPOILER_PREFERENCES)}.")
+    return out
+
+
+def _recall_status(value: Any) -> dict[str, str]:
+    """{recall id: 'fixed' | 'not_mine'}. Recall ids are NHTSA campaign or CPSC recall numbers."""
+    if not isinstance(value, dict):
+        raise MemoryStoreError("recall_status must be a list of 'recall number: fixed or not_mine' lines.")
+    out = {}
+    for key, status in value.items():
+        key, status = str(key).strip().upper(), str(status).strip()
+        if not re.fullmatch(r"[0-9A-Z]{3,15}", key):
+            raise MemoryStoreError(f"'{key}' doesn't look like a recall number.")
+        if status not in RECALL_STATUSES:
+            raise MemoryStoreError(f"A recall's status must be one of: {', '.join(RECALL_STATUSES)}.")
+        out[key] = status
     return out
 
 
@@ -147,10 +169,7 @@ class MemoryStore:
         return path
 
     def _write(self, path: Path, text: str) -> None:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        tmp = path.with_suffix(".tmp")
-        tmp.write_text(text, encoding="utf-8")
-        os.replace(tmp, path)
+        write_atomic(path, text)
 
     # ---- read ------------------------------------------------------------------------------
     def get(self, user_id: str, kind: str, slug: str | None = None) -> MemoryItem | None:
@@ -223,8 +242,9 @@ class MemoryStore:
         for extra in (base / "history.jsonl", base / "logs" / "audit.jsonl"):
             if extra.exists() and not extra.is_symlink():
                 wanted.append(extra)
-        if (base / "briefings").is_dir():
-            wanted += [p for p in sorted((base / "briefings").glob("*.json")) if not p.is_symlink()]
+        for folder in ("briefings", "recalls"):
+            if (base / folder).is_dir():
+                wanted += [p for p in sorted((base / folder).glob("*.json")) if not p.is_symlink()]
         buf = io.BytesIO()
         with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
             for path in wanted:

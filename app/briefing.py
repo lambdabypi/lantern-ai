@@ -13,7 +13,6 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 import re
 from datetime import date, datetime, timezone
 from email.utils import parsedate_to_datetime
@@ -21,6 +20,7 @@ from pathlib import Path
 from typing import Any
 
 from app.auth.users import user_dir, validate_user_id
+from app.fileio import write_atomic
 from app.llm.client import LLMError
 from app.llm.parsing import extract_json
 from app.llm.router import ModelRouter, Tier
@@ -78,10 +78,7 @@ class Briefings:
                                      max_results=8)
         relevant = [r for r in results if not _blocked(host_of(r["url"])) and _mentions(title, r)][:5]
         news = {"title": title, "date": today, "items": self._summarise(title, relevant) if relevant else []}
-        path.parent.mkdir(parents=True, exist_ok=True)
-        tmp = path.with_suffix(".tmp")
-        tmp.write_text(json.dumps(news, ensure_ascii=False), encoding="utf-8")
-        os.replace(tmp, path)
+        write_atomic(path, json.dumps(news, ensure_ascii=False))
         return news
 
     def _summarise(self, title: str, articles: list[dict]) -> list[dict[str, str]]:

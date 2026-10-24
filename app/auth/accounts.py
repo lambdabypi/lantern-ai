@@ -13,7 +13,6 @@ import base64
 import hashlib
 import hmac
 import json
-import os
 import re
 import secrets
 import shutil
@@ -24,6 +23,7 @@ from pathlib import Path
 from typing import Callable, Literal
 
 from app.auth.users import user_dir, validate_user_id
+from app.fileio import write_atomic
 
 GUEST_PREFIX = "guest-"
 STEAM_PREFIX = "steam-"
@@ -95,11 +95,7 @@ class AccountStore:
         return user_dir(self.data_dir, user_id) / "account.json"
 
     def _save(self, account: Account) -> None:
-        path = self._path(account.user_id)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        tmp = path.with_suffix(".tmp")
-        tmp.write_text(json.dumps(asdict(account), indent=2), encoding="utf-8")
-        os.replace(tmp, path)  # atomic: never leaves a half-written account
+        write_atomic(self._path(account.user_id), json.dumps(asdict(account), indent=2))  # never half-written
 
     def get(self, user_id: str) -> Account | None:
         """The account, or None if it doesn't exist, is unreadable, or is an expired guest."""
