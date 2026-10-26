@@ -304,3 +304,13 @@ def test_child_seat_and_tire_recalls_from_nhtsa_are_matched_like_products(settin
 def replace_recall(r):
     from dataclasses import replace
     return replace(r, source="nhtsa", completion="24.52", url="https://www.nhtsa.gov/recalls?nhtsaId=26C003000")
+
+
+def test_the_same_product_from_a_receipt_fills_in_the_one_on_the_list(settings):
+    w, store, _, _ = make(settings)
+    w.save_product("alice", "ceramic space heater", "Lasko")
+    w.save_product("alice", "heater", "LASKO", "754200")                     # from a receipt
+    w.save_product("alice", "heater", "Lasko", "5160")                       # a different model: its own file
+    w.save_product("alice", "high chair", "Lasko")                           # a different kind of thing
+    items = {p.meta["name"]: p.meta.get("model") for p in store.list("alice", "product")}
+    assert items == {"Lasko ceramic space heater": "754200", "Lasko heater 5160": "5160", "Lasko high chair": None}

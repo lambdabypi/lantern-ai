@@ -224,7 +224,25 @@ class RecallWatch:
             raise MemoryStoreError("What kind of product is it (for example: crib, space heater, stroller)?")
         name = " ".join(x for x in (brand, product, model) if x)
         fields = {k: v for k, v in (("brand", brand), ("product", product), ("model", model)) if v}
+        same = self._same_product(user_id, brand, product, model)
+        if same is not None:  # "Lasko heater 754200" from a receipt fills in the "Lasko ceramic space heater" on the list
+            keep = {k: v for k, v in fields.items() if not same.meta.get(k)}
+            return self.store.upsert(user_id, "product", same.slug, keep, note=note, source=source)
         return self.store.upsert(user_id, "product", name, fields, note=note, source=source)
+
+    def _same_product(self, user_id: str, brand: str, product: str, model: str) -> MemoryItem | None:
+        """A product already on the list from the same brand, of the same kind, with no different model number."""
+        if not brand:
+            return None
+        kind = _words(product)
+        for p in self.store.list(user_id, "product"):
+            m = p.meta
+            if _compact(m.get("brand", "")) != _compact(brand) or not (kind & _words(m.get("product", ""))):
+                continue
+            if model and m.get("model") and _compact(m["model"]) != _compact(model):
+                continue
+            return p
+        return None
 
     def set_status(self, user_id: str, kind: str, slug: str, recall_id: str, status: str) -> MemoryItem:
         """The user marks a recall fixed, not theirs, or open again. Fixing adds a dated line to the notes."""

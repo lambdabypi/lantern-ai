@@ -1617,16 +1617,26 @@ $("quickAdd").addEventListener("submit", async (e) => {
   }
 });
 // ---- build the list from receipts (see app/receipts.py) ----------------------------------------------------
-let receiptPhoto = "";
 $("receiptsBtn").addEventListener("click", () => { $("receiptError").textContent = ""; $("receiptDialog").showModal(); });
 $("receiptClose").addEventListener("click", () => $("receiptDialog").close());
 $("receiptFileBtn").addEventListener("click", () => $("receiptFile").click());
 $("receiptPhotoBtn").addEventListener("click", () => $("receiptPhoto").click());
+// A photo's item lines go into the box first, so the person can check and fix what was read before adding anything.
 $("receiptPhoto").addEventListener("change", async () => {
   const f = $("receiptPhoto").files[0];
   if (!f) return;
-  try { receiptPhoto = await shrinkPhoto(f, 2000); $("receiptThumb").src = receiptPhoto; $("receiptThumb").hidden = false; }
-  catch { toast("Couldn't open that photo. Try another one."); }
+  let photo;
+  try { photo = await shrinkPhoto(f, 2000); } catch { toast("Couldn't open that photo. Try another one."); return; }
+  $("receiptThumb").src = photo; $("receiptThumb").hidden = false;
+  const btn = $("receiptPhotoBtn"), note = $("receiptFileNote");
+  btn.disabled = true; note.textContent = "Reading your receipt with NVIDIA Nemotron…";
+  let res, data;
+  try { ({ res, data } = await api("/api/things/receipts/photo", { method: "POST", body: { photo } })); } catch { res = { ok: false }; }
+  btn.disabled = false; $("receiptPhoto").value = "";
+  if (!res.ok) { note.textContent = ""; $("receiptError").textContent = detail(data, "Couldn't read that photo."); return; }
+  const box = $("receiptText");
+  box.value = (box.value.trim() ? box.value.trim() + "\n\n" : "") + data.text;
+  note.textContent = "Here's what Lantern read from the photo. Fix anything it got wrong, then press the button.";
 });
 // Files are read in the browser: a CSV keeps only its product-name column, an HTML email only its text.
 $("receiptFile").addEventListener("change", async () => {
@@ -1670,17 +1680,18 @@ function emlText(raw) {
 $("receiptForm").addEventListener("submit", async (e) => {
   e.preventDefault();
   const text = $("receiptText").value.trim();
-  if (!text && !receiptPhoto) { $("receiptError").textContent = "Paste an order email, upload a file, or take a photo first."; return; }
+  if (!text) { $("receiptError").textContent = "Paste an order email, upload a file, or take a photo first."; return; }
   $("receiptError").textContent = "";
   $("receiptGo").disabled = true;
   $("receiptDialog").close();
   const done = startSweep("receipts");
   let res, data;
-  try { ({ res, data } = await api("/api/things/receipts", { method: "POST", body: { text, photo: receiptPhoto } })); } catch { res = { ok: false }; }
+  try { ({ res, data } = await api("/api/things/receipts", { method: "POST", body: { text } })); } catch { res = { ok: false }; }
   await done(res.ok);
   $("receiptGo").disabled = false;
   if (!res.ok) { $("receiptError").textContent = detail(data, "Couldn't read those right now."); $("receiptDialog").showModal(); return; }
-  $("receiptText").value = ""; receiptPhoto = ""; $("receiptThumb").hidden = true; $("receiptFile").value = ""; $("receiptPhoto").value = "";
+  $("receiptText").value = ""; $("receiptThumb").hidden = true; $("receiptFile").value = "";
+  $("receiptFileNote").textContent = "Order-history files (CSV) keep only the product names. Photos are read by NVIDIA Nemotron, then thrown away.";
   renderRecalls(data.recalls); loadStuff();
   toast(`Added ${data.saved.length} thing${data.saved.length === 1 ? "" : "s"}: ${data.saved.join(", ")}.`);
 });

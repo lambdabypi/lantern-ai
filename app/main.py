@@ -654,6 +654,16 @@ def create_app(loop: AgentLoop | None = None, settings: Settings | None = None, 
             raise HTTPException(status_code=422, detail=" ".join(problems) or "Nothing could be saved.")
         return {"saved": saved, "problems": problems, "recalls": w.check(account.user_id)}
 
+    @app.post("/api/things/receipts/photo")
+    def read_receipt_photo(req: ReceiptsIn, account: Account = Depends(current_account)) -> dict:
+        """The item lines of a photographed receipt, as text the person checks (and fixes) before adding anything."""
+        if receipts is None:
+            raise HTTPException(status_code=503, detail="Reading receipts isn't available on this server.")
+        if not req.photo:
+            raise HTTPException(status_code=422, detail="Take or choose a photo of the receipt first.")
+        spend_message(account, "Paste the order email instead, or")
+        return {"text": receipts.photo_text(req.photo)}
+
     @app.post("/api/things/receipts")
     def add_from_receipts(req: ReceiptsIn, account: Account = Depends(current_account)) -> dict:
         """Everything in pasted order emails, an order-history file or a photo of a receipt (see app/receipts.py).
