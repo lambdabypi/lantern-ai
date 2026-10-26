@@ -29,13 +29,15 @@ KINDS = {"vehicle": "vehicles", "product": "products"}
 SOURCES = ("chat", "user", "vin")
 RECALL_STATUSES = ("fixed", "not_mine")  # anything else is open
 UNIT_CHECKS = ("affected", "not_affected")  # what the owner's own check of their unit showed (see unit_check.py)
+FIX_STEPS = ("contacted", "booked")         # how far the owner got with a recall's free fix (see followups.py)
+_FIX_PROGRESS = re.compile(r"^(contacted|booked) \d{4}-\d{2}-\d{2}$")
 
 # Fields each kind may hold (beyond the automatic created/updated/source/confidence).
 FIELDS: dict[str, dict[str, type | tuple]] = {
     "vehicle": {"name": str, "make": str, "model": str, "year": int, "vin": str, "trim": str,
-                "nhtsa_model": str, "recall_status": dict, "unit_check": dict, "sources": list},
+                "nhtsa_model": str, "recall_status": dict, "unit_check": dict, "fix_progress": dict, "sources": list},
     "product": {"name": str, "brand": str, "product": str, "model": str, "bought": str, "recall_status": dict,
-                "unit_check": dict, "sources": list},  # sources: the maker's own sites, used to answer questions about this thing
+                "unit_check": dict, "fix_progress": dict, "sources": list},  # sources: the maker's own sites, used to answer questions about this thing
     "profile": {"location": str},
 }
 NAME_FIELD = {"vehicle": "name", "product": "name"}
@@ -101,7 +103,9 @@ def _clean(kind: str, values: dict[str, Any], strict: bool) -> dict[str, Any]:
         if value is None or value == "":
             continue
         expected = allowed[key]
-        if expected is dict:
+        if expected is dict and key == "fix_progress":
+            value = _fix_progress(value)
+        elif expected is dict:
             value = _recall_map(key, value, UNIT_CHECKS if key == "unit_check" else RECALL_STATUSES)
         elif expected is list:
             value = [str(v) for v in value] if isinstance(value, list) else [str(value)]
@@ -134,6 +138,22 @@ def _recall_map(name: str, value: Any, allowed: tuple[str, ...]) -> dict[str, st
         if status not in allowed:
             raise MemoryStoreError(f"Each {name} value must be one of: {', '.join(allowed)}.")
         out[key] = status
+    return out
+
+
+def _fix_progress(value: Any) -> dict[str, str]:
+    """{recall id: 'contacted YYYY-MM-DD' | 'booked YYYY-MM-DD'}."""
+    if not isinstance(value, dict):
+        raise MemoryStoreError("fix_progress must be a list of 'recall number: booked 2026-10-26' lines.")
+    out = {}
+    for key, step in value.items():
+        key, step = str(key).strip().upper(), " ".join(str(step).split())
+        if not re.fullmatch(r"[0-9A-Z]{3,15}", key):
+            raise MemoryStoreError(f"'{key}' doesn't look like a recall number.")
+        if not _FIX_PROGRESS.match(step):
+            raise MemoryStoreError("Each fix_progress value must be 'contacted' or 'booked' and a date, like "
+                                   "'booked 2026-10-26'.")
+        out[key] = step
     return out
 
 

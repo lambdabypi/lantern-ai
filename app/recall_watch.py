@@ -257,9 +257,29 @@ class RecallWatch:
             statuses.pop(key, None)
         else:
             statuses[key] = status
+        fields: dict[str, Any] = {"recall_status": statuses}
+        progress = dict(item.meta.get("fix_progress") or {})
+        if status != "open" and progress.pop(key, None):
+            fields["fix_progress"] = progress   # a closed recall needs no more check-ins
         note = f"Recall {key} marked fixed." if status == "fixed" else None
-        return self.store.upsert(user_id, kind, item.slug, {"recall_status": statuses},
-                                 note=note, source="user")
+        return self.store.upsert(user_id, kind, item.slug, fields, note=note, source="user")
+
+    def set_progress(self, user_id: str, kind: str, slug: str, recall_id: str, step: str) -> MemoryItem:
+        """The user says how far they got with the free fix: contacted the maker or dealer, or booked the repair (or
+        '' to clear it). Dated, so the daily watch knows when to check in (see app/followups.py)."""
+        if kind not in ("vehicle", "product"):
+            raise MemoryStoreError("Only cars and products have recalls.")
+        item = self.store.get(user_id, kind, slug)
+        if item is None:
+            raise MemoryStoreError("That item isn't in your list.")
+        progress = dict(item.meta.get("fix_progress") or {})
+        key = str(recall_id).strip().upper()
+        if step:
+            progress[key] = f"{step} {date.today().isoformat()}"
+        else:
+            progress.pop(key, None)
+        note = {"contacted": f"Contacted about recall {key}.", "booked": f"Booked the free fix for recall {key}."}.get(step)
+        return self.store.upsert(user_id, kind, item.slug, {"fix_progress": progress}, note=note, source="user")
 
     # ---- something not on the list (e.g. before buying it) -------------------------------------------------
     def preview(self, thing: dict[str, Any]) -> dict[str, Any]:
@@ -398,7 +418,7 @@ class RecallWatch:
             return entry
         if not m.get("nhtsa_model") and not rows:
             entry["note"] = "NHTSA has no recall records under this model name. Check the spelling, or add the VIN."
-        status, units = m.get("recall_status") or {}, m.get("unit_check") or {}
+        status, units, progress = m.get("recall_status") or {}, m.get("unit_check") or {}, m.get("fix_progress") or {}
         for r in rows:
             severity = "park_it" if r["park_it"] else "park_outside" if r["park_outside"] else ""
             entry["recalls"].append({
@@ -406,7 +426,7 @@ class RecallWatch:
                 "summary": r["summary"], "consequence": r["consequence"], "remedy": r["remedy"],
                 "date": r["reported"], "url": r["url"], "severity": severity,
                 "status": status.get(r["campaign"], "open"), "over_the_air": r["over_the_air"],
-                "unit": units.get(r["campaign"]),
+                "unit": units.get(r["campaign"]), "progress": _progress(progress.get(r["campaign"])),
             })
         _sort(entry["recalls"])
         return entry
@@ -433,6 +453,7 @@ class RecallWatch:
                 if r.number in shared:
                     decisions[f"{fp}|{r.number}"] = shared[r.number]
         status, units = p.meta.get("recall_status") or {}, p.meta.get("unit_check") or {}
+        progress = p.meta.get("fix_progress") or {}
         for r in candidates:
             verdict = decisions.get(f"{fp}|{r.number}") or {"match": None, "why": "couldn't double-check"}
             if verdict.get("match") is False:
@@ -444,6 +465,7 @@ class RecallWatch:
                 "status": status.get(r.number.upper(), "open"), "why": verdict.get("why", ""),
                 "confirmed": verdict.get("match") is True or units.get(r.number.upper()) == "affected",
                 "contact": r.contact, "unit": units.get(r.number.upper()), "source": r.source,
+                "progress": _progress(progress.get(r.number.upper())),
                 **({"completion": r.completion} if r.completion else {}),
             })
         _sort(entry["recalls"])
@@ -508,6 +530,12 @@ class RecallWatch:
         except (OSError, ValueError):
             return {}
         return data if isinstance(data, dict) else {}
+
+
+def _progress(value: str | None) -> dict[str, str] | None:
+    """'booked 2026-10-26' -> {"step": "booked", "since": "2026-10-26"}."""
+    step, _, since = (value or "").partition(" ")
+    return {"step": step, "since": since} if step and since else None
 
 
 def _plain_key(kind: str, recall_id: str) -> str | None:

@@ -28,6 +28,7 @@ from app.memory.history import HistoryStore
 from app.memory.store import KINDS, RECALL_STATUSES, UNIT_CHECKS, MemoryStore, MemoryStoreError
 from app.demo import load_demo_household
 from app.fix_helper import draft_message, find_dealers
+from app.followups import FollowUps, daily_alerts
 from app.owner_reports import OwnerReports
 from app.photos import PhotoError
 from app.precheck import PreCheck, PreCheckError, make_precheck_tool
@@ -147,6 +148,13 @@ class RecallStatusUpdate(BaseModel):
     slug: str = Field(min_length=1, max_length=64)
     recall_id: str = Field(min_length=3, max_length=15)
     status: str = Field(pattern="^(open|" + "|".join(RECALL_STATUSES) + ")$")
+
+
+class ProgressUpdate(BaseModel):
+    kind: str = Field(pattern="^(vehicle|product)$")
+    slug: str = Field(min_length=1, max_length=64)
+    recall_ids: list[str] = Field(min_length=1, max_length=20)
+    step: str = Field(pattern="^(|contacted|booked)$")      # "" clears it
 
 
 class PushSubscription(BaseModel):
@@ -741,9 +749,20 @@ def create_app(loop: AgentLoop | None = None, settings: Settings | None = None, 
         w.set_status(account.user_id, req.kind, req.slug, req.recall_id, req.status)
         return w.check(account.user_id)
 
+    @app.post("/api/recalls/progress")
+    def recall_progress(req: ProgressUpdate, account: Account = Depends(current_account)) -> dict:
+        """The user says they contacted the maker or dealer, or booked the repair. The daily watch then checks in
+        (see app/followups.py). Only the user records this: the assistant has no tool for it."""
+        w = need_watch()
+        for rid in req.recall_ids:
+            find_recall(account, req.kind, req.slug, rid)          # 404 unless it's one of their recalls
+            w.set_progress(account.user_id, req.kind, req.slug, rid, req.step)
+        return w.check(account.user_id, write_plain=False)
+
     @app.post("/internal/recalls/run", include_in_schema=False)
     def run_recall_watch(request: Request) -> dict:
-        result = need_watch().run_all(active_users_for_cron(request), push.announce_new_recalls if push else None)
+        alerts = daily_alerts(push, FollowUps(settings.data_dir, push)) if push else None
+        result = need_watch().run_all(active_users_for_cron(request), alerts)
         log.info("recall watch run: %s", result)
         return result
 

@@ -517,6 +517,9 @@
   .buyres.bad .advice { color: var(--danger); }
   .buyres ul { margin: 0; padding-left: 1.2em; display: grid; gap: 4px; }
   .buyres p { margin: 0; }
+  .progress { display: flex; flex-wrap: wrap; gap: 6px 8px; align-items: center; }
+  .progress .step { font-size: .9rem; color: var(--ok); font-weight: 560; }
+  .fixsent { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; }
   .unitform { display: grid; gap: 10px; margin-top: 10px; }
   .unitform label { font-weight: 560; }
   .unitform input[type=text] { width: 100%; }
@@ -1039,6 +1042,10 @@
         <textarea id="fixMessage" rows="8"></textarea></label>
       <p class="hint" style="margin:0">Lantern never sends anything for you. Send it yourself:</p>
       <div class="actions" id="fixSend"></div>
+      <div class="note fixsent" id="fixSent">
+        <span>Sent it, or called them? Lantern will check in until it's fixed.</span>
+        <button type="button" class="chipbtn" id="fixSentBtn">I've contacted them</button>
+      </div>
     </div>
   </dialog>
 
@@ -2026,6 +2033,7 @@ function recallRow(item, rc, cardSeverity) {
   ob.appendChild(link(rc.url, "Open the notice on " + siteName(rc.url)));
   off.appendChild(ob);
   fix.appendChild(off);
+  fix.appendChild(progressRow(item, rc));
   const actions = el("div", "actions");
   const fixedBtn = button(item.kind === "vehicle" ? "A dealer fixed this" : "It's been dealt with", "chipbtn good", () => setStatus(item, rc, "fixed", fixedBtn));
   actions.append(fixedBtn,
@@ -2039,10 +2047,12 @@ function recallRow(item, rc, cardSeverity) {
 // a lot); the owner types what theirs says or photographs the label (read by Nemotron Super VL, never stored), and
 // Nemotron Super compares it with the notice, quoting the line that decides it. Cars use NHTSA's own VIN check.
 const unitResults = new Map();   // verdicts shown this visit, so a re-render keeps them open
+const openRows = new Set();       // recall rows the person was working in, kept open across re-renders
 function unitKey(item, rc) { return `${item.kind}:${item.slug}:${rc.id}`; }
 function unitBox(item, rc, row) {
   const box = el("div", "howbox unitbox");
   const shown = unitResults.get(unitKey(item, rc));
+  if (openRows.has(unitKey(item, rc))) row.open = true;
   if (shown) { row.open = true; box.replaceChildren(verdictView(item, rc, shown, box)); return box; }
   const label = item.kind === "vehicle" ? (rc.unit ? "Check my car again" : "Is my car included?")
                                         : (rc.unit ? "Check mine again" : "Is mine affected?");
@@ -2204,6 +2214,38 @@ async function loadRemedy(item, rc, box) {
   }
   box.replaceChildren(out);
 }
+// ---- how far the fix has got: contacted, booked (then fixed). The daily watch checks in (app/followups.py) ----
+function dayLabel(iso) { try { return new Date(iso + "T12:00:00").toLocaleDateString(undefined, { month: "short", day: "numeric" }); } catch { return iso; } }
+function progressRow(item, rc) {
+  const row = el("div", "progress");
+  const p = rc.progress;
+  const isCar = item.kind === "vehicle";
+  if (p && p.step === "booked") {
+    row.appendChild(el("span", "step", `✓ ${isCar ? "Repair booked" : "Fix arranged"} ${dayLabel(p.since)}. Lantern will check in.`));
+    row.appendChild(button("Undo", "textbtn", () => setProgress(item, [rc.id], "")));
+    return row;
+  }
+  if (p && p.step === "contacted") row.appendChild(el("span", "step", `✓ Contacted ${dayLabel(p.since)}.`));
+  else row.appendChild(button("I've contacted them", "chipbtn", () => setProgress(item, [rc.id], "contacted")));
+  row.appendChild(button(isCar ? "Repair booked" : "Fix arranged", "chipbtn", () => setProgress(item, [rc.id], "booked")));
+  return row;
+}
+async function setProgress(item, ids, step) {
+  ids.forEach(id => openRows.add(`${item.kind}:${item.slug}:${id}`));
+  const { res, data } = await api("/api/recalls/progress", { method: "POST", body: { kind: item.kind, slug: item.slug, recall_ids: ids, step } });
+  if (!res.ok) { toast(detail(data, "Couldn't save that.")); return false; }
+  transition(() => renderRecalls(data));
+  toast(step === "booked" ? "Saved. Lantern will ask whether it was repaired." : step === "contacted" ? "Saved. Lantern will check in if you don't hear back." : "Undone.");
+  return true;
+}
+$("fixSentBtn").addEventListener("click", async () => {
+  if (!fixing || !report) return;
+  const entry = report.items.find(i => i.kind === fixing.kind && i.slug === fixing.slug);
+  const ids = (entry ? entry.recalls : []).filter(r => r.status === "open" && !(r.progress && r.progress.step === "booked")).map(r => r.id);
+  if (!ids.length) { $("fixDialog").close(); return; }
+  if (await setProgress(fixing, ids.slice(0, 20), "contacted")) $("fixDialog").close();
+});
+
 function doneCard(item, rc) {
   const c = el("div", "card");
   c.appendChild(el("div", "", `${item.name}: ${rowTitle(item, rc)}`));
