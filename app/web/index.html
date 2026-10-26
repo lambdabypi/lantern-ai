@@ -495,6 +495,18 @@
   .howsteps ol { margin: 0 0 8px; padding-left: 1.3em; display: grid; gap: 4px; }
   .howsteps p { margin: 4px 0 0; }
   .howsteps p.ai { display: block; margin-top: 10px; }
+  .reports .eyebrow2 { font-size: .78rem; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); font-weight: 600; margin: 0 0 4px; }
+  .reports h2 { margin: 0; }
+  .themes { list-style: none; margin: 12px 0 0; padding: 0; display: grid; gap: 14px; }
+  .themes li { border-top: 1px solid var(--border); padding-top: 12px; display: grid; gap: 4px; }
+  .themes .tline { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; }
+  .themes .tline strong { font-weight: 620; }
+  .themes p { margin: 0; }
+  .themes .tstats { color: var(--muted); font-size: .88rem; }
+  .themes .tstats .hot { color: var(--danger); font-weight: 600; }
+  .badge.norecall { background: color-mix(in srgb, var(--glow) 22%, var(--surface)); color: var(--text); }
+  .themes details summary { cursor: pointer; color: var(--accent); font-size: .9rem; }
+  .themes details p { margin-top: 6px; font-size: .92rem; color: var(--muted); }
   .unitform { display: grid; gap: 10px; margin-top: 10px; }
   .unitform label { font-weight: 560; }
   .unitform input[type=text] { width: 100%; }
@@ -823,6 +835,7 @@
     <div id="statusBox"></div>
     <p class="watching" id="watching" hidden><span class="dot" aria-hidden="true"></span><span id="watchingText"></span></p>
     <div class="stack" id="attention" style="margin-top:14px"></div>
+    <div class="stack" id="ownerReports" style="margin-top:18px"></div>
     <details class="done" id="doneBox" hidden><summary id="doneSummary"></summary><div class="stack" id="doneList"></div></details>
     <div class="stack" id="callouts" style="margin-top:16px"></div>
     <p class="hint" id="homeNote"></p>
@@ -1674,7 +1687,70 @@ function renderRecalls(r) {
   count.hidden = !open.length;
   count.replaceChildren(document.createTextNode(open.length), el("span", "sr-only", ` open recall${open.length === 1 ? "" : "s"}`));
   renderCallouts();
+  renderOwnerReports(r);
   if (!$("stuff").hidden) loadStuff();
+}
+// ---- what other owners report: NHTSA's complaint database, grouped (see app/owner_reports.py) ------------------
+const ownerReports = new Map();   // slug -> report (or a pending promise) for this visit
+function renderOwnerReports(r) {
+  const cars = (r.items || []).filter(i => i.kind === "vehicle" && !i.note);
+  const box = $("ownerReports");
+  const cards = [];
+  for (const car of cars) {
+    const got = ownerReports.get(car.slug);
+    if (!got) {
+      ownerReports.set(car.slug, "pending");
+      api(`/api/vehicles/${encodeURIComponent(car.slug)}/owner-reports`).then(({ res, data }) => {
+        ownerReports.set(car.slug, res.ok ? data : { failed: true });
+        if (report) renderOwnerReports(report);
+      }).catch(() => ownerReports.set(car.slug, { failed: true }));
+    } else if (got !== "pending" && !got.failed && got.total) {
+      cards.push(ownerReportCard(got));
+    }
+  }
+  box.replaceChildren(...cards);
+}
+function ownerReportCard(d) {
+  const c = el("article", "card reports");
+  c.append(el("p", "eyebrow2", "What other owners report"), el("h2", "", d.name));
+  const since = d.since ? ` since ${d.since.slice(0, 4)}` : "";
+  c.appendChild(el("p", "hint", `${d.total.toLocaleString()} safety complaint${d.total === 1 ? "" : "s"} to NHTSA from owners of this model${since}. These are owners' reports, not verified findings.`));
+  const ul = el("ul", "themes");
+  // problems no recall covers first: they're the early warning ("unknown or other" stays last)
+  const order = (t) => [t.component === "UNKNOWN OR OTHER" ? 1 : 0, t.covered_by_recall ? 1 : 0];
+  const themes = [...d.themes].sort((a, b) => { const x = order(a), y = order(b); return (x[0] - y[0]) || (x[1] - y[1]); });
+  for (const t of themes) {
+    const li = el("li");
+    const line = el("div", "tline");
+    line.appendChild(el("strong", "", t.title));
+    line.appendChild(t.covered_by_recall ? el("span", "badge ok", `Recall ${t.recall_ids[0]} covers this`)
+                                         : el("span", "badge norecall", "No recall for this"));
+    li.appendChild(line);
+    if (t.what) li.appendChild(el("p", "", t.what));
+    const stats = el("p", "tstats");
+    const bits = [`${t.count} complaint${t.count === 1 ? "" : "s"}`, t.recent ? `${t.recent} in the last year` : ""];
+    stats.append(bits.filter(Boolean).join(" · "));
+    for (const [n, word] of [[t.deaths, "death"], [t.injuries, "injur"], [t.fires, "fire"], [t.crashes, "crash"]]) {
+      if (!n) continue;
+      const label = word === "injur" ? (n === 1 ? "injury" : "injuries") : word === "crash" ? (n === 1 ? "crash" : "crashes") : n === 1 ? word : word + "s";
+      stats.append(" · "); stats.appendChild(el("span", "hot", `${n} ${label}`));
+    }
+    li.appendChild(stats);
+    if (t.example && t.example.text) {
+      const ex = el("details");
+      ex.appendChild(el("summary", "", "Read the latest report"));
+      ex.appendChild(el("p", "", `${t.example.filed ? t.example.filed + ": " : ""}${t.example.text}`));
+      li.appendChild(ex);
+    }
+    ul.appendChild(li);
+  }
+  c.appendChild(ul);
+  if (!d.themes.some(t => t.covered_by_recall)) c.appendChild(el("p", "hint", "If your car has one of these problems, report it to NHTSA: enough similar reports can lead to an investigation and a recall."));
+  const row = el("div", "actions"); row.style.marginTop = "12px";
+  row.appendChild(link("https://www.nhtsa.gov/report-a-safety-problem", "Report a problem to NHTSA", "chipbtn"));
+  c.appendChild(row);
+  c.appendChild(el("p", "ai", d.written_by_model ? "Grouped from NHTSA's complaint database; summaries by NVIDIA Nemotron from the reports" : "Grouped from NHTSA's complaint database"));
+  return c;
 }
 function isPossible(item, rc) { return item.kind === "product" && rc.confirmed === false; }
 function badgeFor(item, rc) {

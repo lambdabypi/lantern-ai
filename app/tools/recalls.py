@@ -6,6 +6,10 @@ Endpoints (checked live on 24 Oct 2026):
                   Matches by model, not by the owner's exact car: whether a specific VIN still needs the
                   fix is only shown on nhtsa.gov/recalls, which has no public API.
 - NHTSA models    api.nhtsa.gov/products/vehicle/models?modelYear=&make=&issueType=r
+- NHTSA complaints api.nhtsa.gov/complaints/complaintsByVehicle?make=&model=&modelYear=  (checked live 26 Oct 2026)
+                  Owners' safety complaints, as summarised by NHTSA staff: unverified, but the database NHTSA uses
+                  to open investigations. Dates are MM/DD/YYYY. Components are comma-joined without a space
+                  ("POWER TRAIN,ENGINE"); a comma followed by a space is part of one name ("SERVICE BRAKES, HYDRAULIC").
 - vPIC VIN decode vpic.nhtsa.dot.gov/api/vehicles/DecodeVinValues/<vin>?format=json
 - CPSC recalls    www.saferproducts.gov/RestWebServices/Recall?format=json&RecallDateStart=YYYY-MM-DD
                   Unknown parameters are silently ignored and return every recall, so this client only
@@ -78,6 +82,25 @@ class ProductRecall:
     upcs: list[str] = field(default_factory=list)
 
 
+@dataclass(frozen=True)
+class Complaint:
+    odi: str                  # NHTSA's complaint number
+    filed: str | None         # ISO date
+    components: list[str]
+    summary: str
+    crash: bool
+    fire: bool
+    injuries: int
+    deaths: int
+
+
+def _mdy_to_iso(value: Any) -> str | None:
+    try:
+        return datetime.strptime(str(value), "%m/%d/%Y").date().isoformat()
+    except ValueError:
+        return None
+
+
 def _dmy_to_iso(value: Any) -> str | None:
     try:
         return datetime.strptime(str(value), "%d/%m/%Y").date().isoformat()
@@ -87,6 +110,13 @@ def _dmy_to_iso(value: Any) -> str | None:
 
 def _names(items: Any, key: str = "Name") -> list[str]:
     return [str(i[key]).strip() for i in items or [] if isinstance(i, dict) and str(i.get(key) or "").strip()]
+
+
+def _count(value: Any) -> int:
+    try:
+        return max(0, int(value))
+    except (TypeError, ValueError):
+        return 0
 
 
 def normalise_vin(text: str) -> str:
@@ -136,6 +166,24 @@ class RecallClient:
             ))
         recalls.sort(key=lambda r: r.reported or "", reverse=True)
         return recalls
+
+    def vehicle_complaints(self, make: str, model: str, year: Any) -> list[Complaint]:
+        """Owners' safety complaints for a make, model and year, newest first."""
+        make, model, year = _check_vehicle(make, model, year)
+        data = self._get(NHTSA_URL + "complaints/complaintsByVehicle",
+                         {"make": make, "model": model, "modelYear": year}, "NHTSA")
+        out = []
+        for r in data.get("results") or []:
+            if not isinstance(r, dict) or not r.get("odiNumber"):
+                continue
+            out.append(Complaint(
+                odi=str(r["odiNumber"]), filed=_mdy_to_iso(r.get("dateComplaintFiled")),
+                components=[c.strip() for c in re.split(r",(?! )", str(r.get("components") or "")) if c.strip()],
+                summary=str(r.get("summary") or ""), crash=bool(r.get("crash")), fire=bool(r.get("fire")),
+                injuries=_count(r.get("numberOfInjuries")), deaths=_count(r.get("numberOfDeaths")),
+            ))
+        out.sort(key=lambda c: c.filed or "", reverse=True)
+        return out
 
     def vehicle_models(self, make: str, year: Any) -> list[str]:
         """NHTSA's spelling of every model of a make and year that has recall data."""

@@ -28,6 +28,7 @@ from app.memory.history import HistoryStore
 from app.memory.store import KINDS, RECALL_STATUSES, UNIT_CHECKS, MemoryStore, MemoryStoreError
 from app.demo import load_demo_household
 from app.fix_helper import draft_message, find_dealers
+from app.owner_reports import OwnerReports
 from app.push import Push, PushError
 from app.recall_watch import RecallWatch
 from app.tools.builtin import builtin_tools
@@ -162,7 +163,8 @@ class MeResponse(BaseModel):
 
 def create_app(loop: AgentLoop | None = None, settings: Settings | None = None, watch: RecallWatch | None = None,
                push: Push | None = None, search: WebSearch | None = None,
-               makers: MakerPages | None = None, units: UnitCheck | None = None) -> FastAPI:
+               makers: MakerPages | None = None, units: UnitCheck | None = None,
+               reports: OwnerReports | None = None) -> FastAPI:
     _setup_logging()
     settings = settings or load_settings()
     settings.require_secret_key()
@@ -191,6 +193,8 @@ def create_app(loop: AgentLoop | None = None, settings: Settings | None = None, 
                          planner=RecallPlanner(router, memory.context_for_prompt, thing_named),
                          answer_tier=Tier.BALANCED)
 
+    if reports is None and watch is not None:
+        reports = OwnerReports(watch.client, watch.router, settings.data_dir)
     if push is None and settings.vapid_private_key:
         push = Push(settings.data_dir, settings.vapid_private_key,
                     settings.public_base_url or "https://github.com/lambdabypi/lantern-ai")
@@ -495,6 +499,23 @@ def create_app(loop: AgentLoop | None = None, settings: Settings | None = None, 
         w = need_watch()
         item = w.save_vehicle(account.user_id, req.make, req.model, req.year, req.vin, source="user")
         return {"item": item.summary(), "recalls": w.check(account.user_id)}
+
+    @app.get("/api/vehicles/{slug}/owner-reports")
+    def owner_reports(slug: str, account: Account = Depends(current_account)) -> dict:
+        """What other owners of this make, model and year report to NHTSA, grouped, with whether a recall covers each
+        problem. Shared per model and refreshed weekly (see app/owner_reports.py)."""
+        w = need_watch()
+        if reports is None:
+            raise HTTPException(status_code=503, detail="Owner reports aren't available on this server.")
+        item = memory.get(account.user_id, "vehicle", slug)
+        if item is None:
+            raise HTTPException(status_code=404, detail="That car isn't in your list.")
+        m = item.meta
+        model = m.get("nhtsa_model") or m.get("model")
+        if not (m.get("make") and model and m.get("year")):
+            raise HTTPException(status_code=422, detail="Add the car's make, model and year first.")
+        out = reports.for_vehicle(m["make"], model, int(m["year"]), w.vehicle_recalls(m["make"], model, int(m["year"])))
+        return {**out, "slug": item.slug, "name": m.get("name", item.slug)}
 
     @app.post("/api/products")
     def add_product(req: ProductCreate, account: Account = Depends(current_account)) -> dict:
