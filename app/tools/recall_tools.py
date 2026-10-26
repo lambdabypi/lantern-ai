@@ -36,10 +36,11 @@ def _brief(r: dict[str, Any]) -> dict[str, Any]:
     return keep
 
 
-def save_things(watch: RecallWatch, user_id: str, things: list[Any]) -> tuple[list[str], list[str]]:
-    """Save cars and products (as read from chat or the "what do you own?" box). Returns saved names and problems."""
+def save_things(watch: RecallWatch, user_id: str, things: list[Any], limit: int = MAX_ADD) -> tuple[list[str], list[str]]:
+    """Save cars and products (as read from chat, the "what do you own?" box or receipts). Returns saved names and
+    problems."""
     saved, problems = [], []
-    for thing in (things or [])[:MAX_ADD]:
+    for thing in (things or [])[:limit]:
         if not isinstance(thing, dict):
             continue
         try:

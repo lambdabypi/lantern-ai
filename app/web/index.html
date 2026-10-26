@@ -507,6 +507,9 @@
   .badge.norecall { background: color-mix(in srgb, var(--glow) 22%, var(--surface)); color: var(--text); }
   .themes details summary { cursor: pointer; color: var(--accent); font-size: .9rem; }
   .themes details p { margin-top: 6px; font-size: .92rem; color: var(--muted); }
+  .receipts-row { margin-top: 10px; align-items: center; gap: 6px 10px; flex-wrap: wrap; }
+  .receipt-files { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  #receiptText { width: 100%; font: inherit; }
   .buycheck { margin-top: 18px; }
   .buyres { border-top: 1px solid var(--border); padding-top: 14px; margin-top: 6px; display: grid; gap: 8px; animation: rise .4s both; }
   .buyres h3 { margin: 0; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
@@ -874,6 +877,10 @@
       </div>
       <p class="voice-note" id="quickNote" role="status" hidden></p>
       <div class="error" id="quickError" role="alert"></div>
+      <div class="row receipts-row">
+        <button type="button" class="chipbtn how" id="receiptsBtn">Add from receipts or order emails</button>
+        <span class="hint">Paste them, upload your order history, or photograph a receipt</span>
+      </div>
     </form>
     <h2>Cars</h2>
     <div class="stack" id="carList"></div>
@@ -1053,6 +1060,26 @@
     </form>
   </dialog>
 
+  <dialog id="receiptDialog" aria-labelledby="receiptTitle">
+    <div class="dhead"><h2 id="receiptTitle">Add from receipts</h2><button type="button" class="iconbtn" id="receiptClose" aria-label="Close">✕</button></div>
+    <form class="dbody" id="receiptForm" novalidate>
+      <p style="margin:0">Paste order confirmation emails, upload an order-history file, or take a photo of a paper receipt.
+        NVIDIA Nemotron picks out the things that can be recalled (baby gear, toys, appliances, heaters, chargers…) and skips
+        food, medicine, books and gift cards.</p>
+      <label class="field">Order emails or receipts<textarea id="receiptText" rows="7" maxlength="30000" placeholder="Paste one or more order emails here"></textarea></label>
+      <div class="row receipt-files">
+        <button type="button" class="chipbtn" id="receiptFileBtn">Upload a file</button>
+        <input type="file" id="receiptFile" accept=".csv,.txt,.eml,.html,.htm,text/*" hidden>
+        <button type="button" class="chipbtn" id="receiptPhotoBtn">Photo of a receipt</button>
+        <input type="file" id="receiptPhoto" accept="image/*" capture="environment" hidden>
+        <img class="photo-thumb" id="receiptThumb" alt="Your receipt photo" hidden>
+      </div>
+      <p class="hint" id="receiptFileNote" style="margin:0">Order-history files (CSV) keep only the product names. Photos are read by NVIDIA Nemotron, then thrown away.</p>
+      <button class="primary" type="submit" id="receiptGo">Add what I bought</button>
+      <div class="error" id="receiptError" role="alert"></div>
+    </form>
+  </dialog>
+
   <dialog id="editor" aria-labelledby="edTitle">
     <div class="dhead"><h2 id="edTitle"></h2><button type="button" class="iconbtn" id="edClose" aria-label="Close">✕</button></div>
     <div class="dbody">
@@ -1214,6 +1241,8 @@ const STEPS = {
   product: ["Reading the CPSC's list of product recalls", "Matching it to your product with Nemotron", "Writing a plain-English summary"],
   things: ["Reading what you own with NVIDIA Nemotron", "Asking NHTSA about any cars", "Checking the CPSC's product recalls",
            "Writing plain-English summaries"],
+  receipts: ["Reading your receipts with NVIDIA Nemotron", "Picking out the things that can be recalled",
+             "Asking NHTSA and the CPSC", "Writing plain-English summaries"],
   buying: ["Reading what's for sale with NVIDIA Nemotron", "Asking NHTSA and the CPSC for recalls",
            "Checking what other owners report", "Writing plain-English summaries"],
   demo: ["Setting up an example household", "Asking NHTSA about two cars", "Checking the CPSC for a crib mattress and a heater",
@@ -1582,6 +1611,75 @@ $("quickAdd").addEventListener("submit", async (e) => {
     form.querySelector(".go").disabled = false;
   }
 });
+// ---- build the list from receipts (see app/receipts.py) ----------------------------------------------------
+let receiptPhoto = "";
+$("receiptsBtn").addEventListener("click", () => { $("receiptError").textContent = ""; $("receiptDialog").showModal(); });
+$("receiptClose").addEventListener("click", () => $("receiptDialog").close());
+$("receiptFileBtn").addEventListener("click", () => $("receiptFile").click());
+$("receiptPhotoBtn").addEventListener("click", () => $("receiptPhoto").click());
+$("receiptPhoto").addEventListener("change", async () => {
+  const f = $("receiptPhoto").files[0];
+  if (!f) return;
+  try { receiptPhoto = await shrinkPhoto(f, 2000); $("receiptThumb").src = receiptPhoto; $("receiptThumb").hidden = false; }
+  catch { toast("Couldn't open that photo. Try another one."); }
+});
+// Files are read in the browser: a CSV keeps only its product-name column, an HTML email only its text.
+$("receiptFile").addEventListener("change", async () => {
+  const f = $("receiptFile").files[0];
+  if (!f) return;
+  if (f.size > 20 * 1024 * 1024) { $("receiptError").textContent = "That file is too large."; return; }
+  let text = await f.text();
+  if (/\.csv$/i.test(f.name) || f.type === "text/csv") text = csvNames(text);
+  else if (/\.html?$/i.test(f.name) || /^\s*<(!doctype|html)/i.test(text)) text = new DOMParser().parseFromString(text, "text/html").body.innerText;
+  else if (/\.eml$/i.test(f.name)) text = emlText(text);
+  text = text.replace(/[ \t]+/g, " ").replace(/\n{3,}/g, "\n\n").trim();
+  const box = $("receiptText");
+  box.value = (box.value.trim() ? box.value.trim() + "\n\n" : "") + text.slice(0, 30000 - box.value.length);
+  $("receiptFileNote").textContent = `Added ${f.name}${text.length > 30000 ? " (the first part)" : ""}. Check it, then press the button.`;
+});
+function csvRow(line) {
+  const out = []; let cur = "", q = false;
+  for (let i = 0; i < line.length; i++) {
+    const c = line[i];
+    if (q) { if (c === '"' && line[i + 1] === '"') { cur += '"'; i++; } else if (c === '"') q = false; else cur += c; }
+    else if (c === '"') q = true; else if (c === ",") { out.push(cur); cur = ""; } else cur += c;
+  }
+  out.push(cur);
+  return out;
+}
+function csvNames(text) {
+  const lines = text.split(/\r?\n/).filter(l => l.trim());
+  if (!lines.length) return "";
+  const head = csvRow(lines[0]).map(h => h.trim().toLowerCase());
+  const col = head.findIndex(h => /product name|item name|^title$|^item$|^product$|description/.test(h));
+  if (col < 0) return text;
+  const names = [...new Set(lines.slice(1).map(l => (csvRow(l)[col] || "").trim()).filter(Boolean))];
+  return names.join("\n");
+}
+function emlText(raw) {
+  let body = raw.split(/\r?\n\r?\n/).slice(1).join("\n\n");
+  if (/quoted-printable/i.test(raw)) body = body.replace(/=\r?\n/g, "").replace(/=([0-9A-F]{2})/g, (_, h) => String.fromCharCode(parseInt(h, 16)));
+  if (/<html/i.test(body)) body = new DOMParser().parseFromString(body, "text/html").body.innerText;
+  return body;
+}
+$("receiptForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const text = $("receiptText").value.trim();
+  if (!text && !receiptPhoto) { $("receiptError").textContent = "Paste an order email, upload a file, or take a photo first."; return; }
+  $("receiptError").textContent = "";
+  $("receiptGo").disabled = true;
+  $("receiptDialog").close();
+  const done = startSweep("receipts");
+  let res, data;
+  try { ({ res, data } = await api("/api/things/receipts", { method: "POST", body: { text, photo: receiptPhoto } })); } catch { res = { ok: false }; }
+  await done(res.ok);
+  $("receiptGo").disabled = false;
+  if (!res.ok) { $("receiptError").textContent = detail(data, "Couldn't read those right now."); $("receiptDialog").showModal(); return; }
+  $("receiptText").value = ""; receiptPhoto = ""; $("receiptThumb").hidden = true; $("receiptFile").value = ""; $("receiptPhoto").value = "";
+  renderRecalls(data.recalls); loadStuff();
+  toast(`Added ${data.saved.length} thing${data.saved.length === 1 ? "" : "s"}: ${data.saved.join(", ")}.`);
+});
+
 // ---- check before you buy (see app/precheck.py): nothing is added to the list unless they say they bought it ----
 $("buyForm").addEventListener("submit", async (e) => {
   e.preventDefault();

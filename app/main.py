@@ -29,7 +29,9 @@ from app.memory.store import KINDS, RECALL_STATUSES, UNIT_CHECKS, MemoryStore, M
 from app.demo import load_demo_household
 from app.fix_helper import draft_message, find_dealers
 from app.owner_reports import OwnerReports
+from app.photos import PhotoError
 from app.precheck import PreCheck, PreCheckError, make_precheck_tool
+from app.receipts import MAX_THINGS as MAX_RECEIPT_THINGS, ReceiptError, ReceiptReader
 from app.push import Push, PushError
 from app.recall_watch import RecallWatch
 from app.tools.builtin import builtin_tools
@@ -121,6 +123,11 @@ class UnitCheckRequest(UnitGuideRequest):
     photo: str = Field(default="", max_length=9_000_000)     # data:image/...;base64 (shrunk in the browser first)
 
 
+class ReceiptsIn(BaseModel):
+    text: str = Field(default="", max_length=30_000)        # order emails, receipts, an order-history file's names
+    photo: str = Field(default="", max_length=9_000_000)    # a photo of a paper receipt (data URL, shrunk first)
+
+
 class BuyingText(BaseModel):
     text: str = Field(min_length=1, max_length=2000)   # what they're looking at, or a listing link
 
@@ -169,7 +176,8 @@ class MeResponse(BaseModel):
 def create_app(loop: AgentLoop | None = None, settings: Settings | None = None, watch: RecallWatch | None = None,
                push: Push | None = None, search: WebSearch | None = None,
                makers: MakerPages | None = None, units: UnitCheck | None = None,
-               reports: OwnerReports | None = None, precheck: PreCheck | None = None) -> FastAPI:
+               reports: OwnerReports | None = None, precheck: PreCheck | None = None,
+               receipts: ReceiptReader | None = None) -> FastAPI:
     _setup_logging()
     settings = settings or load_settings()
     settings.require_secret_key()
@@ -183,6 +191,7 @@ def create_app(loop: AgentLoop | None = None, settings: Settings | None = None, 
         watch = watch or RecallWatch(memory, RecallClient(), router, settings.data_dir)
         makers = makers or MakerPages(search, router, settings.data_dir)
         units = units or UnitCheck(router, settings.data_dir, vision=bool(settings.model_vision))
+        receipts = receipts or ReceiptReader(router, vision=bool(settings.model_vision))
         reports = reports or OwnerReports(watch.client, router, settings.data_dir)
         precheck = PreCheck(watch, router, search, reports)
         tools = (make_recall_tools(memory, watch) + [make_ask_maker_tool(memory, makers, watch),
@@ -231,6 +240,14 @@ def create_app(loop: AgentLoop | None = None, settings: Settings | None = None, 
     @app.exception_handler(UnitCheckError)
     def unit_error(_: Request, e: UnitCheckError) -> JSONResponse:
         return JSONResponse({"detail": str(e)}, status_code=422)
+
+    @app.exception_handler(PhotoError)
+    def photo_error(_: Request, e: PhotoError) -> JSONResponse:
+        return JSONResponse({"detail": str(e)}, status_code=422)
+
+    @app.exception_handler(ReceiptError)
+    def receipt_error(_: Request, e: ReceiptError) -> JSONResponse:
+        return JSONResponse({"detail": str(e)}, status_code=502)
 
     @app.exception_handler(PreCheckError)
     def precheck_error(_: Request, e: PreCheckError) -> JSONResponse:
@@ -633,6 +650,28 @@ def create_app(loop: AgentLoop | None = None, settings: Settings | None = None, 
                                                         "\"a 2018 Honda Civic, a crib and a space heater\". For a car "
                                                         "I need the year, make and model, or the VIN.")
         saved, problems = save_things(w, account.user_id, things)
+        if not saved:
+            raise HTTPException(status_code=422, detail=" ".join(problems) or "Nothing could be saved.")
+        return {"saved": saved, "problems": problems, "recalls": w.check(account.user_id)}
+
+    @app.post("/api/things/receipts")
+    def add_from_receipts(req: ReceiptsIn, account: Account = Depends(current_account)) -> dict:
+        """Everything in pasted order emails, an order-history file or a photo of a receipt (see app/receipts.py).
+        Counts as one message toward the daily caps."""
+        w = need_watch()
+        if receipts is None:
+            raise HTTPException(status_code=503, detail="Reading receipts isn't available on this server.")
+        if not (req.text.strip() or req.photo):
+            raise HTTPException(status_code=422, detail="Paste an order email, choose a file, or take a photo of a receipt.")
+        spend_message(account, "Add things one at a time in My stuff, or")
+        text = req.text
+        if req.photo:
+            text = receipts.photo_text(req.photo) + "\n" + text
+        things = receipts.things(text)
+        if not things:
+            raise HTTPException(status_code=422, detail="No products that can be recalled were found in that. Lantern "
+                                                        "skips food, medicine, books, gift cards and services.")
+        saved, problems = save_things(w, account.user_id, things, limit=MAX_RECEIPT_THINGS)
         if not saved:
             raise HTTPException(status_code=422, detail=" ".join(problems) or "Nothing could be saved.")
         return {"saved": saved, "problems": problems, "recalls": w.check(account.user_id)}

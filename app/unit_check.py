@@ -21,8 +21,6 @@ The verdict goes into the item's file (`unit_check`) with a dated note. The owne
 
 from __future__ import annotations
 
-import base64
-import binascii
 import json
 import re
 from pathlib import Path
@@ -32,11 +30,9 @@ from app.fileio import write_json
 from app.llm.client import LLMError
 from app.llm.parsing import extract_json
 from app.llm.router import ModelRouter, Tier
+from app.photos import PhotoError, read_photo_text
 from app.tools.recalls import NHTSA_VIN_CHECK, ProductRecall
 
-MAX_PHOTO_BYTES = 6 * 1024 * 1024
-PHOTO_TYPES = ("image/jpeg", "image/png", "image/webp")
-_DATA_URL = re.compile(r"^data:(image/[a-z]+);base64,([A-Za-z0-9+/=\s]+)$")
 _RECALL_ID = re.compile(r"^[A-Z0-9]{3,15}$")
 VERDICTS = ("affected", "not_affected", "unsure")
 
@@ -177,26 +173,10 @@ class UnitCheck:
         """The text on the label, read by Nemotron Super VL. The photo is sent once and never stored or cached."""
         if not self.vision:
             raise UnitCheckError("Reading photos isn't switched on here. Type what the label says instead.")
-        m = _DATA_URL.match(data_url or "")
-        if not m or m.group(1) not in PHOTO_TYPES:
-            raise UnitCheckError("Please send a JPEG, PNG or WebP photo.")
         try:
-            size = len(base64.b64decode(m.group(2), validate=False))
-        except (binascii.Error, ValueError):
-            raise UnitCheckError("That photo couldn't be read. Try taking it again.") from None
-        if size > MAX_PHOTO_BYTES:
-            raise UnitCheckError("That photo is too large. Try again (Lantern shrinks photos before sending).")
-        try:
-            r = self.router.complete(
-                [{"role": "user", "content": [{"type": "text", "text": LABEL_PROMPT},
-                                              {"type": "image_url", "image_url": {"url": data_url}}]}],
-                Tier.VISION, purpose="units:photo", thinking=False, temperature=0, max_tokens=500, use_cache=False)
-        except LLMError as e:
-            raise UnitCheckError("Couldn't read the photo just now. Try again, or type what the label says.") from e
-        text = r.text.strip()
-        if not text or text.upper().startswith("NO TEXT"):
-            raise UnitCheckError("No writing could be read in that photo. Get closer to the label, in good light, "
-                                 "or type what it says.")
+            text = read_photo_text(self.router, data_url, LABEL_PROMPT, "units:photo")
+        except PhotoError as e:
+            raise UnitCheckError(str(e)) from e
         return text[:1500]
 
     # ---- the verdict ---------------------------------------------------------------------------------
