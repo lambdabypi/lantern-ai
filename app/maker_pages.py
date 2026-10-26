@@ -168,7 +168,7 @@ class MakerPages:
         if kind == "product":
             # the maker's recall page if the notice names one, and the CPSC's own page (it has the full instructions)
             urls = urls_from_contact(str(recall.get("contact") or ""))[:1]
-            if str(recall.get("url") or "").startswith("https://www.cpsc.gov/"):
+            if str(recall.get("url") or "").startswith(("https://www.cpsc.gov/", "https://www.nhtsa.gov/")):
                 urls.append(str(recall["url"]))
             return urls, sorted({domain_of(u) for u in urls})
         make = str(meta.get("make") or "")

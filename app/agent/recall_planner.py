@@ -17,7 +17,8 @@ from app.llm.parsing import extract_json
 from app.llm.router import ModelRouter, Tier
 
 PROMPT = """You route messages for Lantern, an assistant that watches official U.S. safety recalls for the things
-a person owns (cars, car parts, and household products such as cribs, strollers, heaters, appliances, toys).
+a person owns (cars, child car seats, tires, and household products such as cribs, strollers, heaters, appliances,
+toys).
 
 Decide:
 1. "add": things the person says THEY own or use in their latest message. A vehicle needs a make, model and

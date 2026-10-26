@@ -11,6 +11,10 @@ Endpoints (checked live on 24 Oct 2026):
                   to open investigations. Dates are MM/DD/YYYY. Components are comma-joined without a space
                   ("POWER TRAIN,ENGINE"); a comma followed by a space is part of one name ("SERVICE BRAKES, HYDRAULIC").
 - vPIC VIN decode vpic.nhtsa.dot.gov/api/vehicles/DecodeVinValues/<vin>?format=json
+- NHTSA equipment data.transportation.gov/resource/6axg-epim.json  (NHTSA's recall dataset, Socrata; checked live
+                  26 Oct 2026). Child seats (251 recalls) and tires (788) are NHTSA equipment recalls, not in the
+                  vehicle API: fetched once a day for the site and matched like household products. Fields include
+                  manufacturer, subject, defect_summary, corrective_action and completion_rate (% fixed so far).
 - CPSC recalls    www.saferproducts.gov/RestWebServices/Recall?format=json&RecallDateStart=YYYY-MM-DD
                   Unknown parameters are silently ignored and return every recall, so this client only
                   ever sends RecallDateStart and the caller matches the list locally.
@@ -30,6 +34,8 @@ import httpx
 NHTSA_URL = "https://api.nhtsa.gov/"
 VPIC_URL = "https://vpic.nhtsa.dot.gov/api/vehicles/"
 CPSC_URL = "https://www.saferproducts.gov/RestWebServices/Recall"
+NHTSA_DATASET_URL = "https://data.transportation.gov/resource/6axg-epim.json"
+EQUIPMENT_TYPES = ("Child Seat", "Tire")
 NHTSA_VIN_CHECK = "https://www.nhtsa.gov/recalls"
 TIMEOUT_S = 15.0
 
@@ -80,6 +86,8 @@ class ProductRecall:
     image: str | None
     url: str
     upcs: list[str] = field(default_factory=list)
+    source: str = "cpsc"      # "cpsc", or "nhtsa" for child seats and tires
+    completion: str = ""      # NHTSA's share of units fixed so far, e.g. "24.52" (child seats and tires only)
 
 
 @dataclass(frozen=True)
@@ -229,6 +237,30 @@ class RecallClient:
             ))
         recalls.sort(key=lambda r: r.date, reverse=True)
         return recalls
+
+    def equipment_recalls(self, since: date) -> list[ProductRecall]:
+        """NHTSA's child seat and tire recalls since a date, newest first, in the same shape as CPSC recalls."""
+        types = ", ".join(f"'{t}'" for t in EQUIPMENT_TYPES)
+        data = self._get(NHTSA_DATASET_URL, {
+            "$where": f"recall_type in ({types}) AND report_received_date >= '{since.isoformat()}T00:00:00'",
+            "$order": "report_received_date DESC", "$limit": 5000}, "NHTSA's recall data", want=list)
+        out = []
+        for r in data:
+            if not isinstance(r, dict) or not r.get("nhtsa_id"):
+                continue
+            link = r.get("recall_link") if isinstance(r.get("recall_link"), dict) else {}
+            maker = str(r.get("manufacturer") or "")
+            kind = "child car seat" if r.get("recall_type") == "Child Seat" else "tires"
+            out.append(ProductRecall(
+                number=str(r["nhtsa_id"]), date=str(r.get("report_received_date") or "")[:10],
+                title=str(r.get("subject") or ""), description=str(r.get("defect_summary") or ""),
+                products=[f"{maker} {kind}".strip()], models=[], hazard=str(r.get("consequence_summary") or ""),
+                remedy=str(r.get("corrective_action") or ""), remedy_options=[],
+                contact=str(r.get("corrective_action") or ""), units=str(r.get("potentially_affected") or ""),
+                sold_at="", image=None, url=str(link.get("url") or f"{NHTSA_VIN_CHECK}?nhtsaId={r['nhtsa_id']}"),
+                source="nhtsa", completion=str(r.get("completion_rate") or ""),
+            ))
+        return out
 
     # -- internals ----------------------------------------------------------------------
 

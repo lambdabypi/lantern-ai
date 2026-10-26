@@ -50,6 +50,10 @@ class FakeClient:
             raise RecallError("Couldn't reach NHTSA.")
         return self.vehicle
 
+    def equipment_recalls(self, since):
+        self.calls.append(("equipment", since))
+        return getattr(self, "equipment", [])
+
     def vehicle_models(self, make, year):
         self.calls.append(("models", make, year))
         return self.models
@@ -283,3 +287,20 @@ def test_opening_the_app_again_writes_nothing(settings, monkeypatch):
     monkeypatch.setattr(rw, "write_json", lambda path, value: writes.append(path.name))
     w.check("alice", write_plain=False)
     assert writes == []                                # bucket writes are slow; nothing changed, so none
+
+
+
+def test_child_seat_and_tire_recalls_from_nhtsa_are_matched_like_products(settings):
+    seat = replace_recall(prec("26C003000", "Child Seat May Detach from Base", ["Graco Children's Products, Inc. child car seat"],
+                               description="Graco is recalling certain SnugRide Turn & Slide infant child seats."))
+    w, store, client, _ = make(settings, [json.dumps({"matches": [{"recall": "26C003000", "match": True, "why": "same"}]})])
+    client.equipment = [seat]
+    store.upsert("alice", "product", "Graco SnugRide car seat", {"brand": "Graco", "product": "car seat", "model": "SnugRide"})
+    [item] = w.check("alice")["items"]
+    [rc] = item["recalls"]
+    assert rc["id"] == "26C003000" and rc["source"] == "nhtsa" and rc["completion"] == "24.52"
+
+
+def replace_recall(r):
+    from dataclasses import replace
+    return replace(r, source="nhtsa", completion="24.52", url="https://www.nhtsa.gov/recalls?nhtsaId=26C003000")

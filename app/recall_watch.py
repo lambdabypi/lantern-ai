@@ -31,6 +31,7 @@ from app.tools.recalls import NHTSA_VIN_CHECK, ProductRecall, RecallClient, Reca
 log = logging.getLogger(__name__)
 
 FEED_DAYS = 3 * 365          # product recalls older than this are rarely still in homes; NHTSA has no limit
+EQUIPMENT_DAYS = 10 * 365    # child seats expire after 6-10 years; tires are replaced within about as long
 MAX_CANDIDATES = 5           # CPSC recalls sent to Nano per product
 USER_FILES = ("latest.json", "seen.json", "matches.json")  # the only files kept per user
 NEW_DAYS = 7                 # a recall first seen this recently is flagged "new"
@@ -166,6 +167,12 @@ class RecallWatch:
             return self._feed[1]
         since = date.today() - timedelta(days=FEED_DAYS)
         rows = self._shared("cpsc", lambda: [asdict(r) for r in self.client.product_recalls(since)])
+        try:  # NHTSA's child seat and tire recalls, matched like household products
+            since_eq = date.today() - timedelta(days=EQUIPMENT_DAYS)
+            rows = rows + self._shared("nhtsa-equipment",
+                                       lambda: [asdict(r) for r in self.client.equipment_recalls(since_eq)])
+        except RecallError as e:
+            log.warning("child seat and tire recalls skipped today: %s", e)
         feed = [ProductRecall(**r) for r in rows]
         self._feed = (today, feed)
         return feed
@@ -418,7 +425,8 @@ class RecallWatch:
                 "severity": "stop_using" if re.search(r"\bstop using\b", r.remedy, re.I) else "",
                 "status": status.get(r.number.upper(), "open"), "why": verdict.get("why", ""),
                 "confirmed": verdict.get("match") is True or units.get(r.number.upper()) == "affected",
-                "contact": r.contact, "unit": units.get(r.number.upper()),
+                "contact": r.contact, "unit": units.get(r.number.upper()), "source": r.source,
+                **({"completion": r.completion} if r.completion else {}),
             })
         _sort(entry["recalls"])
         return entry

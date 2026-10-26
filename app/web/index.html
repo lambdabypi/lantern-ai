@@ -910,7 +910,7 @@
         </div>
         <button class="primary" type="submit">Add product</button>
         <div class="error" role="alert"></div>
-        <p class="hint">Child car seats and tires aren't checked yet: check them at <a href="https://www.nhtsa.gov/recalls" target="_blank" rel="noopener noreferrer">nhtsa.gov/recalls</a>.</p>
+        <p class="hint">Child car seats and tires count too: add them here ("Graco car seat", "Michelin tires") and Lantern checks NHTSA's recalls for them.</p>
       </form>
     </details>
     <p class="hint" style="margin-top:24px"><a href="/api/export" download>Download everything Lantern keeps about you</a> (a zip of plain files).</p>
@@ -985,7 +985,12 @@
           cars it's free.</p>
         <p class="src">Source: <a href="https://www.kbb.com/ownership-faq/car-recall-questions/" target="_blank" rel="noopener noreferrer">Kelley Blue Book recall FAQ</a></p></div></details>
       <details id="learn-seats"><summary>What about child car seats and tires?</summary><div class="a">
-        <p>Lantern doesn't check them yet. Check them at <a href="https://www.nhtsa.gov/recalls" target="_blank" rel="noopener noreferrer">nhtsa.gov/recalls</a>.</p></div></details>
+        <p>Yes. Car seat and tire recalls come from NHTSA (not the CPSC). Add them like any product, with the brand
+          (for example "Graco SnugRide car seat" or "Michelin tires"), and Lantern checks them every day. Car seat makers
+          mail recall notices to owners who registered the seat, so registering it with the maker helps too. For a
+          specific seat, compare the model number and date of manufacture on its label with the notice: Lantern's "Is
+          mine affected?" does that for you.</p>
+        <p class="src">Source: <a href="https://www.nhtsa.gov/recalls" target="_blank" rel="noopener noreferrer">NHTSA recalls</a></p></div></details>
       <details id="learn-ai"><summary>Who writes the plain-English summaries?</summary><div class="a">
         <p>NVIDIA Nemotron, an open AI model running on Nebius Token Factory, rewrites each official notice in everyday
           words, using only what the notice says. The official notice is always one tap away, under the summary.</p></div></details>
@@ -1712,7 +1717,7 @@ function buyResult(r) {
       const li = el("li");
       if (rc.severity) { li.appendChild(el("span", "badge " + rc.severity, BADGE[rc.severity])); li.append(" "); }
       li.append((rc.plain && rc.plain.title) || sentence(String(rc.title || "Safety recall"), 80), " · ");
-      li.appendChild(link(rc.url, r.kind === "vehicle" ? "nhtsa.gov" : "cpsc.gov"));
+      li.appendChild(link(rc.url, siteName(rc.url)));
       ul.appendChild(li);
     }
     box.appendChild(ul);
@@ -1967,6 +1972,7 @@ function itemCard(item, recalls, index) {
   c.appendChild(el("p", "headline", headline));
   c.appendChild(el("p", "who", item.kind === "vehicle"
     ? `Official recall${recalls.length === 1 ? "" : "s"} from ${makeOf(item)} and NHTSA, the U.S. road safety agency.`
+    : recalls[0].source === "nhtsa" ? "Official recall from NHTSA, the U.S. road safety agency (car seats and tires)."
     : "Official recall from the CPSC, the U.S. product safety agency."));
   const list = el("div", "rlist");
   recalls.forEach(rc => list.appendChild(recallRow(item, rc, top.severity)));
@@ -2005,7 +2011,8 @@ function recallRow(item, rc, cardSeverity) {
   const ob = el("div", "body");
   [rc.summary, rc.consequence && "Risk: " + rc.consequence, rc.remedy && "Remedy: " + rc.remedy, item.kind === "product" && rc.contact]
     .filter(Boolean).forEach(x => ob.appendChild(el("p", "", sentence(x, 900))));
-  ob.appendChild(link(rc.url, item.kind === "vehicle" ? "Open the notice on nhtsa.gov" : "Open the notice on cpsc.gov"));
+  if (rc.completion) ob.appendChild(el("p", "", `NHTSA says ${Math.round(Number(rc.completion))}% of these have been fixed so far.`));
+  ob.appendChild(link(rc.url, "Open the notice on " + siteName(rc.url)));
   off.appendChild(ob);
   fix.appendChild(off);
   const actions = el("div", "actions");
@@ -2150,7 +2157,7 @@ function verdictView(item, rc, v, box) {
   }
   row.appendChild(button("Check again", "chipbtn", () => { unitResults.delete(unitKey(item, rc)); openUnit(item, rc, box); }));
   out.appendChild(row);
-  if (!isCar) out.appendChild(el("p", "ai", "Compared by NVIDIA Nemotron with the official CPSC notice"));
+  if (!isCar) out.appendChild(el("p", "ai", `Compared by NVIDIA Nemotron with the official ${rc.source === "nhtsa" ? "NHTSA" : "CPSC"} notice`));
   return out;
 }
 
