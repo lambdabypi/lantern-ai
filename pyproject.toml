@@ -27,7 +27,7 @@ dev = ["pytest>=8"]
 include = ["app*"]
 
 [tool.setuptools.package-data]
-app = ["web/*", "web/icons/*", "web/fonts/*"]
+app = ["web/*", "web/icons/*", "web/fonts/*", "skills/*/SKILL.md"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

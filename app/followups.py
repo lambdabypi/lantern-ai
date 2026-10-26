@@ -95,11 +95,12 @@ class FollowUps:
         return sent
 
 
-def daily_alerts(push: Any, followups: FollowUps | None):
-    """on_report for RecallWatch.run_all: new recalls first; a check-in only on days with no new-recall alert."""
+def daily_alerts(push: Any, followups: FollowUps | None, skills: Any = None):
+    """on_report for RecallWatch.run_all: new recalls first; a check-in only on days with no new-recall alert, and only
+    while the user has the follow-ups skill on."""
     def on_report(user_id: str, report: dict[str, Any]) -> int:
         sent = push.announce_new_recalls(user_id, report)
-        if not sent and followups is not None:
+        if not sent and followups is not None and (skills is None or skills.on(user_id, "follow-ups")):
             sent = followups.remind(user_id, report)
         return sent
     return on_report

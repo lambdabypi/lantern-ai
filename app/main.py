@@ -34,6 +34,7 @@ from app.photos import PhotoError
 from app.precheck import PreCheck, PreCheckError, make_precheck_tool
 from app.receipts import MAX_THINGS as MAX_RECEIPT_THINGS, ReceiptError, ReceiptReader
 from app.push import Push, PushError
+from app.skill_files import SkillOff, Skills
 from app.recall_watch import RecallWatch
 from app.tools.builtin import builtin_tools
 from app.maker_pages import MakerError, MakerPages, make_ask_maker_tool
@@ -159,6 +160,11 @@ class ProgressUpdate(BaseModel):
     step: str = Field(pattern="^(|contacted|booked)$")      # "" clears it
 
 
+class SkillSwitch(BaseModel):
+    id: str = Field(min_length=1, max_length=40)
+    on: bool
+
+
 class PushSubscription(BaseModel):
     endpoint: str = Field(min_length=10, max_length=1000)
     keys: dict[str, str] = Field(default_factory=dict)
@@ -192,6 +198,7 @@ def create_app(loop: AgentLoop | None = None, settings: Settings | None = None, 
     settings = settings or load_settings()
     settings.require_secret_key()
     memory = MemoryStore(settings.data_dir)
+    skills = Skills(memory)
     site_quota = SiteQuota(settings.data_dir)
     history_store = HistoryStore(settings.data_dir)
     search = search or WebSearch(settings, credit_guard=lambda credits: site_quota.try_consume(
@@ -204,9 +211,10 @@ def create_app(loop: AgentLoop | None = None, settings: Settings | None = None, 
         receipts = receipts or ReceiptReader(router, vision=bool(settings.model_vision))
         reports = reports or OwnerReports(watch.client, router, settings.data_dir)
         precheck = PreCheck(watch, router, search, reports)
-        tools = (make_recall_tools(memory, watch) + [make_ask_maker_tool(memory, makers, watch),
-                                                      make_precheck_tool(precheck)]
-                 + builtin_tools(settings, search))
+        tools = [skills.guard_tool(t) for t in
+                 make_recall_tools(memory, watch) + [make_ask_maker_tool(memory, makers, watch),
+                                                     make_precheck_tool(precheck)]
+                 + builtin_tools(settings, search)]   # a tool whose skill the user turned off says so
 
         def thing_named(user_id: str, text: str) -> str | None:
             item = MakerPages.find(memory, user_id, text)
@@ -250,6 +258,10 @@ def create_app(loop: AgentLoop | None = None, settings: Settings | None = None, 
     @app.exception_handler(UnitCheckError)
     def unit_error(_: Request, e: UnitCheckError) -> JSONResponse:
         return JSONResponse({"detail": str(e)}, status_code=422)
+
+    @app.exception_handler(SkillOff)
+    def skill_off(_: Request, e: SkillOff) -> JSONResponse:
+        return JSONResponse({"detail": str(e)}, status_code=403)
 
     @app.exception_handler(PhotoError)
     def photo_error(_: Request, e: PhotoError) -> JSONResponse:
@@ -548,6 +560,7 @@ def create_app(loop: AgentLoop | None = None, settings: Settings | None = None, 
         w = need_watch()
         if reports is None:
             raise HTTPException(status_code=503, detail="Owner reports aren't available on this server.")
+        skills.require(account.user_id, "owner-reports")
         item = memory.get(account.user_id, "vehicle", slug)
         if item is None:
             raise HTTPException(status_code=404, detail="That car isn't in your list.")
@@ -587,6 +600,7 @@ def create_app(loop: AgentLoop | None = None, settings: Settings | None = None, 
         written by Nemotron Super from what the page says). Shared per recall and kept for 14 days."""
         if makers is None:
             raise HTTPException(status_code=503, detail="Reading makers' pages isn't available here.")
+        skills.require(account.user_id, "makers-pages")
         rc = find_recall(account, req.kind, req.slug, req.recall_id)
         file = memory.get(account.user_id, req.kind, req.slug)
         try:
@@ -611,6 +625,7 @@ def create_app(loop: AgentLoop | None = None, settings: Settings | None = None, 
     @app.post("/api/recalls/unit/guide")
     def unit_guide(req: UnitGuideRequest, account: Account = Depends(current_account)) -> dict:
         """Where to look on the product (or how to use NHTSA's VIN check) to tell if this recall covers yours."""
+        skills.require(account.user_id, "unit-check")
         rc = find_recall(account, req.kind, req.slug, req.recall_id)
         guide = need_units().guide(req.kind, rc, full_notice(req.kind, rc))
         if req.kind == "vehicle":
@@ -623,6 +638,7 @@ def create_app(loop: AgentLoop | None = None, settings: Settings | None = None, 
         """The owner's label (typed or photographed) or VIN-check result -> affected / not affected / unsure, saved
         in the item's file. The recall's status is left for the owner to change."""
         u = need_units()
+        skills.require(account.user_id, "unit-check")
         rc = find_recall(account, req.kind, req.slug, req.recall_id)
         if req.kind == "product":
             spend_message(account, "Compare your label with the official notice yourself, or")
@@ -670,6 +686,7 @@ def create_app(loop: AgentLoop | None = None, settings: Settings | None = None, 
         """The item lines of a photographed receipt, as text the person checks (and fixes) before adding anything."""
         if receipts is None:
             raise HTTPException(status_code=503, detail="Reading receipts isn't available on this server.")
+        skills.require(account.user_id, "receipts")
         if not req.photo:
             raise HTTPException(status_code=422, detail="Take or choose a photo of the receipt first.")
         spend_message(account, "Paste the order email instead, or")
@@ -682,6 +699,7 @@ def create_app(loop: AgentLoop | None = None, settings: Settings | None = None, 
         w = need_watch()
         if receipts is None:
             raise HTTPException(status_code=503, detail="Reading receipts isn't available on this server.")
+        skills.require(account.user_id, "receipts")
         if not (req.text.strip() or req.photo):
             raise HTTPException(status_code=422, detail="Paste an order email, choose a file, or take a photo of a receipt.")
         spend_message(account, "Add things one at a time in My stuff, or")
@@ -703,6 +721,7 @@ def create_app(loop: AgentLoop | None = None, settings: Settings | None = None, 
         added to the list. Counts as one message toward the daily caps."""
         if precheck is None:
             raise HTTPException(status_code=503, detail="Checking before you buy isn't available on this server.")
+        skills.require(account.user_id, "check-before-buying")
         spend_message(account, "Add it to My stuff to check it, or")
         things, listing = precheck.read(req.text.strip())
         if not things:
@@ -710,7 +729,11 @@ def create_app(loop: AgentLoop | None = None, settings: Settings | None = None, 
             raise HTTPException(status_code=422, detail=note or "I couldn't tell what's for sale. Try something like "
                                                                 "\"a used 2014 Jeep Cherokee\" or \"a Graco high chair\". For a car "
                                                                 "I need the year, make and model, or the VIN.")
-        return {"results": precheck.check(things), "listing": listing}
+        results = precheck.check(things)
+        if not skills.on(account.user_id, "owner-reports"):
+            for r in results:
+                r.pop("owner_reports", None)
+        return {"results": results, "listing": listing}
 
     @app.post("/api/demo")
     def demo(account: Account = Depends(current_account)) -> dict:
@@ -721,6 +744,7 @@ def create_app(loop: AgentLoop | None = None, settings: Settings | None = None, 
     def book_the_fix(req: FixRequest, account: Account = Depends(current_account)) -> dict:
         """Who to contact and a ready-to-send message. Nothing is sent: the user sends it from their own app."""
         uid = account.user_id
+        skills.require(uid, "book-the-fix")
         item = memory.get(uid, req.kind, req.slug)
         if item is None:
             raise HTTPException(status_code=404, detail="That item isn't in your list.")
@@ -764,7 +788,7 @@ def create_app(loop: AgentLoop | None = None, settings: Settings | None = None, 
 
     @app.post("/internal/recalls/run", include_in_schema=False)
     def run_recall_watch(request: Request) -> dict:
-        alerts = daily_alerts(push, FollowUps(settings.data_dir, push)) if push else None
+        alerts = daily_alerts(push, FollowUps(settings.data_dir, push), skills) if push else None
         result = need_watch().run_all(active_users_for_cron(request), alerts)
         log.info("recall watch run: %s", result)
         return result
@@ -793,6 +817,24 @@ def create_app(loop: AgentLoop | None = None, settings: Settings | None = None, 
     def push_unsubscribe(req: PushSubscription, account: Account = Depends(current_account)) -> dict:
         need_push().unsubscribe(account.user_id, req.endpoint)
         return {"ok": True}
+
+    # ---- skills: each capability has a SKILL.md, and the user turns them on or off (app/skill_files.py) --------
+    @app.get("/api/skills")
+    def list_skills(account: Account = Depends(current_account)) -> list[dict]:
+        return skills.listing(account.user_id)
+
+    @app.post("/api/skills")
+    def switch_skill(req: SkillSwitch, account: Account = Depends(current_account)) -> list[dict]:
+        if req.id not in skills.all:
+            raise HTTPException(status_code=404, detail="No such skill.")
+        return skills.set(account.user_id, req.id, req.on)
+
+    @app.get("/api/skills/{skill_id}")
+    def read_skill(skill_id: str, account: Account = Depends(current_account)) -> dict:
+        skill = skills.all.get(skill_id)
+        if skill is None:
+            raise HTTPException(status_code=404, detail="No such skill.")
+        return {"id": skill.id, "text": skill.text}
 
     @app.get("/api/export")
     def export(account: Account = Depends(current_account)) -> RawResponse:

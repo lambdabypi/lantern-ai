@@ -39,7 +39,7 @@ FIELDS: dict[str, dict[str, type | tuple]] = {
                 "nhtsa_model": str, "recall_status": dict, "unit_check": dict, "fix_progress": dict, "sources": list},
     "product": {"name": str, "owner": str, "brand": str, "product": str, "model": str, "bought": str, "recall_status": dict,
                 "unit_check": dict, "fix_progress": dict, "sources": list},  # sources: the maker's own sites, used to answer questions about this thing
-    "profile": {"location": str},
+    "profile": {"location": str, "skills_off": list},   # skills_off: skills the user turned off (app/skill_files.py)
 }
 NAME_FIELD = {"vehicle": "name", "product": "name"}
 _SLUG = re.compile(r"^[a-z0-9][a-z0-9-]{0,63}$")

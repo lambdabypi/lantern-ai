@@ -520,6 +520,21 @@
   .progress { display: flex; flex-wrap: wrap; gap: 6px 8px; align-items: center; }
   .progress .step { font-size: .9rem; color: var(--ok); font-weight: 560; }
   .fixsent { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; }
+  .skill { display: grid; gap: 4px; padding: 12px 14px; }
+  .skill .shead { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+  .skill h3 { margin: 0; font-size: 1rem; }
+  .skill p { margin: 0; }
+  .skill .smeta { color: var(--muted); font-size: .86rem; }
+  .skill pre { white-space: pre-wrap; font-size: .82rem; margin: 6px 0 0; max-height: 40vh; overflow: auto;
+               background: var(--bg); padding: 10px; border-radius: 10px; }
+  .switch { position: relative; width: 48px; height: 28px; flex: none; }
+  .switch input { position: absolute; inset: 0; opacity: 0; width: 100%; height: 100%; margin: 0; cursor: pointer; }
+  .switch span { position: absolute; inset: 0; border-radius: 999px; background: var(--border); transition: background .2s; pointer-events: none; }
+  .switch span::after { content: ""; position: absolute; top: 3px; left: 3px; width: 22px; height: 22px; border-radius: 50%;
+                        background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.25); transition: transform .2s; }
+  .switch input:checked + span { background: var(--accent); }
+  .switch input:checked + span::after { transform: translateX(20px); }
+  .switch input:focus-visible + span { outline: 3px solid var(--glow); outline-offset: 2px; }
   .unitform { display: grid; gap: 10px; margin-top: 10px; }
   .unitform label { font-weight: 560; }
   .unitform input[type=text] { width: 100%; }
@@ -722,6 +737,7 @@
   </header>
   <div class="menu" id="menu" hidden>
     <button type="button" id="mKeep" hidden>Keep my list (free account)</button>
+    <button type="button" id="mSkills">Skills</button>
     <button type="button" id="mAlerts">Alerts on this device</button>
     <button type="button" id="mTheme">Appearance: Light</button>
     <button type="button" id="mNewChat">Start a new chat</button>
@@ -1094,6 +1110,15 @@
     </form>
   </dialog>
 
+  <dialog id="skillsDialog" aria-labelledby="skillsTitle">
+    <div class="dhead"><h2 id="skillsTitle">Skills</h2><button type="button" class="iconbtn" id="skillsClose" aria-label="Close">✕</button></div>
+    <div class="dbody">
+      <p style="margin:0">Everything Lantern can do is a skill with its own file that says how it works and what it sends
+        out of the app. Turn off any you don't want: its buttons, chat tools and reminders stop.</p>
+      <div class="stack" id="skillList"></div>
+    </div>
+  </dialog>
+
   <dialog id="editor" aria-labelledby="edTitle">
     <div class="dhead"><h2 id="edTitle"></h2><button type="button" class="iconbtn" id="edClose" aria-label="Close">✕</button></div>
     <div class="dbody">
@@ -1353,7 +1378,58 @@ function showApp(data) {
   $("ultraLeft").textContent = me.ultra_left_today === null ? "" : ` (${me.ultra_left_today} left today)`;
   const want = (location.hash || "#home").slice(1);
   showTab(want === "attention" ? "home" : want);
-  loadRecalls();
+  loadSkills().then(loadRecalls);
+}
+// ---- skills (app/skill_files.py): each one can be turned off, and its controls disappear ------------------
+let skillsOff = new Set();
+async function loadSkills() {
+  try {
+    const { res, data } = await api("/api/skills");
+    if (res.ok) applySkills(data);
+  } catch {}
+}
+function skillOn(id) { return !skillsOff.has(id); }
+function applySkills(list) {
+  skillsOff = new Set(list.filter(s => !s.on).map(s => s.id));
+  $("buyForm").hidden = !skillOn("check-before-buying");
+  $("receiptsBtn").closest(".receipts-row").hidden = !skillOn("receipts");
+  if (report) renderRecalls(report);
+}
+$("mSkills").addEventListener("click", async () => { closeMenu(); await renderSkillList(); $("skillsDialog").showModal(); });
+$("skillsClose").addEventListener("click", () => $("skillsDialog").close());
+async function renderSkillList() {
+  const { res, data } = await api("/api/skills");
+  if (!res.ok) { $("skillList").replaceChildren(el("p", "error", detail(data, "Couldn't load skills."))); return; }
+  applySkills(data);
+  $("skillList").replaceChildren(...data.map(s => {
+    const c = el("div", "card skill");
+    const head = el("div", "shead");
+    head.appendChild(el("h3", "", s.title));
+    if (s.required) head.appendChild(el("span", "badge ok", "Always on"));
+    else {
+      const sw = el("label", "switch"), box = el("input");
+      box.type = "checkbox"; box.checked = s.on; box.setAttribute("role", "switch"); box.setAttribute("aria-label", s.title);
+      box.addEventListener("change", async () => {
+        const { res, data } = await api("/api/skills", { method: "POST", body: { id: s.id, on: box.checked } });
+        if (!res.ok) { box.checked = !box.checked; toast(detail(data, "Couldn't change that.")); return; }
+        applySkills(data);
+        toast(`${s.title} is ${box.checked ? "on" : "off"}.`);
+      });
+      sw.append(box, el("span"));
+      head.appendChild(sw);
+    }
+    c.append(head, el("p", "", s.description), el("p", "smeta", "Uses: " + s.uses.join(", ")),
+             el("p", "smeta", "Leaves the app: " + s.sends));
+    const file = el("details");
+    file.appendChild(el("summary", "textbtn", "Read its SKILL.md"));
+    file.addEventListener("toggle", async () => {
+      if (!file.open || file.querySelector("pre")) return;
+      const { res, data } = await api(`/api/skills/${encodeURIComponent(s.id)}`);
+      file.appendChild(el("pre", "", res.ok ? data.text : "Couldn't load it."));
+    }, { once: false });
+    c.appendChild(file);
+    return c;
+  }));
 }
 // ---- splash: shown once per visit to signed-out visitors; swipe up, scroll, tap or press Enter --------
 function showSplash(then) {
@@ -1905,8 +1981,9 @@ function renderRecalls(r) {
 // ---- what other owners report: NHTSA's complaint database, grouped (see app/owner_reports.py) ------------------
 const ownerReports = new Map();   // slug -> report (or a pending promise) for this visit
 function renderOwnerReports(r) {
-  const cars = (r.items || []).filter(i => i.kind === "vehicle" && !i.note);
   const box = $("ownerReports");
+  if (!skillOn("owner-reports")) { box.replaceChildren(); return; }
+  const cars = (r.items || []).filter(i => i.kind === "vehicle" && !i.note);
   const cards = [];
   for (const car of cars) {
     const got = ownerReports.get(car.slug);
@@ -2025,10 +2102,12 @@ function recallRow(item, rc, cardSeverity) {
   fix.appendChild(dl);
   if (rc.plain) fix.appendChild(el("p", "ai", "Plain-English summary by NVIDIA Nemotron, from the official notice"));
   fix.appendChild(unitBox(item, rc, d));
-  const how = el("div", "howbox");
-  how.appendChild(button("Show me how to get the fix", "chipbtn how", () => loadRemedy(item, rc, how)));
-  how.appendChild(el("span", "hint", " Reads the maker's own recall page"));
-  fix.appendChild(how);
+  if (skillOn("makers-pages")) {
+    const how = el("div", "howbox");
+    how.appendChild(button("Show me how to get the fix", "chipbtn how", () => loadRemedy(item, rc, how)));
+    how.appendChild(el("span", "hint", " Reads the maker's own recall page"));
+    fix.appendChild(how);
+  }
   const off = el("details", "official");
   off.appendChild(el("summary", "", "Read the official notice"));
   const ob = el("div", "body");
@@ -2057,6 +2136,7 @@ const openRows = new Set();       // recall rows the person was working in, kept
 function unitKey(item, rc) { return `${item.kind}:${item.slug}:${rc.id}`; }
 function unitBox(item, rc, row) {
   const box = el("div", "howbox unitbox");
+  if (!skillOn("unit-check")) return box;
   const shown = unitResults.get(unitKey(item, rc));
   if (openRows.has(unitKey(item, rc))) row.open = true;
   if (shown) { row.open = true; box.replaceChildren(verdictView(item, rc, shown, box)); return box; }

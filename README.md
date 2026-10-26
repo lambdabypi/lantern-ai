@@ -124,6 +124,26 @@ Deployment (Cloud Run, Cloud Storage for user data, Secret Manager, a daily Clou
 - **Label photos** (for "Is mine affected?") are shrunk in your browser, sent once to Nebius Token Factory for Nemotron Super VL to read, and never stored. What it read is shown to you, and saved in that item's file only as a line of text with the verdict.
 - **Push notifications** go through your browser's push service (Google, Mozilla, Apple or Microsoft). Lantern only sends a short title and line, never your list of things.
 
+## Skills you control
+
+Everything Lantern can do is a reusable **skill** with its own `SKILL.md` in [`app/skills/`](app/skills/)
+(agentskills.io-style front matter: `name`, `description`, plus metadata for the agent tools it owns, the services it
+uses and exactly what it sends out of the app). The menu's **Skills** page lists them, shows each file, and lets you
+turn any of them off. Off really means off for your account: the skill's chat tool answers that it's turned off, its
+endpoints refuse, its buttons disappear and its reminders stop. Your choices are saved in your own `profile.md`
+(`skills_off`).
+
+| Skill | What it does |
+|---|---|
+| Recall watch (always on) | Checks your cars and things against the official U.S. recall lists every day, in plain words |
+| Is mine affected? | Tells you whether *your* one is in a recall, from its label (typed or photographed) or NHTSA's VIN check |
+| What other owners report | Owners' complaints to NHTSA for your car model, flagging problems no recall covers yet |
+| The maker's own pages | Answers questions and gives the steps to get the free fix, from the maker's own site, cited |
+| Book the free fix | Finds authorized dealers near you and drafts the booking message for you to send |
+| Follow-ups until it's fixed | Checks in by notification until a recall is actually fixed |
+| Add from receipts | Adds things from order emails, order history or a photo of a receipt |
+| Check before you buy | Checks something secondhand for recalls before you buy it |
+
 ## How the agent works
 
 - A **lookup planner** (Nano) decides whether a message needs a lookup; the loop then runs the tool itself, so the model can't skip it and guess.
