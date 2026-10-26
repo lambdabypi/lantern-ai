@@ -25,7 +25,7 @@ from app.auth.sessions import COOKIE_NAME, SessionSigner
 from app.config import Settings, load_settings
 from app.llm.router import ModelRouter, Tier
 from app.memory.history import HistoryStore
-from app.memory.store import KINDS, RECALL_STATUSES, MemoryStore, MemoryStoreError
+from app.memory.store import KINDS, RECALL_STATUSES, UNIT_CHECKS, MemoryStore, MemoryStoreError
 from app.demo import load_demo_household
 from app.fix_helper import draft_message, find_dealers
 from app.push import Push, PushError
@@ -36,6 +36,7 @@ from app.tools.recall_tools import make_recall_tools, save_things
 from app.tools.recalls import RecallClient, RecallError
 from app.tools.web_search import WebSearch
 from app.tools.registry import ToolRegistry
+from app.unit_check import UnitCheck, UnitCheckError
 
 log = logging.getLogger(__name__)
 
@@ -107,6 +108,17 @@ class RemedyRequest(BaseModel):
     recall_id: str = Field(max_length=20)
 
 
+class UnitGuideRequest(BaseModel):
+    kind: str = Field(pattern="^(vehicle|product)$")
+    slug: str = Field(min_length=1, max_length=64)
+    recall_id: str = Field(min_length=3, max_length=15)
+
+
+class UnitCheckRequest(UnitGuideRequest):
+    answer: str = Field(default="", max_length=500)          # what the label says, or a VIN-check answer id
+    photo: str = Field(default="", max_length=9_000_000)     # data:image/...;base64 (shrunk in the browser first)
+
+
 class ThingsText(BaseModel):
     text: str = Field(min_length=1, max_length=2000)
 
@@ -150,7 +162,7 @@ class MeResponse(BaseModel):
 
 def create_app(loop: AgentLoop | None = None, settings: Settings | None = None, watch: RecallWatch | None = None,
                push: Push | None = None, search: WebSearch | None = None,
-               makers: MakerPages | None = None) -> FastAPI:
+               makers: MakerPages | None = None, units: UnitCheck | None = None) -> FastAPI:
     _setup_logging()
     settings = settings or load_settings()
     settings.require_secret_key()
@@ -163,6 +175,7 @@ def create_app(loop: AgentLoop | None = None, settings: Settings | None = None, 
         router = ModelRouter(settings)
         watch = watch or RecallWatch(memory, RecallClient(), router, settings.data_dir)
         makers = makers or MakerPages(search, router, settings.data_dir)
+        units = units or UnitCheck(router, settings.data_dir, vision=bool(settings.model_vision))
         tools = (make_recall_tools(memory, watch) + [make_ask_maker_tool(memory, makers, watch)]
                  + builtin_tools(settings, search))
 
@@ -199,6 +212,10 @@ def create_app(loop: AgentLoop | None = None, settings: Settings | None = None, 
 
     @app.exception_handler(PushError)
     def push_error(_: Request, e: PushError) -> JSONResponse:
+        return JSONResponse({"detail": str(e)}, status_code=422)
+
+    @app.exception_handler(UnitCheckError)
+    def unit_error(_: Request, e: UnitCheckError) -> JSONResponse:
         return JSONResponse({"detail": str(e)}, status_code=422)
 
     @app.exception_handler(MemoryStoreError)
@@ -485,23 +502,82 @@ def create_app(loop: AgentLoop | None = None, settings: Settings | None = None, 
         item = w.save_product(account.user_id, req.product, req.brand, req.model, source="user")
         return {"item": item.summary(), "recalls": w.check(account.user_id)}
 
+    def find_recall(account: Account, kind: str, slug: str, recall_id: str) -> dict:
+        """One recall on the user's list, as the report shows it. 404 if it isn't theirs."""
+        report = need_watch().check(account.user_id, write_plain=False)
+        item = next((i for i in report["items"] if i["kind"] == kind and i["slug"] == slug), None)
+        rc = next((r for r in (item or {}).get("recalls", []) if r["id"].upper() == recall_id.upper()), None)
+        if item is None or rc is None:
+            raise HTTPException(status_code=404, detail="That recall isn't on your list.")
+        return rc
+
+    def spend_message(account: Account, why: str) -> None:
+        """Model calls the user asks for outside chat count toward the same daily caps."""
+        if not quota.try_consume(account.user_id, "messages", message_cap(account)) or \
+                not site_quota.try_consume("messages", settings.site_messages_per_day or None):
+            raise HTTPException(status_code=429, detail=f"Today's message limit is used up. {why} come back "
+                                                        "tomorrow (it resets at midnight UTC).")
+
     @app.post("/api/recalls/remedy")
     def remedy(req: RemedyRequest, account: Account = Depends(current_account)) -> dict:
         """How to actually get this recall's free fix, from the maker's own recall page (read with Tavily, steps
         written by Nemotron Super from what the page says). Shared per recall and kept for 14 days."""
         if makers is None:
             raise HTTPException(status_code=503, detail="Reading makers' pages isn't available here.")
-        w = need_watch()
-        report = w.check(account.user_id, write_plain=False)
-        item = next((i for i in report["items"] if i["kind"] == req.kind and i["slug"] == req.slug), None)
-        rc = next((r for r in (item or {}).get("recalls", []) if r["id"].upper() == req.recall_id.upper()), None)
-        if item is None or rc is None:
-            raise HTTPException(status_code=404, detail="That recall isn't on your list.")
+        rc = find_recall(account, req.kind, req.slug, req.recall_id)
         file = memory.get(account.user_id, req.kind, req.slug)
         try:
             return makers.remedy(req.kind, file.meta if file else {}, rc)
         except MakerError as e:
             raise HTTPException(status_code=502, detail=str(e)) from e
+
+    # ---- is MY one affected? (see app/unit_check.py) ------------------------------------------
+    def need_units() -> UnitCheck:
+        if units is None:
+            raise HTTPException(status_code=503, detail="Checking your own unit isn't available on this server.")
+        return units
+
+    def full_notice(kind: str, rc: dict):
+        if kind != "product":
+            return None
+        try:
+            return need_watch().product_notice(rc["id"])
+        except RecallError:
+            return None  # the start of the description in the report is still checked
+
+    @app.post("/api/recalls/unit/guide")
+    def unit_guide(req: UnitGuideRequest, account: Account = Depends(current_account)) -> dict:
+        """Where to look on the product (or how to use NHTSA's VIN check) to tell if this recall covers yours."""
+        rc = find_recall(account, req.kind, req.slug, req.recall_id)
+        guide = need_units().guide(req.kind, rc, full_notice(req.kind, rc))
+        if req.kind == "vehicle":
+            file = memory.get(account.user_id, req.kind, req.slug)
+            guide["vin"] = (file.meta.get("vin") if file else "") or ""  # their own VIN, to paste into the check
+        return guide
+
+    @app.post("/api/recalls/unit/check")
+    def unit_verdict(req: UnitCheckRequest, account: Account = Depends(current_account)) -> dict:
+        """The owner's label (typed or photographed) or VIN-check result -> affected / not affected / unsure, saved
+        in the item's file. The recall's status is left for the owner to change."""
+        u = need_units()
+        rc = find_recall(account, req.kind, req.slug, req.recall_id)
+        if req.kind == "product":
+            spend_message(account, "Compare your label with the official notice yourself, or")
+        label = u.read_label(req.photo) if req.photo else ""
+        out = u.decide(req.kind, rc, full_notice(req.kind, rc), req.answer, label)
+        file = memory.get(account.user_id, req.kind, req.slug)
+        if file is not None and out["verdict"] in UNIT_CHECKS:
+            checks = {**(file.meta.get("unit_check") or {}), out["recall_id"]: out["verdict"]}
+            if label:
+                said = " Label: " + " / ".join(label.splitlines())[:200] + "."
+            elif req.kind == "product":
+                said = " They said: " + req.answer.strip()[:200] + "."
+            else:
+                said = ""
+            memory.upsert(account.user_id, req.kind, file.slug, {"unit_check": checks},
+                          note=f"Checked recall {out['recall_id']}: {out['why']}{said}", source="user")
+        out["recalls"] = need_watch().check(account.user_id, write_plain=False)
+        return out
 
     @app.post("/api/things")
     def add_things(req: ThingsText, account: Account = Depends(current_account)) -> dict:
@@ -512,10 +588,7 @@ def create_app(loop: AgentLoop | None = None, settings: Settings | None = None, 
         reader = getattr(loop, "planner", None)
         if not isinstance(reader, RecallPlanner):
             raise HTTPException(status_code=503, detail="Reading free text isn't available here. Add a car or a product instead.")
-        if not quota.try_consume(account.user_id, "messages", message_cap(account)) or \
-                not site_quota.try_consume("messages", settings.site_messages_per_day or None):
-            raise HTTPException(status_code=429, detail="Today's message limit is used up. Add things one at a time "
-                                                        "in My stuff, or come back tomorrow (it resets at midnight UTC).")
+        spend_message(account, "Add things one at a time in My stuff, or")
         things = reader.owned(req.text.strip())
         if things is None:
             raise HTTPException(status_code=502, detail="Lantern couldn't read that just now. Try again, or type one "

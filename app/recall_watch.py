@@ -170,6 +170,10 @@ class RecallWatch:
         self._feed = (today, feed)
         return feed
 
+    def product_notice(self, number: str) -> ProductRecall | None:
+        """The full CPSC record for one recall (reports keep only the start of the description)."""
+        return next((r for r in self.product_feed() if r.number == str(number)), None)
+
     # ---- adding a car -------------------------------------------------------------------------
     def describe_vehicle(self, make: str = "", model: str = "", year: Any = None, vin: str = "") -> dict[str, Any]:
         """Fields for a vehicle memory file: decoded from a VIN if given, with NHTSA's model spelling."""
@@ -347,7 +351,7 @@ class RecallWatch:
             return entry
         if not m.get("nhtsa_model") and not rows:
             entry["note"] = "NHTSA has no recall records under this model name. Check the spelling, or add the VIN."
-        status = m.get("recall_status") or {}
+        status, units = m.get("recall_status") or {}, m.get("unit_check") or {}
         for r in rows:
             severity = "park_it" if r["park_it"] else "park_outside" if r["park_outside"] else ""
             entry["recalls"].append({
@@ -355,6 +359,7 @@ class RecallWatch:
                 "summary": r["summary"], "consequence": r["consequence"], "remedy": r["remedy"],
                 "date": r["reported"], "url": r["url"], "severity": severity,
                 "status": status.get(r["campaign"], "open"), "over_the_air": r["over_the_air"],
+                "unit": units.get(r["campaign"]),
             })
         _sort(entry["recalls"])
         return entry
@@ -380,7 +385,7 @@ class RecallWatch:
             for r in undecided:
                 if r.number in shared:
                     decisions[f"{fp}|{r.number}"] = shared[r.number]
-        status = p.meta.get("recall_status") or {}
+        status, units = p.meta.get("recall_status") or {}, p.meta.get("unit_check") or {}
         for r in candidates:
             verdict = decisions.get(f"{fp}|{r.number}") or {"match": None, "why": "couldn't double-check"}
             if verdict.get("match") is False:
@@ -390,7 +395,8 @@ class RecallWatch:
                 "remedy": r.remedy, "date": r.date, "url": r.url, "image": r.image,
                 "severity": "stop_using" if re.search(r"\bstop using\b", r.remedy, re.I) else "",
                 "status": status.get(r.number.upper(), "open"), "why": verdict.get("why", ""),
-                "confirmed": verdict.get("match") is True, "contact": r.contact,
+                "confirmed": verdict.get("match") is True or units.get(r.number.upper()) == "affected",
+                "contact": r.contact, "unit": units.get(r.number.upper()),
             })
         _sort(entry["recalls"])
         return entry

@@ -39,6 +39,7 @@ class Settings:
     trusted_proxy_hops: int = 1      # proxies that append to X-Forwarded-For (Cloud Run: 1); 0 = use the socket peer
     cron_secret: str = ""            # shared secret for /internal/recalls/run (Cloud Scheduler); empty = disabled
     model_balanced: str = ""         # Nemotron Super, writes answers from sources; empty = use MODEL_FAST
+    model_vision: str = ""           # Nemotron Super VL, reads photos of product labels; empty = photos are off
     public_base_url: str = ""        # e.g. https://lantern.example.com (push notification contact URL)
     vapid_private_key: str = ""      # push notifications: base64 of a VAPID PEM key (python -m app.push); empty = off
 
@@ -99,6 +100,7 @@ def load_settings(env_file: str | Path | None = ".env") -> Settings:
         cron_secret=get("CRON_SECRET"),
         public_base_url=get("PUBLIC_BASE_URL").rstrip("/"),
         model_balanced=get("MODEL_BALANCED"),
+        model_vision=get("MODEL_VISION"),
         vapid_private_key=get("VAPID_PRIVATE_KEY"),
     )
 

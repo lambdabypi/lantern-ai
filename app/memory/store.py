@@ -28,13 +28,14 @@ from app.fileio import write_atomic
 KINDS = {"vehicle": "vehicles", "product": "products"}
 SOURCES = ("chat", "user", "vin")
 RECALL_STATUSES = ("fixed", "not_mine")  # anything else is open
+UNIT_CHECKS = ("affected", "not_affected")  # what the owner's own check of their unit showed (see unit_check.py)
 
 # Fields each kind may hold (beyond the automatic created/updated/source/confidence).
 FIELDS: dict[str, dict[str, type | tuple]] = {
     "vehicle": {"name": str, "make": str, "model": str, "year": int, "vin": str, "trim": str,
-                "nhtsa_model": str, "recall_status": dict, "sources": list},
+                "nhtsa_model": str, "recall_status": dict, "unit_check": dict, "sources": list},
     "product": {"name": str, "brand": str, "product": str, "model": str, "bought": str, "recall_status": dict,
-                "sources": list},  # sources: the maker's own sites, used to answer questions about this thing
+                "unit_check": dict, "sources": list},  # sources: the maker's own sites, used to answer questions about this thing
     "profile": {"location": str},
 }
 NAME_FIELD = {"vehicle": "name", "product": "name"}
@@ -101,7 +102,7 @@ def _clean(kind: str, values: dict[str, Any], strict: bool) -> dict[str, Any]:
             continue
         expected = allowed[key]
         if expected is dict:
-            value = _recall_status(value)
+            value = _recall_map(key, value, UNIT_CHECKS if key == "unit_check" else RECALL_STATUSES)
         elif expected is list:
             value = [str(v) for v in value] if isinstance(value, list) else [str(value)]
         elif expected is int:
@@ -120,17 +121,18 @@ def _clean(kind: str, values: dict[str, Any], strict: bool) -> dict[str, Any]:
     return out
 
 
-def _recall_status(value: Any) -> dict[str, str]:
-    """{recall id: 'fixed' | 'not_mine'}. Recall ids are NHTSA campaign or CPSC recall numbers."""
+def _recall_map(name: str, value: Any, allowed: tuple[str, ...]) -> dict[str, str]:
+    """{recall id: one of `allowed`}, e.g. recall_status {id: fixed | not_mine}. Recall ids are NHTSA campaign or
+    CPSC recall numbers."""
     if not isinstance(value, dict):
-        raise MemoryStoreError("recall_status must be a list of 'recall number: fixed or not_mine' lines.")
+        raise MemoryStoreError(f"{name} must be a list of 'recall number: {' or '.join(allowed)}' lines.")
     out = {}
     for key, status in value.items():
         key, status = str(key).strip().upper(), str(status).strip()
         if not re.fullmatch(r"[0-9A-Z]{3,15}", key):
             raise MemoryStoreError(f"'{key}' doesn't look like a recall number.")
-        if status not in RECALL_STATUSES:
-            raise MemoryStoreError(f"A recall's status must be one of: {', '.join(RECALL_STATUSES)}.")
+        if status not in allowed:
+            raise MemoryStoreError(f"Each {name} value must be one of: {', '.join(allowed)}.")
         out[key] = status
     return out
 

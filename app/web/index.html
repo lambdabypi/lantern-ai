@@ -495,6 +495,25 @@
   .howsteps ol { margin: 0 0 8px; padding-left: 1.3em; display: grid; gap: 4px; }
   .howsteps p { margin: 4px 0 0; }
   .howsteps p.ai { display: block; margin-top: 10px; }
+  .unitform { display: grid; gap: 10px; margin-top: 10px; }
+  .unitform label { font-weight: 560; }
+  .unitform input[type=text] { width: 100%; }
+  .photo-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .photo-thumb { width: 56px; height: 56px; object-fit: cover; border-radius: 10px; border: 1px solid var(--border); }
+  .lookfor { margin: 4px 0 0; padding-left: 1.2em; display: grid; gap: 3px; }
+  .answers { display: grid; gap: 8px; margin-top: 10px; }
+  .answers .chipbtn { text-align: left; justify-content: flex-start; }
+  .vinrow { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 8px; }
+  .vinrow code { font-size: .95rem; letter-spacing: .04em; padding: 4px 8px; border-radius: 8px; background: var(--bg); }
+  .verdict { border-radius: 14px; padding: 12px 14px; animation: rise .4s both; display: grid; gap: 6px; }
+  .verdict h4 { margin: 0; font-size: 1rem; font-weight: 640; }
+  .verdict p { margin: 0; }
+  .verdict.affected { background: var(--danger-bg); color: var(--danger); }
+  .verdict.not_affected { background: var(--ok-bg); color: var(--ok); }
+  .verdict.unsure { background: var(--neutral-bg); color: var(--text); }
+  .verdict blockquote { margin: 2px 0 0; padding: 2px 0 2px 10px; border-left: 3px solid currentColor; color: var(--text);
+                        font-size: .92rem; }
+  .verdict .read { color: var(--muted); font-size: .85rem; white-space: pre-line; }
   .ai { font-size: .82rem; color: var(--muted); margin: 0; display: flex; gap: 6px; align-items: center; }
   .ai::before { content: "✦"; color: var(--glow); text-shadow: 0 0 8px var(--glow); }
   details.official summary { cursor: pointer; color: var(--accent); min-height: 44px; display: flex; align-items: center; }
@@ -1711,8 +1730,11 @@ function recallRow(item, rc, cardSeverity) {
   else { add("What's wrong", sentence(rc.consequence || rc.summary, 260)); add("What to do", sentence(rc.remedy, 260)); }
   add("Cost", item.kind === "vehicle" ? `Usually free at any authorized ${makeOf(item)} dealer.` : (rc.remedy_options && rc.remedy_options.length ? rc.remedy_options.join(", ") : ""));
   if (isPossible(item, rc) && rc.why) add("Why it may match", rc.why);
+  if (rc.unit) add("Your own check", rc.unit === "affected" ? (item.kind === "vehicle" ? "NHTSA's VIN check lists it as not repaired on your car." : "Yours is one of the recalled units.")
+                                                         : (item.kind === "vehicle" ? "NHTSA's VIN check didn't list it for your car." : "Yours doesn't look included."));
   fix.appendChild(dl);
   if (rc.plain) fix.appendChild(el("p", "ai", "Plain-English summary by NVIDIA Nemotron, from the official notice"));
+  fix.appendChild(unitBox(item, rc, d));
   const how = el("div", "howbox");
   how.appendChild(button("Show me how to get the fix", "chipbtn how", () => loadRemedy(item, rc, how)));
   how.appendChild(el("span", "hint", " Reads the maker's own recall page"));
@@ -1734,6 +1756,143 @@ function recallRow(item, rc, cardSeverity) {
   d.appendChild(fix);
   return d;
 }
+// ---- is MY one affected? The notice says how to tell recalled units apart (a model number on a label, a date,
+// a lot); the owner types what theirs says or photographs the label (read by Nemotron Super VL, never stored), and
+// Nemotron Super compares it with the notice, quoting the line that decides it. Cars use NHTSA's own VIN check.
+const unitResults = new Map();   // verdicts shown this visit, so a re-render keeps them open
+function unitKey(item, rc) { return `${item.kind}:${item.slug}:${rc.id}`; }
+function unitBox(item, rc, row) {
+  const box = el("div", "howbox unitbox");
+  const shown = unitResults.get(unitKey(item, rc));
+  if (shown) { row.open = true; box.replaceChildren(verdictView(item, rc, shown, box)); return box; }
+  const label = item.kind === "vehicle" ? (rc.unit ? "Check my car again" : "Is my car included?")
+                                        : (rc.unit ? "Check mine again" : "Is mine affected?");
+  box.appendChild(button(label, "chipbtn how", () => openUnit(item, rc, box)));
+  box.appendChild(el("span", "hint", item.kind === "vehicle" ? " With NHTSA's official VIN check" : " Compare your label with the notice"));
+  return box;
+}
+async function openUnit(item, rc, box) {
+  box.replaceChildren(el("p", "howload", item.kind === "vehicle" ? "Getting the VIN check ready…" : "Reading the official notice…"));
+  let res, data;
+  try { ({ res, data } = await api("/api/recalls/unit/guide", { method: "POST", body: { kind: item.kind, slug: item.slug, recall_id: rc.id } })); }
+  catch { res = { ok: false }; }
+  if (!res.ok) {
+    box.replaceChildren(el("p", "error", detail(data, "Couldn't read the notice right now.")), button("Try again", "chipbtn", () => openUnit(item, rc, box)));
+    return;
+  }
+  const out = el("div", "howsteps");
+  if (data.kind === "vehicle") {
+    out.appendChild(el("h4", "", "Is your car included?"));
+    const ol = el("ol");
+    data.steps.forEach(s => ol.appendChild(el("li", "", s)));
+    out.appendChild(ol);
+    const vin = el("div", "vinrow");
+    vin.appendChild(link(data.vin_check_url, "Open NHTSA's VIN check", "chipbtn"));
+    if (data.vin) {
+      vin.append(el("span", "hint", "Your VIN:"), el("code", "", data.vin),
+                 button("Copy", "chipbtn", async () => { try { await navigator.clipboard.writeText(data.vin); toast("VIN copied"); } catch { toast("Couldn't copy"); } }));
+    } else {
+      vin.appendChild(el("span", "hint", "Your VIN is on the dashboard by the windscreen and on your registration."));
+    }
+    out.appendChild(vin);
+    out.appendChild(el("p", "", `What does it say for recall ${rc.id}?`));
+    const answers = el("div", "answers");
+    data.answers.forEach(a => answers.appendChild(button(a.label, "chipbtn", () => sendUnit(item, rc, box, { answer: a.id }))));
+    out.appendChild(answers);
+    box.replaceChildren(out);
+    return;
+  }
+  out.appendChild(el("h4", "", "Is yours one of them?"));
+  if (data.covers_all) out.appendChild(el("p", "", "The notice covers every one of these. If yours is this brand and product, it's included."));
+  if (data.look_for.length) {
+    out.appendChild(el("p", "", "The recalled ones have:"));
+    const ul = el("ul", "lookfor");
+    data.look_for.forEach(x => ul.appendChild(el("li", "", x)));
+    out.appendChild(ul);
+  }
+  if (data.where) out.appendChild(el("p", "", "Where to look: " + data.where));
+  const form = el("form", "unitform");
+  const id = "unit-" + rc.id + "-" + item.slug;
+  const lab = el("label", "", data.question); lab.htmlFor = id;
+  const input = el("input"); input.type = "text"; input.id = id; input.maxLength = 500; input.autocomplete = "off";
+  input.placeholder = data.covers_all ? "e.g. yes, it's that brand" : "Type what the label says";
+  form.append(lab, input);
+  let photo = "";
+  if (data.photo) {
+    const row = el("div", "photo-row");
+    const file = el("input"); file.type = "file"; file.accept = "image/*"; file.setAttribute("capture", "environment"); file.hidden = true;
+    const thumb = el("img", "photo-thumb"); thumb.alt = "Your photo of the label"; thumb.hidden = true;
+    const pick = button("Take a photo of the label", "chipbtn", () => file.click());
+    file.addEventListener("change", async () => {
+      if (!file.files[0]) return;
+      try { photo = await shrinkPhoto(file.files[0]); thumb.src = photo; thumb.hidden = false; pick.textContent = "Take another photo"; }
+      catch { toast("Couldn't open that photo. Try another one."); }
+    });
+    row.append(pick, thumb, file, el("span", "hint", "Read by NVIDIA Nemotron, then thrown away"));
+    form.appendChild(row);
+  }
+  const err = el("p", "error");
+  const go = el("button", "primary", "Check"); go.type = "submit";
+  form.append(go, err);
+  form.addEventListener("submit", (e) => {
+    e.preventDefault();
+    if (!input.value.trim() && !photo) { err.textContent = data.photo ? "Type what the label says, or add a photo of it." : "Type what the label says."; return; }
+    sendUnit(item, rc, box, { answer: input.value.trim(), photo });
+  });
+  out.appendChild(form);
+  box.replaceChildren(out);
+  input.focus();
+}
+// Photos are shrunk in the browser (longest side 1600 px, JPEG) so they upload quickly and stay small.
+async function shrinkPhoto(file, max = 1600) {
+  const url = URL.createObjectURL(file);
+  try {
+    const img = await new Promise((ok, fail) => { const i = new Image(); i.onload = () => ok(i); i.onerror = fail; i.src = url; });
+    const scale = Math.min(1, max / Math.max(img.naturalWidth, img.naturalHeight));
+    const c = document.createElement("canvas");
+    c.width = Math.round(img.naturalWidth * scale); c.height = Math.round(img.naturalHeight * scale);
+    c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
+    return c.toDataURL("image/jpeg", 0.85);
+  } finally { URL.revokeObjectURL(url); }
+}
+async function sendUnit(item, rc, box, body) {
+  box.replaceChildren(el("p", "howload", body.photo ? "Reading your photo with NVIDIA Nemotron…" : "Comparing with the official notice…"));
+  let res, data;
+  try { ({ res, data } = await api("/api/recalls/unit/check", { method: "POST", body: { kind: item.kind, slug: item.slug, recall_id: rc.id, ...body } })); }
+  catch { res = { ok: false }; }
+  if (!res.ok) {
+    box.replaceChildren(el("p", "error", detail(data, "Couldn't check right now.")), button("Try again", "chipbtn", () => openUnit(item, rc, box)));
+    return;
+  }
+  unitResults.set(unitKey(item, rc), data);
+  transition(() => renderRecalls(data.recalls));
+}
+function verdictView(item, rc, v, box) {
+  const isCar = item.kind === "vehicle";
+  const out = el("div", "verdict " + v.verdict);
+  const title = v.verdict === "affected" ? (isCar ? "Your car still needs this repair" : "Yours is included")
+              : v.verdict === "not_affected" ? (isCar ? "Not listed for your car" : "Yours doesn't look included")
+              : "Lantern can't tell for sure";
+  out.append(el("h4", "", title), el("p", "", v.why));
+  if (v.quote) { const q = el("blockquote"); q.textContent = "From the official notice: " + v.quote; out.appendChild(q); }
+  if (v.label_text) out.appendChild(el("p", "read", "Read from your photo:\n" + v.label_text));
+  const row = el("div", "actions");
+  if (v.verdict === "affected") {
+    out.appendChild(el("p", "", isCar ? "The repair is free at an authorized dealer." : (rc.plain && rc.plain.todo) || "Follow the official notice: see how to get the fix below."));
+    row.appendChild(button(isCar ? "Get it fixed for free" : "What to do", "primary", () => openFix(item)));
+  } else if (v.verdict === "not_affected") {
+    out.appendChild(el("p", "", isCar ? "It may have been repaired already, or your car isn't included. You can close it." : "If that's right, you can close this recall."));
+    row.appendChild(button(isCar ? "Mark as dealt with" : "Mark as doesn't apply", "primary",
+                           () => { unitResults.delete(unitKey(item, rc)); setStatus(item, rc, isCar ? "fixed" : "not_mine"); }));
+  } else {
+    out.appendChild(el("p", "", "Treat it as recalled until you know. " + (rc.contact ? "The maker can tell you: " + sentence(rc.contact, 200) : "The maker can tell you.")));
+  }
+  row.appendChild(button("Check again", "chipbtn", () => { unitResults.delete(unitKey(item, rc)); openUnit(item, rc, box); }));
+  out.appendChild(row);
+  if (!isCar) out.appendChild(el("p", "ai", "Compared by NVIDIA Nemotron with the official CPSC notice"));
+  return out;
+}
+
 // "How do I actually get it fixed?": the maker's recall page, read with Tavily, turned into steps by Nemotron.
 async function loadRemedy(item, rc, box) {
   const site = item.kind === "vehicle" ? `${makeOf(item)}'s site and nhtsa.gov` : "the maker's recall page";

@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import ast
 import json
 import re
 from typing import Any
 
 _THINK = re.compile(r"<think>.*?</think>", re.DOTALL | re.IGNORECASE)
+_JSON_WORDS = {"true": "True", "false": "False", "null": "None"}
 
 
 def extract_json(text: str) -> Any:
@@ -31,4 +33,15 @@ def extract_json(text: str) -> Any:
                 return value
             except json.JSONDecodeError:
                 continue
+    # Models sometimes write single-quoted strings when the text itself holds double quotes ('"voomf" printed on
+    # a label'). That's a Python literal, not JSON: literal_eval reads literals only and never runs code.
+    start, end = cleaned.find("{"), cleaned.rfind("}")
+    if 0 <= start < end:
+        source = re.sub(r"\b(true|false|null)\b", lambda m: _JSON_WORDS[m.group(1)], cleaned[start:end + 1])
+        try:
+            value = ast.literal_eval(source)
+        except (ValueError, SyntaxError, TypeError, MemoryError, RecursionError):
+            value = None
+        if isinstance(value, dict):
+            return value
     raise ValueError("No JSON found in model output.")

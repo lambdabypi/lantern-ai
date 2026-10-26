@@ -62,3 +62,13 @@ def test_search_failure_is_visible(settings):
     ws = WebSearch(settings, tavily_client=FakeTavily(fail=True))
     with pytest.raises(SearchError, match="q1"):
         ws.search("q1")
+
+
+def test_single_quoted_strings_holding_double_quotes_are_read():
+    from app.llm.parsing import extract_json
+    text = """{"covers_all": false, "look_for": ['"Product Model: BYL001" on a label', '"voomf" on the side'], "x": null}"""
+    assert extract_json(text) == {"covers_all": False, "look_for": ['"Product Model: BYL001" on a label',
+                                                                    '"voomf" on the side'], "x": None}
+    import pytest
+    with pytest.raises(ValueError):
+        extract_json("{__import__('os').system('echo hi')}")    # literals only: never evaluated

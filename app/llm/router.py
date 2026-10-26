@@ -16,9 +16,11 @@ class Tier(str, Enum):
     FAST = "fast"            # Nemotron Nano: the default for everyday calls
     BALANCED = "balanced"    # Nemotron Super: writing answers from looked-up sources (falls back to Nano)
     REASONING = "reasoning"  # Nemotron Ultra: multi-step planning and heavy reasoning only
+    VISION = "vision"        # Nemotron Super VL: reading photos (product labels)
 
 
-_TIER_ENV = {Tier.FAST: "MODEL_FAST", Tier.BALANCED: "MODEL_BALANCED", Tier.REASONING: "MODEL_REASONING"}
+_TIER_ENV = {Tier.FAST: "MODEL_FAST", Tier.BALANCED: "MODEL_BALANCED", Tier.REASONING: "MODEL_REASONING",
+             Tier.VISION: "MODEL_VISION"}
 
 
 class ModelRouter:
@@ -29,14 +31,14 @@ class ModelRouter:
         usage_log: Path | None = None,
     ):
         self.models = {Tier.FAST: settings.model_fast, Tier.REASONING: settings.model_reasoning,
-                       Tier.BALANCED: settings.model_balanced or settings.model_fast}
+                       Tier.BALANCED: settings.model_balanced or settings.model_fast, Tier.VISION: settings.model_vision}
         self.client = client or TokenFactoryClient(settings)
         self.usage_log = usage_log or settings.data_dir / "logs" / "llm_usage.jsonl"
         self._totals: dict[str, dict[str, int]] = {}
 
     def complete(
         self,
-        messages: list[dict[str, str]],
+        messages: list[dict[str, Any]],
         tier: Tier = Tier.FAST,
         *,
         purpose: str = "",
