@@ -704,7 +704,7 @@
         <button type="button" class="mic" id="ownMic" aria-label="Say what you own" aria-pressed="false" hidden><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v4"/></svg></button>
         <button class="go" type="submit" aria-label="Check for recalls"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M5 12h13M13 6l6 6-6 6"/></svg></button>
       </div>
-      <p class="voice-note" id="ownNote" hidden></p>
+      <p class="voice-note" id="ownNote" role="status" hidden></p>
       <div class="examples" id="examples"></div>
       <div class="error" id="startError" role="alert"></div>
     </form>
@@ -821,7 +821,7 @@
         <button type="button" class="mic" id="quickMic" aria-label="Say what you own" aria-pressed="false" hidden><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v4"/></svg></button>
         <button class="go" type="submit" aria-label="Add and check"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M5 12h13M13 6l6 6-6 6"/></svg></button>
       </div>
-      <p class="voice-note" id="quickNote" hidden></p>
+      <p class="voice-note" id="quickNote" role="status" hidden></p>
       <div class="error" id="quickError" role="alert"></div>
     </form>
     <h2>Cars</h2>
@@ -875,7 +875,7 @@
         <label id="speakToggle" hidden><input type="checkbox" id="speakAnswers"> Read answers aloud</label>
         <label><input type="checkbox" id="escalate"> Take more time to think<span id="ultraLeft" class="sr-only"></span></label>
       </div>
-      <p class="hint" id="voiceNote" hidden>Voice uses your browser's own speech service (in Chrome, that's Google's). Typing works everywhere.</p>
+      <p class="hint" id="voiceNote" role="status" hidden></p>
     </form>
   </section>
 
@@ -1365,39 +1365,77 @@ function renderExamples() {
 renderExamples();
 
 // Voice: the browser's own speech recognition fills the box; people check the words, then press the arrow.
+// One helper for every mic. It asks for the microphone first (so a blocked or missing mic gets a clear message
+// instead of silence), keeps listening through short pauses, and stops after a few quiet seconds or a second tap.
 const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
-function dictate(btn, input, note) {
-  if (!SpeechRec) return;
+const VOICE_ERRORS = {
+  "not-allowed": "The microphone is blocked for this site. Allow it from the icon at the left of the address bar, then try again.",
+  "service-not-allowed": "This browser has voice typing switched off. Try Chrome, Edge or Safari, or type instead.",
+  "network": navigator.userAgent.includes("Edg/")
+    ? "Edge couldn't reach its speech service. In Windows, turn on Settings › Privacy & security › Speech › Online speech recognition, or use Chrome, or type instead."
+    : "This browser couldn't reach its speech service (Brave blocks it). Try Chrome or Safari, or type instead.",
+  "audio-capture": "No microphone was found. Plug one in or pick one in your system's sound settings.",
+  "no-speech": "Didn't hear anything. Check the right microphone is selected, then tap the mic and speak.",
+  "language-not-supported": "Voice typing in English isn't available in this browser. You can type instead.",
+};
+const QUIET_MS = 3500, FIRST_WORDS_MS = 9000;  // stop after a pause, or if nothing is said at all
+function voiceProblem(e) { return VOICE_ERRORS[e] || `Voice didn't work (${e}). You can type instead.`; }
+async function micReady() {
+  // Opening the mic once surfaces the permission prompt and real device errors; the stream is closed at once.
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return null;
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    stream.getTracks().forEach(t => t.stop());
+    return null;
+  } catch (err) {
+    return err && (err.name === "NotFoundError" || err.name === "OverconstrainedError") ? "audio-capture" : "not-allowed";
+  }
+}
+function listen({ btn, input, note, say, joiner = ", ", onDone }) {
   btn.hidden = false;
-  let rec = null;
-  btn.addEventListener("click", () => {
-    if (rec) { try { rec.stop(); } catch {} return; }
+  let rec = null, timer = null;
+  const tell = (text) => { note.hidden = !text; note.textContent = text || ""; };
+  const stop = () => { clearTimeout(timer); if (rec) { try { rec.stop(); } catch {} } };
+  btn.addEventListener("click", async () => {
+    if (rec) { stop(); return; }
+    if (!SpeechRec) {
+      tell(navigator.brave ? VOICE_ERRORS.network
+        : "This browser doesn't have voice typing. Use Chrome, Edge or Safari, or the mic on your phone's keyboard.");
+      return;
+    }
+    if (navigator.brave) { tell(VOICE_ERRORS.network); return; }
+    btn.setAttribute("aria-pressed", "true");
+    tell("Getting the microphone…");
+    const blocked = await micReady();
+    if (blocked) { btn.setAttribute("aria-pressed", "false"); tell(voiceProblem(blocked)); return; }
     rec = new SpeechRec();
-    rec.lang = "en-US"; rec.interimResults = true; rec.continuous = false;
+    rec.lang = "en-US"; rec.interimResults = true; rec.continuous = true;
     const before = input.value.trim();
-    let heard = "";
+    let heard = "", failed = "";
+    const quiet = (ms = QUIET_MS) => { clearTimeout(timer); timer = setTimeout(stop, ms); };
     rec.onresult = (e) => {
       let interim = "";
       for (let i = e.resultIndex; i < e.results.length; i++) {
-        if (e.results[i].isFinal) heard += e.results[i][0].transcript; else interim += e.results[i][0].transcript;
+        if (e.results[i].isFinal) heard += " " + e.results[i][0].transcript; else interim += " " + e.results[i][0].transcript;
       }
-      input.value = [before, (heard + interim).trim()].filter(Boolean).join(", ");
+      input.value = [before, (heard + interim).trim()].filter(Boolean).join(joiner);
+      input.dispatchEvent(new Event("input"));
+      quiet();
     };
-    rec.onerror = (e) => { if (e.error !== "no-speech" && e.error !== "aborted") note.textContent = "Voice didn't work (" + e.error + "). You can type instead."; };
+    rec.onerror = (e) => { if (e.error !== "aborted") failed = e.error; };
     rec.onend = () => {
+      clearTimeout(timer);
       btn.setAttribute("aria-pressed", "false"); rec = null;
-      if (heard.trim()) { note.textContent = "Got it. Check the words, then press the arrow."; input.focus(); }
-      else if (note.textContent.startsWith("Listening")) note.hidden = true;
+      if (heard.trim()) { tell(onDone ? "" : "Got it. Check the words, then press the arrow."); if (onDone) onDone(); else input.focus(); }
+      else tell(voiceProblem(failed || "no-speech"));
     };
-    try {
-      rec.start(); btn.setAttribute("aria-pressed", "true");
-      note.hidden = false;
-      note.textContent = "Listening… say everything you own, then pause. (Voice uses your browser's own speech service; in Chrome, that's Google's.)";
-    } catch { rec = null; }
+    try { rec.start(); tell(say); quiet(FIRST_WORDS_MS); }
+    catch { rec = null; btn.setAttribute("aria-pressed", "false"); tell(voiceProblem("service-not-allowed")); }
   });
 }
-dictate($("ownMic"), $("ownInput"), $("ownNote"));
-dictate($("quickMic"), $("quickInput"), $("quickNote"));
+const OWN_SAY = "Listening… say everything you own, then pause or tap the mic again. (Voice uses your browser's own speech service; in Chrome, that's Google's.)";
+listen({ btn: $("ownMic"), input: $("ownInput"), note: $("ownNote"), say: OWN_SAY });
+listen({ btn: $("quickMic"), input: $("quickInput"), note: $("quickNote"), say: OWN_SAY });
 
 // Anything someone owns, in their own words. A pasted VIN is checked straight away; everything else is read by
 // Nemotron Nano on the server (/api/things), which picks out each car and product.
@@ -2094,39 +2132,16 @@ $("msg").addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftK
 $("msg").addEventListener("focus", () => { if (touch) $("tabbar").hidden = true; });
 $("msg").addEventListener("blur", () => { if (me) $("tabbar").hidden = false; });
 
-// Voice: the browser's own speech recognition and speech synthesis.
-const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-let recognizer = null;
-if (Recognition) {
-  $("micBtn").hidden = false;
-  $("micBtn").addEventListener("click", () => recognizer ? stopListening() : startListening());
-}
+// Voice: the browser's own speech recognition (the shared listen() helper) and speech synthesis.
+listen({ btn: $("micBtn"), input: $("msg"), note: $("voiceNote"), joiner: " ",
+         say: "Listening… ask your question, then pause. (Voice uses your browser's own speech service; in Chrome, that's Google's.)",
+         onDone: () => $("chatForm").requestSubmit() });
 if ("speechSynthesis" in window) {
   $("speakToggle").hidden = false;
   $("speakAnswers").checked = stored("speak") === "1";
   $("speakAnswers").addEventListener("change", () => { store("speak", $("speakAnswers").checked ? "1" : undefined);
                                                        if (!$("speakAnswers").checked) speechSynthesis.cancel(); });
 }
-function startListening() {
-  $("voiceNote").hidden = false;
-  recognizer = new Recognition();
-  recognizer.lang = "en-US"; recognizer.interimResults = true; recognizer.continuous = false;
-  let finalText = "";
-  recognizer.onresult = (e) => {
-    let interim = "";
-    for (let i = e.resultIndex; i < e.results.length; i++) {
-      if (e.results[i].isFinal) finalText += e.results[i][0].transcript; else interim += e.results[i][0].transcript;
-    }
-    $("msg").value = (finalText + interim).trim();
-  };
-  recognizer.onerror = (e) => { if (e.error !== "no-speech" && e.error !== "aborted") toast("Voice didn't work: " + e.error); };
-  recognizer.onend = () => {
-    $("micBtn").setAttribute("aria-pressed", "false"); recognizer = null;
-    if (finalText.trim()) $("chatForm").requestSubmit();
-  };
-  try { recognizer.start(); $("micBtn").setAttribute("aria-pressed", "true"); } catch { recognizer = null; }
-}
-function stopListening() { if (recognizer) { try { recognizer.stop(); } catch {} } }
 function speak(text) {
   if (!("speechSynthesis" in window) || !$("speakAnswers").checked) return;
   const plain = text.replace(/https?:\/\/\S+/g, "").replace(/\*\*/g, "").replace(/^\s*[-*•]\s+/gm, "").trim();
