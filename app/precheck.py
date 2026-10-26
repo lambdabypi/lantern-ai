@@ -15,6 +15,7 @@ what they're looking at ("a used 2014 Jeep Cherokee", "a Graco high chair from a
 from __future__ import annotations
 
 import re
+from concurrent.futures import Future, ThreadPoolExecutor
 from typing import Any
 
 from app.agent.recall_planner import _clean_thing
@@ -114,24 +115,29 @@ class PreCheck:
 
     def check(self, things: list[dict[str, Any]]) -> list[dict[str, Any]]:
         out = []
-        for t in things[:MAX_THINGS]:
-            try:
-                entry = self.watch.preview(t)
-            except (RecallError, MemoryStoreError) as e:
-                out.append({"kind": t.get("type"), "name": _name(t), "error": str(e)})
-                continue
-            open_recalls = entry["recalls"]   # recalls Nano ruled out are already left out
-            kind = entry["kind"]
-            result = {"kind": kind, "name": entry["name"], "recalls": entry["recalls"], "note": entry.get("note"),
-                      "advice": ADVICE[f"{kind}_{'recalled' if open_recalls else 'clear'}"],
-                      "urgent": sum(1 for r in entry["recalls"] if r.get("severity"))}
-            if kind == "vehicle":
-                result["vin_check_url"] = NHTSA_VIN_CHECK
-                result["owner_reports"] = self._owner_reports(entry, t)
-            out.append(result)
+        with ThreadPoolExecutor(max_workers=MAX_THINGS) as pool:
+            # owner reports (a fetch and a model call) run while the recalls and their plain summaries are written
+            reports = {i: pool.submit(self._owner_reports, t) for i, t in enumerate(things[:MAX_THINGS])
+                       if t.get("type") == "vehicle"}
+            for i, t in enumerate(things[:MAX_THINGS]):
+                out.append(self._one(t, reports.get(i)))
         return out
 
-    def _owner_reports(self, entry: dict[str, Any], thing: dict[str, Any]) -> dict[str, Any] | None:
+    def _one(self, t: dict[str, Any], reports: Future | None) -> dict[str, Any]:
+        try:
+            entry = self.watch.preview(t)
+        except (RecallError, MemoryStoreError) as e:
+            return {"kind": t.get("type"), "name": _name(t), "error": str(e)}
+        kind = entry["kind"]   # recalls Nano ruled out are already left out of entry["recalls"]
+        result = {"kind": kind, "name": entry["name"], "recalls": entry["recalls"], "note": entry.get("note"),
+                  "advice": ADVICE[f"{kind}_{'recalled' if entry['recalls'] else 'clear'}"],
+                  "urgent": sum(1 for r in entry["recalls"] if r.get("severity"))}
+        if kind == "vehicle":
+            result["vin_check_url"] = NHTSA_VIN_CHECK
+            result["owner_reports"] = reports.result() if reports else None
+        return result
+
+    def _owner_reports(self, thing: dict[str, Any]) -> dict[str, Any] | None:
         if self.reports is None:
             return None
         try:
