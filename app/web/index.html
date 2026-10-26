@@ -897,6 +897,7 @@
         </div>
         <div data-part="vin" hidden><label class="field">Car ID number (VIN)<input name="vin" maxlength="20" placeholder="17 letters and numbers" autocapitalize="characters" spellcheck="false"></label></div>
         <button type="button" class="textbtn" data-vin-toggle aria-expanded="false" style="justify-self:start">Use the VIN instead</button>
+        <label class="field">Whose is it? <span class="muted">(optional)</span><input name="owner" maxlength="40" placeholder="Yours, or someone you look after: Mom, Dad, Grandma…" autocomplete="off"></label>
         <button class="primary" type="submit">Add car</button>
         <div class="error" role="alert"></div>
       </form>
@@ -911,6 +912,7 @@
           <label class="field">Brand<input name="brand" maxlength="60"></label>
           <label class="field">Model <span class="muted">(optional)</span><input name="model" maxlength="60"></label>
         </div>
+        <label class="field">Whose is it? <span class="muted">(optional)</span><input name="owner" maxlength="40" placeholder="Yours, or someone you look after: Mom, Dad, Grandma…" autocomplete="off"></label>
         <button class="primary" type="submit">Add product</button>
         <div class="error" role="alert"></div>
         <p class="hint">Child car seats and tires count too: add them here ("Graco car seat", "Michelin tires") and Lantern checks NHTSA's recalls for them.</p>
@@ -1572,11 +1574,12 @@ async function ensureSession() {
   return true;
 }
 function carBody(form) {
-  if (form.dataset.vin === "1") return { vin: form.vin.value.trim() };
-  return { year: parseInt(form.year.value, 10) || null, make: form.make.value.trim(), model: form.model.value.trim() };
+  const owner = form.owner ? form.owner.value.trim() : "";
+  if (form.dataset.vin === "1") return { vin: form.vin.value.trim(), owner };
+  return { year: parseInt(form.year.value, 10) || null, make: form.make.value.trim(), model: form.model.value.trim(), owner };
 }
 function carProblem(body) {
-  if ("vin" in body) return body.vin ? "" : "Enter the 17-character VIN.";
+  if (body.vin !== undefined) return body.vin ? "" : "Enter the 17-character VIN.";
   if (!body.year || !body.make || !body.model) return "Enter the year, make and model (for example 2018 Toyota Camry).";
   return "";
 }
@@ -1835,7 +1838,9 @@ function groupByItem(open) {
   return [...groups.values()].sort((a, b) =>
     (SEVERITY[a.recalls[0].severity] - SEVERITY[b.recalls[0].severity]) || (b.recalls.length - a.recalls.length));
 }
-function makeOf(item) { return (item.name || "").replace(/^\d{4}\s+/, "").split(" ")[0] || "your brand's"; }
+function bare(item) { const n = item.name || ""; return item.owner && n.startsWith(item.owner + "'s ") ? n.slice(item.owner.length + 3) : n; }
+function yours(item) { return item.owner ? item.name : "your " + item.name; }
+function makeOf(item) { return bare(item).replace(/^\d{4}\s+/, "").split(" ")[0] || "your brand's"; }
 function renderRecalls(r) {
   const firstRender = !report;
   report = r;
@@ -1856,9 +1861,9 @@ function renderRecalls(r) {
     const top = urgent[0], it = top.item, sev = top.rc.severity;
     const others = groups.length - 1;
     s.classList.add("danger");
-    const title = sev === "park_it" ? `Cars like your ${it.name} have a "Do not drive" recall`
-               : sev === "park_outside" ? `Cars like your ${it.name} have a "Park outside" recall`
-               : `Stop using your ${it.name}`;
+    const title = sev === "park_it" ? `Cars like ${yours(it)} have a "Do not drive" recall`
+               : sev === "park_outside" ? `Cars like ${yours(it)} have a "Park outside" recall`
+               : `Stop using ${yours(it)}`;
     const body = sev === "stop_using"
       ? "The official recall notice says to stop using it now. See what to do below."
       : `${makeOf(it)} and the U.S. government say ${sev === "park_it" ? "not to drive these" : "to park these outside, away from buildings,"} until they're repaired. The repair is usually free. It may already be fixed on yours: check with your car's ID number (VIN) or ask any ${makeOf(it)} dealer.`;
@@ -2037,8 +2042,9 @@ function recallRow(item, rc, cardSeverity) {
   const actions = el("div", "actions");
   const fixedBtn = button(item.kind === "vehicle" ? "A dealer fixed this" : "It's been dealt with", "chipbtn good", () => setStatus(item, rc, "fixed", fixedBtn));
   actions.append(fixedBtn,
-                 button(item.kind === "vehicle" ? "Doesn't apply to my car" : "Doesn't apply to mine", "chipbtn", () => setStatus(item, rc, "not_mine")),
-                 button("Share", "chipbtn", () => share(item, rc, fix)));
+                 button(item.kind === "vehicle" ? `Doesn't apply to ${item.owner ? item.owner + "'s car" : "my car"}`
+                                                : `Doesn't apply to ${item.owner ? item.owner + "'s" : "mine"}`, "chipbtn", () => setStatus(item, rc, "not_mine")),
+                 button(item.owner ? `Tell ${item.owner}` : "Share", "chipbtn", () => share(item, rc, fix)));
   fix.appendChild(actions);
   d.appendChild(fix);
   return d;
@@ -2054,8 +2060,9 @@ function unitBox(item, rc, row) {
   const shown = unitResults.get(unitKey(item, rc));
   if (openRows.has(unitKey(item, rc))) row.open = true;
   if (shown) { row.open = true; box.replaceChildren(verdictView(item, rc, shown, box)); return box; }
-  const label = item.kind === "vehicle" ? (rc.unit ? "Check my car again" : "Is my car included?")
-                                        : (rc.unit ? "Check mine again" : "Is mine affected?");
+  const car = item.owner ? `${item.owner}'s car` : "my car", one = item.owner ? `${item.owner}'s` : "mine";
+  const label = item.kind === "vehicle" ? (rc.unit ? `Check ${car} again` : `Is ${car} included?`)
+                                        : (rc.unit ? `Check ${one} again` : `Is ${one} affected?`);
   box.appendChild(button(label, "chipbtn how", () => openUnit(item, rc, box)));
   box.appendChild(el("span", "hint", item.kind === "vehicle" ? " With NHTSA's official VIN check" : " Compare your label with the notice"));
   return box;
@@ -2255,7 +2262,7 @@ function doneCard(item, rc) {
 }
 async function setStatus(item, rc, status, origin) {
   if (status === "fixed" && rc.severity === "park_it" &&
-      !confirm(`Did a dealer repair this recall on your ${item.name}? Only mark it fixed if it was repaired, or the official VIN check says so.`)) return;
+      !confirm(`Did a dealer repair this recall on ${yours(item)}? Only mark it fixed if it was repaired, or the official VIN check says so.`)) return;
   const { res, data } = await api("/api/recalls/status", { method: "POST", body: { kind: item.kind, slug: item.slug, recall_id: rc.id, status } });
   if (!res.ok) { toast(detail(data, "Couldn't update that.")); return; }
   if (status === "fixed") sparks(origin);
@@ -2264,7 +2271,8 @@ async function setStatus(item, rc, status, origin) {
   else toast(status === "fixed" ? "Marked fixed. One less thing to worry about." : "Marked as not applying.", () => setStatus(item, rc, "open"));
 }
 function shareText(item, rc) {
-  const parts = [`Safety recall: ${item.name}`, rowTitle(item, rc)];
+  const parts = item.owner ? [`Hi ${item.owner}, Lantern found a safety recall that may affect your ${bare(item)}.`, rowTitle(item, rc)]
+                           : [`Safety recall: ${item.name}`, rowTitle(item, rc)];
   if (rc.plain) parts.push(rc.plain.what, rc.plain.todo);
   else if (rc.consequence) parts.push("Risk: " + sentence(rc.consequence, 160));
   parts.push("Official notice: " + rc.url);
@@ -2289,7 +2297,7 @@ let fixing = null;
 async function openFix(item, location = "") {
   fixing = item;
   const isCar = item.kind === "vehicle";
-  $("fixTitle").textContent = isCar ? `Get your ${item.name} fixed` : `What to do about your ${item.name}`;
+  $("fixTitle").textContent = isCar ? `Get ${yours(item)} fixed` : `What to do about ${yours(item)}`;
   $("fixWhere").hidden = !isCar;
   $("fixContact").hidden = true;
   $("fixMessage").value = ""; $("fixSend").replaceChildren();          // never show a previous item's message
@@ -2462,7 +2470,7 @@ $("addProduct").addEventListener("submit", async (e) => {
   err.textContent = "";
   btn.disabled = true;
   const done = startSweep("product");
-  const { res, data } = await api("/api/products", { method: "POST", body: { product: f.product.value, brand: f.brand.value, model: f.model.value } });
+  const { res, data } = await api("/api/products", { method: "POST", body: { product: f.product.value, brand: f.brand.value, model: f.model.value, owner: f.owner.value.trim() } });
   await done(res.ok);
   btn.disabled = false;
   if (!res.ok) { err.textContent = detail(data, "Couldn't add that product."); return; }

@@ -138,7 +138,7 @@ class Push:
         urgent = [x for x in fresh if x[1]["severity"]]
         item, r = (urgent or fresh)[0]
         prefix = {"park_it": "Do not drive: ", "park_outside": "Park outside: ", "stop_using": "Stop using: "}
-        title = prefix.get(r["severity"], "New recall: ") + item["name"]
+        title = prefix.get(r["severity"], "New recall: ") + (item.get("label") or item["name"])
         more = f" (+{len(fresh) - 1} more)" if len(fresh) > 1 else ""
         what = (r.get("plain") or {}).get("title") or r["title"]
         delivered = self.send(user_id, title, f"{what}. Tap to see what to do.{more}", "/#attention")

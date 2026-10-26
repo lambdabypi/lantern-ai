@@ -32,11 +32,12 @@ UNIT_CHECKS = ("affected", "not_affected")  # what the owner's own check of thei
 FIX_STEPS = ("contacted", "booked")         # how far the owner got with a recall's free fix (see followups.py)
 _FIX_PROGRESS = re.compile(r"^(contacted|booked) \d{4}-\d{2}-\d{2}$")
 
-# Fields each kind may hold (beyond the automatic created/updated/source/confidence).
+# Fields each kind may hold (beyond the automatic created/updated/source/confidence). "owner" is set when the thing
+# belongs to someone the user looks after ("Mom"), so Lantern says "Mom's 2012 Toyota Camry".
 FIELDS: dict[str, dict[str, type | tuple]] = {
-    "vehicle": {"name": str, "make": str, "model": str, "year": int, "vin": str, "trim": str,
+    "vehicle": {"name": str, "owner": str, "make": str, "model": str, "year": int, "vin": str, "trim": str,
                 "nhtsa_model": str, "recall_status": dict, "unit_check": dict, "fix_progress": dict, "sources": list},
-    "product": {"name": str, "brand": str, "product": str, "model": str, "bought": str, "recall_status": dict,
+    "product": {"name": str, "owner": str, "brand": str, "product": str, "model": str, "bought": str, "recall_status": dict,
                 "unit_check": dict, "fix_progress": dict, "sources": list},  # sources: the maker's own sites, used to answer questions about this thing
     "profile": {"location": str},
 }
@@ -274,7 +275,8 @@ class MemoryStore:
         for kind, label in (("vehicle", "Car"), ("product", "Product")):
             for item in self.list(user_id, kind)[:max_items]:
                 m = item.meta
-                extra = ["VIN on file" if m.get("vin") else "",
+                extra = [f"{m['owner']}'s, not theirs" if m.get("owner") else "",
+                         "VIN on file" if m.get("vin") else "",
                          f"{len(m['recall_status'])} recall(s) marked fixed or not theirs" if m.get("recall_status") else ""]
                 detail = "; ".join(e for e in extra if e)
                 lines.append(f"- {label}: {m.get('name', item.slug)}" + (f" ({detail})" if detail else ""))

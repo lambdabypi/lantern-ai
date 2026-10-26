@@ -101,6 +101,7 @@ class MemoryCreate(BaseModel):
 
 
 class VehicleCreate(BaseModel):
+    owner: str = Field(default="", max_length=40)   # someone the user looks after ("Mom"); empty = theirs
     vin: str = Field(default="", max_length=30)
     make: str = Field(default="", max_length=40)
     model: str = Field(default="", max_length=40)
@@ -138,6 +139,7 @@ class ThingsText(BaseModel):
 
 
 class ProductCreate(BaseModel):
+    owner: str = Field(default="", max_length=40)
     product: str = Field(min_length=1, max_length=80)
     brand: str = Field(default="", max_length=60)
     model: str = Field(default="", max_length=60)
@@ -536,7 +538,7 @@ def create_app(loop: AgentLoop | None = None, settings: Settings | None = None, 
     @app.post("/api/vehicles")
     def add_vehicle(req: VehicleCreate, account: Account = Depends(current_account)) -> dict:
         w = need_watch()
-        item = w.save_vehicle(account.user_id, req.make, req.model, req.year, req.vin, source="user")
+        item = w.save_vehicle(account.user_id, req.make, req.model, req.year, req.vin, source="user", owner=req.owner)
         return {"item": item.summary(), "recalls": w.check(account.user_id)}
 
     @app.get("/api/vehicles/{slug}/owner-reports")
@@ -554,12 +556,13 @@ def create_app(loop: AgentLoop | None = None, settings: Settings | None = None, 
         if not (m.get("make") and model and m.get("year")):
             raise HTTPException(status_code=422, detail="Add the car's make, model and year first.")
         out = reports.for_vehicle(m["make"], model, int(m["year"]), w.vehicle_recalls(m["make"], model, int(m["year"])))
-        return {**out, "slug": item.slug, "name": m.get("name", item.slug)}
+        name = m.get("name", item.slug)
+        return {**out, "slug": item.slug, "name": f"{m['owner']}'s {name}" if m.get("owner") else name}
 
     @app.post("/api/products")
     def add_product(req: ProductCreate, account: Account = Depends(current_account)) -> dict:
         w = need_watch()
-        item = w.save_product(account.user_id, req.product, req.brand, req.model, source="user")
+        item = w.save_product(account.user_id, req.product, req.brand, req.model, source="user", owner=req.owner)
         return {"item": item.summary(), "recalls": w.check(account.user_id)}
 
     def find_recall(account: Account, kind: str, slug: str, recall_id: str) -> dict:

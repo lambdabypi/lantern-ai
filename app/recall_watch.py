@@ -203,10 +203,13 @@ class RecallWatch:
         return {"fields": fields, "source": source, "known_to_nhtsa": bool(nhtsa)}
 
     def save_vehicle(self, user_id: str, make: str = "", model: str = "", year: Any = None, vin: str = "",
-                     note: str | None = None, source: str = "chat") -> MemoryItem:
+                     note: str | None = None, source: str = "chat", owner: str = "") -> MemoryItem:
         """Add or update a car. The same VIN, or the same year/make/model, updates the existing file."""
         desc = self.describe_vehicle(make, model, year, vin)
         fields = desc["fields"]
+        if owner_name(owner):  # "Mom's 2012 Toyota Camry" is a different car from the user's own 2012 Camry
+            fields["owner"] = owner_name(owner)
+            fields["name"] = f"{fields['owner']}'s {fields['name']}"
         existing = next((v for v in self.store.list(user_id, "vehicle")
                          if (fields.get("vin") and v.meta.get("vin") == fields["vin"])
                          or (not v.meta.get("vin") and v.meta.get("name") == fields["name"])), None)
@@ -218,26 +221,30 @@ class RecallWatch:
                                  source=desc["source"] if source == "chat" else source)
 
     def save_product(self, user_id: str, product: str, brand: str = "", model: str = "",
-                     note: str | None = None, source: str = "chat") -> MemoryItem:
+                     note: str | None = None, source: str = "chat", owner: str = "") -> MemoryItem:
         product, brand, model = (product or "").strip(), (brand or "").strip(), (model or "").strip()
         if not product:
             raise MemoryStoreError("What kind of product is it (for example: crib, space heater, stroller)?")
-        name = " ".join(x for x in (brand, product, model) if x)
-        fields = {k: v for k, v in (("brand", brand), ("product", product), ("model", model)) if v}
-        same = self._same_product(user_id, brand, product, model)
+        owner = owner_name(owner)
+        name = " ".join(x for x in (owner and f"{owner}'s", brand, product, model) if x)
+        fields = {k: v for k, v in (("brand", brand), ("product", product), ("model", model), ("owner", owner)) if v}
+        same = self._same_product(user_id, brand, product, model, owner)
         if same is not None:  # "Lasko heater 754200" from a receipt fills in the "Lasko ceramic space heater" on the list
             keep = {k: v for k, v in fields.items() if not same.meta.get(k)}
             return self.store.upsert(user_id, "product", same.slug, keep, note=note, source=source)
         return self.store.upsert(user_id, "product", name, fields, note=note, source=source)
 
-    def _same_product(self, user_id: str, brand: str, product: str, model: str) -> MemoryItem | None:
-        """A product already on the list from the same brand, of the same kind, with no different model number."""
+    def _same_product(self, user_id: str, brand: str, product: str, model: str, owner: str = "") -> MemoryItem | None:
+        """A product already on the list from the same brand, of the same kind, with no different model number, and
+        belonging to the same person."""
         if not brand:
             return None
         kind = _words(product)
         for p in self.store.list(user_id, "product"):
             m = p.meta
             if _compact(m.get("brand", "")) != _compact(brand) or not (kind & _words(m.get("product", ""))):
+                continue
+            if _compact(m.get("owner", "")) != _compact(owner):
                 continue
             if model and m.get("model") and _compact(m["model"]) != _compact(model):
                 continue
@@ -406,7 +413,8 @@ class RecallWatch:
 
     def _vehicle_entry(self, v: MemoryItem, notes: list[str]) -> dict[str, Any]:
         m = v.meta
-        entry = {"kind": "vehicle", "slug": v.slug, "name": m.get("name", v.slug), "recalls": [], "note": None}
+        entry = {"kind": "vehicle", "slug": v.slug, "name": m.get("name", v.slug), "recalls": [], "note": None,
+                 **_whose(m)}
         if not (m.get("make") and m.get("year") and (m.get("nhtsa_model") or m.get("model"))):
             entry["note"] = "Add the make, model and year (or the VIN) so Lantern can check this car."
             return entry
@@ -433,7 +441,8 @@ class RecallWatch:
 
     def _product_entry(self, user_id: str, p: MemoryItem, feed: list[ProductRecall],
                        decisions: dict[str, Any]) -> dict[str, Any]:
-        entry = {"kind": "product", "slug": p.slug, "name": p.meta.get("name", p.slug), "recalls": [], "note": None}
+        entry = {"kind": "product", "slug": p.slug, "name": p.meta.get("name", p.slug), "recalls": [], "note": None,
+                 **_whose(p.meta)}
         fp = _fingerprint(p.meta)
         candidates = product_candidates(p.meta, feed)
         undecided = [r for r in candidates if f"{fp}|{r.number}" not in decisions]
@@ -530,6 +539,25 @@ class RecallWatch:
         except (OSError, ValueError):
             return {}
         return data if isinstance(data, dict) else {}
+
+
+def owner_name(text: str | None) -> str:
+    """'my mom' -> 'Mom', 'our son Leo' -> 'Son Leo'; '' for the user's own things ('me', 'mine', 'us')."""
+    words = [w for w in re.split(r"\s+", str(text or "").strip()) if w]
+    while words and words[0].lower() in ("my", "our", "the"):
+        words.pop(0)
+    name = re.sub(r"['’]s$", "", " ".join(words)[:40]).strip()
+    if name.lower() in ("", "me", "mine", "us", "ours", "myself", "i", "we", "yours", "you"):
+        return ""
+    return name[:1].upper() + name[1:]
+
+
+def _whose(meta: dict[str, Any]) -> dict[str, str]:
+    """For things that belong to someone the user looks after: "label" is how Lantern names it ("Mom's 2012 Camry")."""
+    owner, name = str(meta.get("owner") or ""), str(meta.get("name") or "")
+    if not owner:
+        return {}
+    return {"owner": owner, "label": name if name.lower().startswith(owner.lower() + "'s") else f"{owner}'s {name}"}
 
 
 def _progress(value: str | None) -> dict[str, str] | None:

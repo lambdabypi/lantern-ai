@@ -40,7 +40,8 @@ def test_demo_household_loads_once_with_older_recalls_fixed(settings):
     uid = c.post("/api/auth/guest").json()["user_id"]
     report = c.post("/api/demo").json()
     names = [i["name"] for i in report["items"]]
-    assert names[:2] == ["2006 Ford Ranger", "2019 Hyundai Tucson"] and "Voomf crib mattress" in names
+    assert names[:2] == ["2006 Ford Ranger", "Mom's 2019 Hyundai Tucson"] and "Voomf crib mattress" in names
+    assert report["items"][1]["owner"] == "Mom"                         # watching a car for someone else
     ranger = report["items"][0]["recalls"]
     assert {r["id"]: r["status"] for r in ranger} == {"20V314000": "open", "18V421000": "fixed"}   # urgent stays open
     assert store.get(uid, "profile").meta["location"] == "Boston, MA"

@@ -43,17 +43,18 @@ def due(report: dict[str, Any], state: dict[str, Any], today: date) -> tuple[tup
             if last and (today - date.fromisoformat(last)).days < REPEAT_DAYS:
                 continue
             what = (r.get("plain") or {}).get("title") or r.get("title") or "safety"
+            name = item.get("label") or item["name"]
             progress = r.get("progress") or {}
             since = _days(progress.get("since"), today)
             if progress.get("step") == "booked" and since >= BOOKED_DAYS:
-                candidates.append((1, key, f"Was it repaired? {item['name']}",
+                candidates.append((1, key, f"Was it repaired? {name}",
                                    f"You booked the free fix for \"{what}\" {since} days ago. If it's done, mark it "
                                    "fixed in Lantern."))
             elif progress.get("step") == "contacted" and since >= CONTACTED_DAYS:
-                candidates.append((2, key, f"Did you hear back? {item['name']}",
+                candidates.append((2, key, f"Did you hear back? {name}",
                                    f"You contacted them about \"{what}\" {since} days ago. Tap to book the free fix."))
             elif not progress and r.get("severity") in URGENT_WORDS and _days(entry["first"], today) >= URGENT_DAYS:
-                candidates.append((0, key, f"{URGENT_WORDS[r['severity']]}: {item['name']}",
+                candidates.append((0, key, f"{URGENT_WORDS[r['severity']]}: {name}",
                                    f"\"{what}\" is still open. The fix is free: tap to see how to get it."))
     known = {f"{i['kind']}:{i['slug']}|{r['id']}" for i in report.get("items", []) for r in i.get("recalls", [])
              if r.get("status") == "open"}

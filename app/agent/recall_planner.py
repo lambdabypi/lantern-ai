@@ -24,7 +24,8 @@ Decide:
 1. "add": things the person says THEY own or use in their latest message. A vehicle needs a make, model and
    year, or a VIN (17 characters). A product needs at least the kind of product (e.g. "crib"); add the brand and
    model if given. Don't add things they're only asking about, considering buying, or owned in the past, and
-   never add something already in their files.
+   never add something already in their files. If it belongs to someone they look after (their mom's car, their
+   son's car seat), still add it, with "owner": who it belongs to, in their words ("Mom", "my son").
 2. "check": true if they add something, or ask anything about recalls, safety, defects, whether something of
    theirs is safe, or what needs attention. False for greetings, thanks, small talk, or unrelated questions.
 3. "location": a city or ZIP code if they say where they live, else empty.
@@ -36,8 +37,8 @@ Decide:
    cars need a make, model and year, or a VIN). Never put these in "add".
 
 Reply with only JSON:
-{"add": [{"type": "vehicle", "make": "", "model": "", "year": 2018, "vin": ""},
-         {"type": "product", "brand": "", "product": "", "model": ""}],
+{"add": [{"type": "vehicle", "make": "", "model": "", "year": 2018, "vin": "", "owner": ""},
+         {"type": "product", "brand": "", "product": "", "model": "", "owner": ""}],
  "check": true or false, "location": "", "ask": null, "buying": []}"""
 
 NO_CHECK_NOTE = ("(Note from the app, not the user: no recall data was looked up for this message. Don't state "
@@ -58,7 +59,7 @@ class Plan:
 def _clean_thing(t: Any) -> dict[str, Any] | None:
     if not isinstance(t, dict) or t.get("type") not in ("vehicle", "product"):
         return None
-    keep = {k: v for k, v in t.items() if k in ("type", "make", "model", "year", "vin", "brand", "product")
+    keep = {k: v for k, v in t.items() if k in ("type", "make", "model", "year", "vin", "brand", "product", "owner")
             and v not in (None, "", 0)}
     if keep["type"] == "vehicle" and not (keep.get("vin") or (keep.get("make") and keep.get("model") and keep.get("year"))):
         return None

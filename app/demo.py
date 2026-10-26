@@ -1,8 +1,9 @@
 """A made-up demo household, so judges see Lantern working in one click (#2).
 
 Real makes and models with real, current recall data, but no real people and no VINs. It shows each kind of
-result: a "Do Not Drive" car (2006 Ford Ranger, Takata airbag inflators), a "park outside" car (2019 Hyundai
-Tucson, fire risk), a recalled product (a crib mattress) and an item with nothing to report. The Ranger's older,
+result: a "Do Not Drive" car (2006 Ford Ranger, Takata airbag inflators), a "park outside" car that belongs to
+the owner's mom (2019 Hyundai Tucson, fire risk: watching things for someone you look after), a recalled product (a
+crib mattress) and an item with nothing to report. The Ranger's older,
 non-urgent recalls start marked fixed, as an owner who has kept up with servicing would have them.
 """
 
@@ -12,7 +13,7 @@ from app.memory.store import MemoryStore, MemoryStoreError
 from app.recall_watch import RecallWatch
 from app.tools.recalls import RecallError
 
-VEHICLES = [("Ford", "Ranger", 2006), ("Hyundai", "Tucson", 2019)]
+VEHICLES = [("Ford", "Ranger", 2006, ""), ("Hyundai", "Tucson", 2019, "Mom")]
 PRODUCTS = [("Voomf", "crib mattress"), ("Lasko", "ceramic space heater")]
 LOCATION = "Boston, MA"
 FIXED_BEFORE = "2024-01-01"   # demo owner already had older, non-urgent recalls done
@@ -23,9 +24,10 @@ def load_demo_household(store: MemoryStore, watch: RecallWatch, user_id: str) ->
         raise MemoryStoreError("The demo household only loads into an empty account. Start a new guest session to try it.")
     store.upsert(user_id, "profile", None, {"location": LOCATION}, source="user")
     notes = []
-    for make, model, year in VEHICLES:
+    for make, model, year, owner in VEHICLES:
         try:
-            item = watch.save_vehicle(user_id, make, model, year, note="Demo household (made-up data).", source="user")
+            item = watch.save_vehicle(user_id, make, model, year, note="Demo household (made-up data).", source="user",
+                                      owner=owner)
         except RecallError as e:
             notes.append(f"{year} {make} {model}: {e}")
             continue

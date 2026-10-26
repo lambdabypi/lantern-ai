@@ -314,3 +314,16 @@ def test_the_same_product_from_a_receipt_fills_in_the_one_on_the_list(settings):
     w.save_product("alice", "high chair", "Lasko")                           # a different kind of thing
     items = {p.meta["name"]: p.meta.get("model") for p in store.list("alice", "product")}
     assert items == {"Lasko ceramic space heater": "754200", "Lasko heater 5160": "5160", "Lasko high chair": None}
+
+
+def test_things_for_someone_they_look_after_keep_their_own_files(settings):
+    w, store, _, _ = make(settings)
+    mine = w.save_vehicle("alice", "Honda", "Civic", 2018)
+    moms = w.save_vehicle("alice", "Honda", "Civic", 2018, owner="my mom")
+    assert mine.slug != moms.slug and moms.meta["name"] == "Mom's 2018 Honda Civic" and moms.meta["owner"] == "Mom"
+    w.save_product("alice", "stroller", "Graco")
+    theirs = w.save_product("alice", "stroller", "Graco", owner="Chris")
+    assert theirs.meta["name"] == "Chris's Graco stroller" and len(store.list("alice", "product")) == 2
+    items = {i["name"]: i for i in w.check("alice")["items"]}
+    assert items["Mom's 2018 Honda Civic"]["label"] == "Mom's 2018 Honda Civic" and "label" not in items["2018 Honda Civic"]
+    assert "Mom's, not theirs" in store.context_for_prompt("alice")

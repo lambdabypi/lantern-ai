@@ -46,11 +46,14 @@ def save_things(watch: RecallWatch, user_id: str, things: list[Any], limit: int 
         try:
             if thing.get("type") == "vehicle":
                 item = watch.save_vehicle(user_id, str(thing.get("make") or ""), str(thing.get("model") or ""),
-                                          thing.get("year"), str(thing.get("vin") or ""))
+                                          thing.get("year"), str(thing.get("vin") or ""), owner=str(thing.get("owner") or ""))
             else:
                 item = watch.save_product(user_id, str(thing.get("product") or ""),
-                                          str(thing.get("brand") or ""), str(thing.get("model") or ""))
-            saved.append(item.meta.get("name", item.slug))
+                                          str(thing.get("brand") or ""), str(thing.get("model") or ""),
+                                          owner=str(thing.get("owner") or ""))
+            name = item.meta.get("name", item.slug)
+            owner = item.meta.get("owner")
+            saved.append(f"{owner}'s {name}" if owner and not name.startswith(f"{owner}'s") else name)
         except (RecallError, MemoryStoreError, ValueError) as e:
             problems.append(str(e))
     return saved, problems
@@ -65,7 +68,7 @@ def make_recall_tools(store: MemoryStore, watch: RecallWatch) -> list[Tool]:
         items = []
         for it in report["items"]:
             open_recalls = [r for r in it["recalls"] if r["status"] == "open"]
-            items.append({"name": it["name"], "kind": it["kind"], "open_recalls": len(open_recalls),
+            items.append({"name": it.get("label") or it["name"], "kind": it["kind"], "open_recalls": len(open_recalls),
                           "recalls": [_brief(r) for r in open_recalls[:MAX_RECALLS_PER_ITEM]],
                           **({"more": len(open_recalls) - MAX_RECALLS_PER_ITEM}
                              if len(open_recalls) > MAX_RECALLS_PER_ITEM else {}),
