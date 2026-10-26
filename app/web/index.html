@@ -507,6 +507,13 @@
   .badge.norecall { background: color-mix(in srgb, var(--glow) 22%, var(--surface)); color: var(--text); }
   .themes details summary { cursor: pointer; color: var(--accent); font-size: .9rem; }
   .themes details p { margin-top: 6px; font-size: .92rem; color: var(--muted); }
+  .buycheck { margin-top: 18px; }
+  .buyres { border-top: 1px solid var(--border); padding-top: 14px; margin-top: 6px; display: grid; gap: 8px; animation: rise .4s both; }
+  .buyres h3 { margin: 0; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .buyres .advice { margin: 0; font-weight: 560; }
+  .buyres.bad .advice { color: var(--danger); }
+  .buyres ul { margin: 0; padding-left: 1.2em; display: grid; gap: 4px; }
+  .buyres p { margin: 0; }
   .unitform { display: grid; gap: 10px; margin-top: 10px; }
   .unitform label { font-weight: 560; }
   .unitform input[type=text] { width: 100%; }
@@ -836,6 +843,18 @@
     <p class="watching" id="watching" hidden><span class="dot" aria-hidden="true"></span><span id="watchingText"></span></p>
     <div class="stack" id="attention" style="margin-top:14px"></div>
     <div class="stack" id="ownerReports" style="margin-top:18px"></div>
+    <form class="quick-add card buycheck" id="buyForm" novalidate>
+      <label class="own-label" for="buyInput">Buying something secondhand?
+        <span>Check it before you pay. Paste the listing link, or say what it is, like "a used 2014 Jeep Cherokee".</span></label>
+      <div class="prompt">
+        <input id="buyInput" name="buying" placeholder="A used Graco high chair" autocomplete="off" maxlength="2000" spellcheck="false">
+        <button type="button" class="mic" id="buyMic" aria-label="Say what you're buying" aria-pressed="false" hidden><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v4"/></svg></button>
+        <button class="go" type="submit" aria-label="Check before buying"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M5 12h13M13 6l6 6-6 6"/></svg></button>
+      </div>
+      <p class="voice-note" id="buyNote" role="status" hidden></p>
+      <div class="error" id="buyError" role="alert"></div>
+      <div class="stack" id="buyResults"></div>
+    </form>
     <details class="done" id="doneBox" hidden><summary id="doneSummary"></summary><div class="stack" id="doneList"></div></details>
     <div class="stack" id="callouts" style="margin-top:16px"></div>
     <p class="hint" id="homeNote"></p>
@@ -1195,6 +1214,8 @@ const STEPS = {
   product: ["Reading the CPSC's list of product recalls", "Matching it to your product with Nemotron", "Writing a plain-English summary"],
   things: ["Reading what you own with NVIDIA Nemotron", "Asking NHTSA about any cars", "Checking the CPSC's product recalls",
            "Writing plain-English summaries"],
+  buying: ["Reading what's for sale with NVIDIA Nemotron", "Asking NHTSA and the CPSC for recalls",
+           "Checking what other owners report", "Writing plain-English summaries"],
   demo: ["Setting up an example household", "Asking NHTSA about two cars", "Checking the CPSC for a crib mattress and a heater",
          "Writing plain-English summaries with NVIDIA Nemotron"],
 };
@@ -1468,6 +1489,8 @@ function listen({ btn, input, note, say, joiner = ", ", onDone }) {
 const OWN_SAY = "Listening… say everything you own, then pause or tap the mic again. (Voice uses your browser's own speech service; in Chrome, that's Google's.)";
 listen({ btn: $("ownMic"), input: $("ownInput"), note: $("ownNote"), say: OWN_SAY });
 listen({ btn: $("quickMic"), input: $("quickInput"), note: $("quickNote"), say: OWN_SAY });
+listen({ btn: $("buyMic"), input: $("buyInput"), note: $("buyNote"), joiner: " ",
+         say: "Listening… say what you're thinking of buying, then pause. (Voice uses your browser's own speech service; in Chrome, that's Google's.)" });
 
 // Anything someone owns, in their own words. A pasted VIN is checked straight away; everything else is read by
 // Nemotron Nano on the server (/api/things), which picks out each car and product.
@@ -1559,6 +1582,69 @@ $("quickAdd").addEventListener("submit", async (e) => {
     form.querySelector(".go").disabled = false;
   }
 });
+// ---- check before you buy (see app/precheck.py): nothing is added to the list unless they say they bought it ----
+$("buyForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const form = e.currentTarget, text = $("buyInput").value.trim();
+  if (!text) { $("buyError").textContent = "Paste the listing link, or say what it is."; return; }
+  $("buyError").textContent = ""; $("buyNote").hidden = true;
+  form.querySelector(".go").disabled = true;
+  const done = startSweep("buying");
+  let res, data;
+  try { ({ res, data } = await api("/api/precheck", { method: "POST", body: { text } })); } catch { res = { ok: false }; }
+  await done(res.ok);
+  form.querySelector(".go").disabled = false;
+  if (!res.ok) { $("buyError").textContent = detail(data, "Couldn't check that right now."); return; }
+  const out = [];
+  if (data.listing && data.listing.note) out.push(el("p", "hint", data.listing.note));
+  for (const r of data.results) out.push(buyResult(r));
+  $("buyResults").replaceChildren(...out);
+});
+function buyResult(r) {
+  const n = r.recalls ? r.recalls.length : 0;
+  const box = el("div", "buyres" + (n ? " bad" : ""));
+  const h = el("h3", "", r.name);
+  if (r.error) { box.append(h, el("p", "error", r.error)); return box; }
+  h.appendChild(n ? el("span", "badge " + (r.urgent ? "park_it" : "possible"), `${n} recall${n === 1 ? "" : "s"}`)
+                  : el("span", "badge ok", "No recalls found"));
+  box.append(h, el("p", "advice", r.advice));
+  if (n) {
+    const ul = el("ul");
+    for (const rc of r.recalls.slice(0, 5)) {
+      const li = el("li");
+      if (rc.severity) { li.appendChild(el("span", "badge " + rc.severity, BADGE[rc.severity])); li.append(" "); }
+      li.append((rc.plain && rc.plain.title) || sentence(String(rc.title || "Safety recall"), 80), " · ");
+      li.appendChild(link(rc.url, r.kind === "vehicle" ? "nhtsa.gov" : "cpsc.gov"));
+      ul.appendChild(li);
+    }
+    box.appendChild(ul);
+    if (n > 5) {
+      const more = el("p", "hint", `And ${n - 5} more. `);
+      more.appendChild(link(r.kind === "vehicle" ? r.vin_check_url : "https://www.cpsc.gov/Recalls", "See them all"));
+      box.appendChild(more);
+    }
+    if (r.kind === "product" && r.recalls.some(x => x.confirmed !== true)) box.appendChild(el("p", "hint", "Some may not cover this exact one: compare the model number on its label with the notice."));
+  }
+  const rep = r.owner_reports;
+  if (rep && rep.themes && rep.themes.length) {
+    const top = rep.themes.find(x => !x.covered_by_recall && x.component !== "UNKNOWN OR OTHER") || rep.themes[0];
+    const fires = top.fires ? `, ${top.fires} with a fire` : "";
+    const part = top.component.split(",")[0].toLowerCase();
+    box.appendChild(el("p", "", `Owners report: ${top.title.toLowerCase()} (${top.count} complaints to NHTSA${fires})${top.covered_by_recall ? "." : `. No recall covers the ${part}.`}`));
+  }
+  const row = el("div", "actions");
+  if (r.kind === "vehicle") row.appendChild(link(r.vin_check_url, "Check the seller's VIN", "chipbtn"));
+  row.appendChild(button("I bought it: watch it", "chipbtn", async (ev) => {
+    ev.currentTarget.disabled = true;
+    try {
+      const out = await addOwned(r.name);
+      renderRecalls(out.recalls); loadStuff();
+      toast("Added " + out.saved.join(", ") + ". Lantern will watch it every day.");
+    } catch (err) { toast(err.message); ev.currentTarget.disabled = false; }
+  }));
+  box.appendChild(row);
+  return box;
+}
 $("demoBtn").addEventListener("click", async () => {
   if (me && !confirm(me.kind === "guest"
       ? "The example opens in a new guest session, so you'd leave this one. To keep your list, use \"Keep my list\" in the menu first. Open the example?"
@@ -1723,8 +1809,9 @@ function ownerReportCard(d) {
     const li = el("li");
     const line = el("div", "tline");
     line.appendChild(el("strong", "", t.title));
-    line.appendChild(t.covered_by_recall ? el("span", "badge ok", `Recall ${t.recall_ids[0]} covers this`)
-                                         : el("span", "badge norecall", "No recall for this"));
+    const part = t.component.split(",")[0].toLowerCase();
+    if (t.covered_by_recall) line.appendChild(el("span", "badge ok", `Recall ${t.recall_ids[0]} covers the ${part}`));
+    else if (t.component !== "UNKNOWN OR OTHER") line.appendChild(el("span", "badge norecall", `No recall for the ${part}`));
     li.appendChild(line);
     if (t.what) li.appendChild(el("p", "", t.what));
     const stats = el("p", "tstats");
@@ -2286,7 +2373,7 @@ function add(text, cls) {
   $("suggest").hidden = true;
   return div;
 }
-const SUGGESTIONS = ["Is my car safe to drive?", "Where is the VIN on my car?", "Explain my most urgent recall simply", "How do I get my recall fixed?"];
+const SUGGESTIONS = ["Is my car safe to drive?", "Where is the VIN on my car?", "Explain my most urgent recall simply", "I'm thinking of buying a used 2014 Jeep Cherokee"];
 function renderSuggestions() {
   $("suggest").replaceChildren(...SUGGESTIONS.map((s, i) => {
     const b = button(s, "chipbtn", () => { $("msg").value = s; $("chatForm").requestSubmit(); });

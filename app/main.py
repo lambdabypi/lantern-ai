@@ -29,6 +29,7 @@ from app.memory.store import KINDS, RECALL_STATUSES, UNIT_CHECKS, MemoryStore, M
 from app.demo import load_demo_household
 from app.fix_helper import draft_message, find_dealers
 from app.owner_reports import OwnerReports
+from app.precheck import PreCheck, PreCheckError, make_precheck_tool
 from app.push import Push, PushError
 from app.recall_watch import RecallWatch
 from app.tools.builtin import builtin_tools
@@ -120,6 +121,10 @@ class UnitCheckRequest(UnitGuideRequest):
     photo: str = Field(default="", max_length=9_000_000)     # data:image/...;base64 (shrunk in the browser first)
 
 
+class BuyingText(BaseModel):
+    text: str = Field(min_length=1, max_length=2000)   # what they're looking at, or a listing link
+
+
 class ThingsText(BaseModel):
     text: str = Field(min_length=1, max_length=2000)
 
@@ -164,7 +169,7 @@ class MeResponse(BaseModel):
 def create_app(loop: AgentLoop | None = None, settings: Settings | None = None, watch: RecallWatch | None = None,
                push: Push | None = None, search: WebSearch | None = None,
                makers: MakerPages | None = None, units: UnitCheck | None = None,
-               reports: OwnerReports | None = None) -> FastAPI:
+               reports: OwnerReports | None = None, precheck: PreCheck | None = None) -> FastAPI:
     _setup_logging()
     settings = settings or load_settings()
     settings.require_secret_key()
@@ -178,7 +183,10 @@ def create_app(loop: AgentLoop | None = None, settings: Settings | None = None, 
         watch = watch or RecallWatch(memory, RecallClient(), router, settings.data_dir)
         makers = makers or MakerPages(search, router, settings.data_dir)
         units = units or UnitCheck(router, settings.data_dir, vision=bool(settings.model_vision))
-        tools = (make_recall_tools(memory, watch) + [make_ask_maker_tool(memory, makers, watch)]
+        reports = reports or OwnerReports(watch.client, router, settings.data_dir)
+        precheck = PreCheck(watch, router, search, reports)
+        tools = (make_recall_tools(memory, watch) + [make_ask_maker_tool(memory, makers, watch),
+                                                      make_precheck_tool(precheck)]
                  + builtin_tools(settings, search))
 
         def thing_named(user_id: str, text: str) -> str | None:
@@ -195,6 +203,8 @@ def create_app(loop: AgentLoop | None = None, settings: Settings | None = None, 
 
     if reports is None and watch is not None:
         reports = OwnerReports(watch.client, watch.router, settings.data_dir)
+    if precheck is None and watch is not None:
+        precheck = PreCheck(watch, watch.router, search, reports)
     if push is None and settings.vapid_private_key:
         push = Push(settings.data_dir, settings.vapid_private_key,
                     settings.public_base_url or "https://github.com/lambdabypi/lantern-ai")
@@ -221,6 +231,10 @@ def create_app(loop: AgentLoop | None = None, settings: Settings | None = None, 
     @app.exception_handler(UnitCheckError)
     def unit_error(_: Request, e: UnitCheckError) -> JSONResponse:
         return JSONResponse({"detail": str(e)}, status_code=422)
+
+    @app.exception_handler(PreCheckError)
+    def precheck_error(_: Request, e: PreCheckError) -> JSONResponse:
+        return JSONResponse({"detail": str(e)}, status_code=502)
 
     @app.exception_handler(MemoryStoreError)
     def memory_error(_: Request, e: MemoryStoreError) -> JSONResponse:
@@ -622,6 +636,21 @@ def create_app(loop: AgentLoop | None = None, settings: Settings | None = None, 
         if not saved:
             raise HTTPException(status_code=422, detail=" ".join(problems) or "Nothing could be saved.")
         return {"saved": saved, "problems": problems, "recalls": w.check(account.user_id)}
+
+    @app.post("/api/precheck")
+    def check_before_buying(req: BuyingText, account: Account = Depends(current_account)) -> dict:
+        """Recalls and owner complaints for something secondhand, before buying it (see app/precheck.py). Nothing is
+        added to the list. Counts as one message toward the daily caps."""
+        if precheck is None:
+            raise HTTPException(status_code=503, detail="Checking before you buy isn't available on this server.")
+        spend_message(account, "Add it to My stuff to check it, or")
+        things, listing = precheck.read(req.text.strip())
+        if not things:
+            note = (listing or {}).get("note")
+            raise HTTPException(status_code=422, detail=note or "I couldn't tell what's for sale. Try something like "
+                                                                "\"a used 2014 Jeep Cherokee\" or \"a Graco high chair\". For a car "
+                                                                "I need the year, make and model, or the VIN.")
+        return {"results": precheck.check(things), "listing": listing}
 
     @app.post("/api/demo")
     def demo(account: Account = Depends(current_account)) -> dict:

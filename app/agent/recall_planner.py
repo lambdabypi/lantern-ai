@@ -31,11 +31,13 @@ Decide:
    its VIN or model number is, its warranty, or how to get a recall remedy done (things the recall lists don't
    answer), give {"thing": "its name as in their files", "question": "the question, written to stand alone"}.
    Otherwise null. When "ask" is set, "check" is false unless they also ask whether something is recalled or safe.
+5. "buying": things they are thinking of buying, or being given or offered, secondhand (same shape as "add";
+   cars need a make, model and year, or a VIN). Never put these in "add".
 
 Reply with only JSON:
 {"add": [{"type": "vehicle", "make": "", "model": "", "year": 2018, "vin": ""},
          {"type": "product", "brand": "", "product": "", "model": ""}],
- "check": true or false, "location": "", "ask": null}"""
+ "check": true or false, "location": "", "ask": null, "buying": []}"""
 
 NO_CHECK_NOTE = ("(Note from the app, not the user: no recall data was looked up for this message. Don't state "
                  "recall or safety facts from memory. If they're just chatting or thanking you, reply briefly and "
@@ -103,7 +105,11 @@ class RecallPlanner:
         location = str(data.get("location") or "").strip()
         ask = data.get("ask") if isinstance(data.get("ask"), dict) else {}
         thing, question = str(ask.get("thing") or "").strip()[:80], str(ask.get("question") or "").strip()[:300]
-        if thing and question:  # the maker's own pages answer this (see app/maker_pages.py)
+        buying = [c for c in (_clean_thing(t) for t in (data.get("buying") or [])[:3]) if c]
+        if buying and not add:  # something they might buy, not one of theirs (see app/precheck.py)
+            return Plan(tool="check_before_buying", args={"things": buying})
+        if thing and question and (self.match is None or self.match(user_id, thing)):
+            # the maker's own pages answer this (see app/maker_pages.py); only for things on their list
             return Plan(tool="ask_maker", args={"thing": thing, "question": question})
         if not (add or data.get("check")):
             thing = self.match(user_id, message) if self.match and _QUESTION.search(message) else None

@@ -236,6 +236,28 @@ class RecallWatch:
         return self.store.upsert(user_id, kind, item.slug, {"recall_status": statuses},
                                  note=note, source="user")
 
+    # ---- something not on the list (e.g. before buying it) -------------------------------------------------
+    def preview(self, thing: dict[str, Any]) -> dict[str, Any]:
+        """Recalls for a car or product that isn't on anyone's list, in the same shape as a report item, with plain
+        summaries. Nothing is saved for the user (shared caches are used and filled as usual)."""
+        notes: list[str] = []
+        if thing.get("type") == "vehicle":
+            fields = self.describe_vehicle(thing.get("make", ""), thing.get("model", ""), thing.get("year"),
+                                           thing.get("vin", ""))["fields"]
+            fields.pop("vin", None)
+            entry = self._vehicle_entry(MemoryItem("vehicle", "preview", fields), notes)
+        else:
+            meta = {k: str(thing[k]).strip() for k in ("brand", "product", "model") if thing.get(k)}
+            if not meta.get("product"):
+                raise MemoryStoreError("What kind of product is it (for example: crib, space heater, stroller)?")
+            meta["name"] = " ".join(meta[k] for k in ("brand", "product", "model") if meta.get(k))
+            entry = self._product_entry("", MemoryItem("product", "preview", meta), self.product_feed(), {})
+        if notes and not entry["note"]:
+            entry["note"] = " ".join(notes)
+        if self.plain_summaries:
+            self._add_plain([entry])
+        return entry
+
     # ---- per user -----------------------------------------------------------------------------
     def check(self, user_id: str, write_plain: bool = True) -> dict[str, Any]:
         """Every recall that may affect the user's things, with their status. Errors are reported, not raised.

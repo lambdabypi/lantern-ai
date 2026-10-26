@@ -57,7 +57,7 @@ def test_system_prompt_states_identity_tools_and_limits(settings):
     assert "not a general-purpose assistant" in prompt
     assert "- calculator: Evaluate an arithmetic expression exactly." in prompt
     assert "- web_search:" in prompt
-    assert "Never state recall or safety facts unless recall_check returned them" in prompt
+    assert "Never state recall or safety facts unless recall_check or check_before_buying returned them" in prompt
     assert "Never say their car has or hasn't" in prompt and "https://www.nhtsa.gov/recalls" in prompt
     assert "Nothing saved yet." in prompt  # no profile provider -> neutral placeholder
 
