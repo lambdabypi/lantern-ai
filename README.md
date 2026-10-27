@@ -2,6 +2,8 @@
 
 **A personal AI that knows what you own and watches for safety recalls.** Tell Lantern about your car, car seat, crib or space heater. Every day it checks the official U.S. recall lists, tells you in plain words what's wrong and how serious it is, and helps you get the free fix. Everything it remembers is a plain file you can see, edit, delete and download.
 
+Recall apps tell you a recall exists. **Lantern tells you what it means for you, and helps you get it fixed.**
+
 Built for the **Nebius x NVIDIA Global AI Hackathon**. All AI runs on **NVIDIA Nemotron** models through **Nebius Token Factory**.
 
 **Try it:** https://lantern-976584717995.us-central1.run.app. Tap **See a demo household** (made-up people, real recall data), or type your own car. No sign-up. On a phone, add it to your Home Screen to use it like an app.
@@ -67,7 +69,7 @@ Every LLM call goes to the **Nebius Token Factory** OpenAI-compatible API. Lante
 |---|---|
 | Nemotron 3 Nano (`MODEL_FAST`), thinking off | Reading each message first: pulling out the things you say you own and deciding whether to check recalls; confirming that a CPSC recall really matches a product you own; small talk |
 | Nemotron 3 Super (`MODEL_BALANCED`), thinking off | Writing answers from the official recall data it was given; rewriting each recall notice in plain English (once per recall, shared by everyone, cached); for "Is mine affected?", working out from each notice how to tell recalled units apart (shared per recall) and comparing your label with it; a plain title and sentence for each group of owner complaints (shared per model, weekly); picking out the recallable things in pasted receipts and order emails |
-| Nemotron 3 Ultra (`MODEL_REASONING`) | "Think harder" only |
+| Nemotron 3 Ultra (`MODEL_REASONING`) | Only when you tick "Take more time to think" in Ask (capped per person and site-wide) |
 | Nemotron 3.5 Super VL (`MODEL_VISION`), thinking off | Reading the photos you take: a product label for "Is mine affected?" (model numbers, dates, lot codes), a paper receipt for "Add from receipts" (item lines only, no prices or card details), or whatever you photograph with the camera in the "What do you own?" box. Photos are sent once and never stored or cached |
 
 Reasoning is switched per call with `chat_template_kwargs.enable_thinking`. Every call is logged with its model and token counts (`data/logs/llm_usage.jsonl`).
@@ -148,9 +150,37 @@ endpoints refuse, its buttons disappear and its reminders stop. Your choices are
 
 - A **lookup planner** (Nano) decides whether a message needs a lookup; the loop then runs the tool itself, so the model can't skip it and guess.
 - **Every tool call goes through one checkpoint** (`ToolRegistry`) with a timeout and an audit log entry in `data/users/<id>/logs/audit.jsonl`.
-- **Guardrails:** at most 6 tool calls and 40k tokens per message, and daily caps per guest, per user and site-wide, so a public demo can't run away with credits.
+- **Guardrails:** at most 6 tool calls and 40k tokens per message, plus the daily caps below.
 - **Answers stream** over server-sent events with live status lines.
 - **Web content is untrusted:** the model is told never to follow instructions found in fetched pages.
+
+## Cost and safety limits
+
+Lantern is a public demo on the developer's own accounts, so every way of spending money has a daily cap. All reset
+at midnight UTC and are set in `.env` (`0` = no cap):
+
+| What | Cap |
+|---|---|
+| **Model spending, all of it** (chat, photos, the daily job) | Each call is priced from Token Factory's list prices in the model router; the site stops calling models for the day at `SITE_MODEL_DOLLARS_PER_DAY` ($1). The recall lists keep working |
+| Messages (anything that calls a model) | 30 per guest, 100 per signed-in user, 300 site-wide |
+| "Take more time to think" (Ultra) | 10 per guest, 20 per signed-in user, 40 site-wide |
+| Tavily credits | 150 site-wide (cached answers are free) |
+| New guests and accounts | 30 guests and 5 accounts per network, 300 guests and 100 accounts site-wide |
+| Sign-in attempts | 5 failures per username per 10 minutes, 100 attempts per network |
+| Things per person | 50 cars and 50 products |
+| Request size | 9 MB (a shrunk photo); larger requests are refused |
+
+Hosting has its own backstop: [`deploy/killswitch/`](deploy/killswitch/) is a Cloud Run function on a Google Cloud
+budget that takes the app off the public internet if the month's hosting bill reaches $5, so a flood of traffic
+can't run up a bill. A security review on 27 Oct 2026 also added security headers (a content security policy,
+no framing), and stopped one person's edited sources from changing the fix steps everyone sees.
+
+## Future work
+
+- More recall sources: food and drugs (FDA, USDA), and barcode scanning.
+- Signing out everywhere (sessions currently last up to 14 days).
+- Parked from earlier versions, in the git history: an animated companion (Glim), a desktop app, and sandboxed
+  helper skills.
 
 ## Track tools we evaluated
 
