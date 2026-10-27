@@ -1226,7 +1226,11 @@ function sentence(text, max = 220) {
   return cut.slice(0, Math.max(cut.lastIndexOf(". ") + 1, cut.lastIndexOf(" "))) + "…";
 }
 function transition(update) {
-  if (document.startViewTransition && !reduceMotion) document.startViewTransition(update); else update();
+  if (!document.startViewTransition || reduceMotion) { update(); return; }
+  // A transition is skipped when another starts (quick tab switches) or the page is hidden; the update still runs,
+  // so the rejected promises are expected, not errors.
+  const t = document.startViewTransition(update);
+  for (const p of [t.ready, t.finished, t.updateCallbackDone]) p.catch(() => {});
 }
 // A small burst of light from an element (marking something fixed).
 function sparks(from) {
@@ -1637,6 +1641,7 @@ function listen({ btn, input, note, say, joiner = ", ", onDone, quietMs = QUIET_
     try { rec.start(); quiet(FIRST_WORDS_MS); }
     catch { rec = null; btn.setAttribute("aria-pressed", "false"); tell(voiceProblem("service-not-allowed")); }
   });
+  return stop;   // so a form can stop its mic when the message is sent by hand
 }
 const OWN_SAY = "Listening… say everything you own, then tap the mic when you're done. (Voice uses your browser's own speech service; in Chrome, that's Google's.)";
 listen({ btn: $("ownMic"), input: $("ownInput"), note: $("ownNote"), say: OWN_SAY });
@@ -2733,7 +2738,7 @@ $("chatForm").addEventListener("submit", async (e) => {
   e.preventDefault();
   const message = $("msg").value.trim();
   if (!message) return;
-  stopListening();
+  stopChatMic();
   add(message, "user");
   $("msg").value = "";
   $("sendBtn").disabled = true;
@@ -2778,7 +2783,7 @@ $("msg").addEventListener("focus", () => { if (touch) $("tabbar").hidden = true;
 $("msg").addEventListener("blur", () => { if (me) $("tabbar").hidden = false; });
 
 // Voice: the browser's own speech recognition (the shared listen() helper) and speech synthesis.
-listen({ btn: $("micBtn"), input: $("msg"), note: $("voiceNote"), joiner: " ",
+const stopChatMic = listen({ btn: $("micBtn"), input: $("msg"), note: $("voiceNote"), joiner: " ",
          say: "Listening… ask your question, then pause or tap the mic. (Voice uses your browser's own speech service; in Chrome, that's Google's.)",
          onDone: () => $("chatForm").requestSubmit(), quietMs: 5000 });
 if ("speechSynthesis" in window) {
