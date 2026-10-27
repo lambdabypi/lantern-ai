@@ -78,3 +78,13 @@ def test_fix_for_products_and_errors(settings):
     assert c.post("/api/fix", json={"kind": "vehicle", "slug": "nope"}).status_code == 404
     c.post("/api/recalls/status", json={"kind": "product", "slug": slug, "recall_id": "26669", "status": "fixed"})
     assert c.post("/api/fix", json={"kind": "product", "slug": slug}).status_code == 422   # nothing open
+
+
+def test_a_zip_code_gets_its_state_for_the_dealer_search():
+    from app.fix_helper import search_place
+    assert search_place("07306") == "ZIP code 07306, New Jersey"        # gave Phoenix dealers first when bare
+    assert search_place(" 85004-1234 ") == "ZIP code 85004, Arizona"
+    assert search_place("20166") == "ZIP code 20166, Virginia"          # 201 is Virginia, inside DC's 200-205
+    assert search_place("02134") == "ZIP code 02134, Massachusetts"
+    assert search_place("Boston, MA") == "Boston, MA"                   # anything else is used as typed
+    assert search_place("00901") == "ZIP code 00901"                    # territories: no state added
