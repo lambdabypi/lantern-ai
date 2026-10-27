@@ -58,3 +58,60 @@ A bigger model wasn't the fix most of the time. Better retrieval, and making the
 Food and drug recalls (FDA, USDA), barcode scanning, and getting the list built for you from more places you already have, like order history.
 
 **Built with:** Python, FastAPI, NVIDIA Nemotron (Nano, Super, Super VL, Ultra), Nebius Token Factory, Tavily, NHTSA APIs, CPSC API, Google Cloud Run, HTML, JavaScript.
+
+## Sponsor questions
+
+**Which model(s) did you use, and why did you choose that size/variant?**
+
+Four, each on the smallest job it does well.
+- **Nemotron 3 Nano (30B-A3B), thinking off:** reading every message first (what do you own, is this a recall question, are you buying something) and confirming that a CPSC recall really matches your product. It's fast, about a second, and these are short, structured decisions.
+- **Nemotron 3 Super (120B-A12B), thinking off:** anything a person reads. The plain-English recall summaries, chat answers written from the official data, the "is mine affected?" verdicts, and reading receipts. I moved receipts to Super after Nano kept 1 item out of 3 on the same receipt and changed its answer run to run. Super kept all 3, every time.
+- **Nemotron 3.5 Super VL, thinking off:** reading photos of labels and receipts. It copies the text exactly, and then Super decides what's on it.
+- **Nemotron 3 Ultra (550B-A55B):** only when someone ticks "Take more time to think". It's capped, because a normal answer doesn't need it.
+
+**How would you rate Nemotron's output quality for your use case? (1-10)**
+
+8. Super's plain-English summaries are honestly good, and it follows "use only what the notice says" well. It loses points on format: it sometimes wrote single-quoted JSON, and it added citation markers like 【url】 even when told not to, so I parse around both.
+
+**Did you fine-tune, prompt-engineer, or use Nemotron out of the box? What was your approach?**
+
+Out of the box with prompt engineering, no fine-tuning. Three things mattered more than the prompts themselves.
+1. **Thinking on or off per call** (`chat_template_kwargs.enable_thinking`). Off made extraction about 12× faster (36.7 s to 3.1 s on one batch). But Nano with thinking off answered 12 × 7 = 72, reproducibly, so reasoning-heavy turns keep it on.
+2. **Making the model account for everything.** Asked for a list of items on a receipt, Super left one out 3 runs in 4. Asked to decide keep or skip for every numbered line, it got all of them, 4 runs in 4.
+3. **Checking its output against the source.** Every brand, model number and car it names has to appear in the person's words or the page, and "your one isn't included" needs a quote found word for word in the recall notice. After a listing link it couldn't read came back as a "2014 Ford F-150" nobody mentioned, that rule became non-negotiable.
+
+**How did Nemotron's performance compare to other models you've used for similar tasks?**
+
+I didn't run the same tasks on other providers' models for this project, so I won't rank it against them. Within the family, the clearest lesson was that size wasn't the fix most of the time. In an earlier version, Nano, Super and Ultra all gave the same confident wrong answer to a question, and better retrieval fixed it, not a bigger model. Where size did matter was extraction from messy text (receipts), where Super was clearly more reliable than Nano.
+
+**Which Nebius platform capabilities were most valuable to your project and how? (GPU instances, deployment setup, API access, scaling)**
+
+Token Factory's OpenAI-compatible API, and the fact that I didn't have to run any GPUs. Every model call goes through the standard `openai` Python SDK pointed at Token Factory, with the model IDs in environment variables, so switching a job from Nano to Super was a one-line change. No GPU instances, no deployment, no scaling to manage: Token Factory is serverless, and the web app itself is a small container on Google Cloud Run. The model list is how I found Super VL partway through and added photo reading in an afternoon. Cost has been tiny: about $0.0015 for a chat answer, and well under a dollar of logged spend through development.
+
+**How likely are you to recommend running Nemotron on Nebius to other developers? (1-10)**
+
+8. Going from an API key to four model sizes behind one familiar API is the main reason. Not having to think about GPUs for a hackathon is huge. Clearer docs on what each model supports would get it higher.
+
+**How would you rate your experience running Nemotron inference on Nebius compared to previous cloud or local development environments? (1-10)**
+
+8. Much less setup than hosting a model myself, and the OpenAI-compatible API meant no new client to learn. The friction was finding out what works by trial: `reasoning_budget` and `reasoning_effort` had no reliable effect, and thinking on Super VL used all its tokens and returned nothing.
+
+**What additional features or improvements would have made the Nemotron on Nebius experience more effective for your project?**
+
+Four.
+1. **Spending caps per API key.** My demo is public and my card is on file, so I had to build a daily dollar cap inside the app myself.
+2. **A speech-to-text model.** Voice had to use the browser's own speech service, which behaves differently in every browser.
+3. **Prices and limits for every model in one place,** including Super VL and how image tokens are counted.
+4. **A strict JSON output mode,** so I wouldn't have to parse around single quotes and stray markers.
+
+**What do you most hope to see from the Nemotron team next?**
+
+A speech model, and a small vision model. Reading a label is a small job, and Super VL is more than it needs.
+
+**Did you use Tavily in your project?**
+
+Yes, at runtime, in four places (`app/maker_pages.py`, `app/precheck.py`, `app/fix_helper.py`).
+- **How to get the fix:** Tavily Search with `include_domains` set to the carmaker's own sites and nhtsa.gov finds the maker's recall page, then Tavily Extract pulls the passages about the remedy, and Nemotron turns them into numbered steps with the sources linked.
+- **Ask about your stuff:** questions about something you own are searched only on that maker's sites (plus nhtsa.gov or cpsc.gov), and the answer cites the pages.
+- **Check before you buy:** Extract reads a secondhand listing link you paste.
+- **Book the free fix:** a basic search finds authorized dealers near you.
