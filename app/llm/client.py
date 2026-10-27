@@ -17,6 +17,10 @@ class LLMError(RuntimeError):
     """An LLM call failed. The message is safe to show to the user."""
 
 
+class LLMTimeout(LLMError):
+    """The model didn't answer within the call's timeout."""
+
+
 @dataclass
 class ChatResult:
     text: str
@@ -49,6 +53,7 @@ class TokenFactoryClient:
         *,
         use_cache: bool = True,
         on_delta: Callable[[str], None] | None = None,
+        retries: int | None = None,
         **params: Any,
     ) -> ChatResult:
         """Send one chat completion. Identical calls are served from the dev cache.
@@ -66,13 +71,15 @@ class TokenFactoryClient:
                 on_delta(cached.text)
             return cached
 
+        # retries: override the client's automatic retries for this call (0 = fail fast, so the router can try
+        # another model instead of waiting through retries of a slow one)
+        api = self._client.with_options(max_retries=retries)             if retries is not None and hasattr(self._client, "with_options") else self._client
         start = time.perf_counter()
         try:
             if on_delta is not None:
-                result = self._stream(model, messages, on_delta, params)
+                result = self._stream(api, model, messages, on_delta, params)
             else:
-                result = self._parse(model, self._client.chat.completions.create(
-                    model=model, messages=messages, **params))
+                result = self._parse(model, api.chat.completions.create(model=model, messages=messages, **params))
         except openai.AuthenticationError as e:
             raise LLMError("Token Factory rejected the API key (TOKEN_FACTORY_API_KEY).") from e
         except openai.NotFoundError as e:
@@ -80,7 +87,7 @@ class TokenFactoryClient:
         except openai.RateLimitError as e:
             raise LLMError("Token Factory rate limit or quota hit. Wait a moment or check your credits.") from e
         except openai.APITimeoutError as e:
-            raise LLMError(f"Token Factory didn't answer in time (model '{model}').") from e
+            raise LLMTimeout(f"Token Factory didn't answer in time (model '{model}').") from e
         except openai.APIConnectionError as e:
             raise LLMError(f"Couldn't reach Token Factory at {self.base_url}.") from e
         except openai.APIError as e:
@@ -111,11 +118,11 @@ class TokenFactoryClient:
             finish_reason=getattr(choice, "finish_reason", "") or "",
         )
 
-    def _stream(self, model: str, messages: list[dict[str, str]], on_delta: Callable[[str], None],
+    def _stream(self, api: Any, model: str, messages: list[dict[str, str]], on_delta: Callable[[str], None],
                 params: dict[str, Any]) -> ChatResult:
         """Stream a completion: text goes to on_delta as it arrives; tool calls arrive in pieces and
         are assembled by index. Usage comes in the final chunk (stream_options.include_usage)."""
-        stream = self._client.chat.completions.create(
+        stream = api.chat.completions.create(
             model=model, messages=messages, stream=True, stream_options={"include_usage": True}, **params)
         text: list[str] = []
         calls: dict[int, dict[str, str]] = {}

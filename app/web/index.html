@@ -1225,6 +1225,13 @@ function sentence(text, max = 220) {
   const cut = t.slice(0, max);
   return cut.slice(0, Math.max(cut.lastIndexOf(". ") + 1, cut.lastIndexOf(" "))) + "…";
 }
+// Where a chat answer came from, by the tools that ran: the maker's pages (Tavily), the web, or the recall data.
+function answerSource(calls) {
+  const used = new Set(calls.filter(c => c.status === "ok").map(c => c.name));
+  if (used.has("ask_maker")) return "from the maker's own pages (found with Tavily)";
+  if (used.has("web_search")) return "from the web pages linked";
+  return "from the official recall data";
+}
 function transition(update) {
   if (!document.startViewTransition || reduceMotion) { update(); return; }
   // A transition is skipped when another starts (quick tab switches) or the page is hidden; the update still runs,
@@ -2761,7 +2768,7 @@ $("chatForm").addEventListener("submit", async (e) => {
         pending.classList.remove("status"); answer = ev.answer; renderAnswer(pending, ev.answer);
         if (ev.stop_reason !== "done") pending.classList.add("stopped");
         else {
-          const m = el("div", "meta", "Answer by NVIDIA Nemotron, from the official recall data");
+          const m = el("div", "meta", "Answer by NVIDIA Nemotron, " + answerSource(ev.tool_calls || []));
           if (ev.model) m.title = ev.model;
           pending.appendChild(m);
         }

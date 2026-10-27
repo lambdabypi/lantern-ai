@@ -292,8 +292,12 @@ def make_ask_maker_tool(store: MemoryStore, makers: MakerPages, watch: Any = Non
                 out["open_recalls_for_this_thing"] = [
                     {"title": (r.get("plain") or {}).get("title") or r["title"], "url": r["url"],
                      **({"urgent": URGENT[r["severity"]]} if r["severity"] in URGENT else {})} for r in open_recalls[:4]]
-                out["how_to_answer"] += (" This thing has open safety recalls (listed): if any is urgent, say that "
-                                         "first, in one sentence with its link, before answering the question.")
+                # Asked to mention every recall "with its link", Super wrote "see the links above" for links the chat
+                # never showed. So: only an urgent one is named, with its link; otherwise one plain line.
+                out["how_to_answer"] += (
+                    f" This thing has {len(open_recalls)} open safety recall(s) (listed). If one is marked urgent, say "
+                    "that first, in one sentence with its link, before answering the question. Otherwise, after the "
+                    f"answer, add one short sentence: it has {len(open_recalls)} open recall(s), shown on Home.")
         return out
 
     return Tool(

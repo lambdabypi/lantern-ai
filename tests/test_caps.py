@@ -220,3 +220,23 @@ def test_sign_in_attempts_are_capped_per_network(settings):
     codes = [c.post("/api/auth/login", json={"username": f"nobody{i}", "password": "password123"}).status_code
              for i in range(4)]
     assert codes == [401, 401, 401, 429]
+
+
+def test_a_slow_nano_call_is_retried_on_super(settings):
+    from app.llm.client import ChatResult, LLMTimeout
+    from app.llm.router import FAST_TIMEOUT_S, ModelRouter, Tier
+
+    class SlowNano:
+        calls = []
+
+        def chat(self, model, messages, **params):
+            SlowNano.calls.append((model, params.get("timeout"), params.get("retries")))
+            if model == "nano-test":
+                raise LLMTimeout("Token Factory didn't answer in time")
+            return ChatResult(text="routed", model=model, prompt_tokens=10, completion_tokens=2, latency_ms=5)
+
+    router = ModelRouter(replace(settings, model_balanced="super-test"), client=SlowNano())
+    out = router.complete([{"role": "user", "content": "hi"}], Tier.FAST, purpose="agent:route")
+    assert out.text == "routed"
+    assert SlowNano.calls == [("nano-test", FAST_TIMEOUT_S, 0), ("super-test", None, None)]   # fail fast, then Super
+    assert "super-test" in router.usage_summary()

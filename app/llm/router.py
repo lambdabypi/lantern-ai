@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 import json
+import logging
 from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
 from typing import Any
 
 from app.config import Settings
-from app.llm.client import ChatResult, LLMError, TokenFactoryClient
+from app.llm.client import ChatResult, LLMError, LLMTimeout, TokenFactoryClient
 
 
 class Tier(str, Enum):
@@ -26,6 +27,10 @@ _TIER_ENV = {Tier.FAST: "MODEL_FAST", Tier.BALANCED: "MODEL_BALANCED", Tier.REAS
 # site's daily spend under SITE_MODEL_DOLLARS_PER_DAY; Super VL's price wasn't listed, so it is counted at Ultra's.
 PRICES = {Tier.FAST: (0.06, 0.24), Tier.BALANCED: (0.30, 0.90), Tier.REASONING: (1.00, 3.00), Tier.VISION: (1.00, 3.00)}
 MICRO = 1_000_000
+# Nano is the first step of every chat turn and usually answers in about a second, but on 27 Oct it took 30-198 s
+# at times while Super answered in under 2 s. So a Nano call that takes longer than this is retried once on Super.
+FAST_TIMEOUT_S = 6.0
+log = logging.getLogger(__name__)
 
 
 class SpendCapReached(LLMError):
@@ -81,7 +86,16 @@ class ModelRouter:
         if self.spend is not None and self.spend_cap and self.spend.used("model_spend") >= self.spend_cap:
             raise SpendCapReached("Lantern's demo has used today's budget for AI answers. It resets at midnight "
                                   "UTC. The recall lists still work.")
-        result = self.client.chat(model, messages, **params)
+        backup = self.models[Tier.BALANCED]
+        if tier is Tier.FAST and backup and backup != model and "timeout" not in params:
+            try:
+                result = self.client.chat(model, messages, timeout=FAST_TIMEOUT_S, retries=0, **params)
+            except LLMTimeout:
+                log.warning("Nano took over %.0f s for %s; asking Super instead", FAST_TIMEOUT_S, purpose or "a call")
+                tier, model = Tier.BALANCED, backup
+                result = self.client.chat(model, messages, **params)
+        else:
+            result = self.client.chat(model, messages, **params)
         self._record(tier, purpose, result, thinking)
         if self.spend is not None and not result.cached:
             cost = call_cost(tier, result.prompt_tokens, result.completion_tokens)
