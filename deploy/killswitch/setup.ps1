@@ -34,5 +34,6 @@ gcloud billing budgets create --billing-account $Billing --display-name "Lantern
     --notifications-rule-pubsub-topic "projects/$Project/topics/lantern-budget"
 
 Write-Host "Done. Test it without turning anything off (it should log 'nothing to do'):"
-Write-Host "  gcloud pubsub topics publish lantern-budget --message '{\"costAmount\": 0.01, \"budgetAmount\": 5}'"
+# (Windows PowerShell 5.1 drops bare inner quotes when calling gcloud, hence \" inside single quotes)
+Write-Host '  gcloud pubsub topics publish lantern-budget --message ''{\"costAmount\": 0.01, \"budgetAmount\": 5}'''
 Write-Host "  gcloud functions logs read lantern-killswitch --region $Region --limit 5"

@@ -37,8 +37,8 @@ from app.tools.web_search import SearchError, WebSearch
 
 log = logging.getLogger(__name__)
 
-# Carmakers' own U.S. sites (subdomains such as owners.honda.com are included). Users can override per car by
-# editing `sources` in the car's file.
+# Carmakers' own U.S. sites (subdomains such as owners.honda.com are included). A car file's `sources` override
+# them for that user's own questions (ask_maker), never for the shared fix steps.
 MAKE_DOMAINS: dict[str, list[str]] = {
     "acura": ["acura.com"], "alfa romeo": ["alfaromeousa.com", "mopar.com"], "audi": ["audiusa.com"],
     "bmw": ["bmwusa.com"], "buick": ["buick.com", "gm.com"], "cadillac": ["cadillac.com", "gm.com"],
