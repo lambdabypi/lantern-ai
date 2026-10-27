@@ -1543,8 +1543,8 @@ function renderExamples() {
 renderExamples();
 
 // Voice: the browser's own speech recognition fills the box; people check the words, then press the arrow.
-// One helper for every mic. It asks for the microphone first (so a blocked or missing mic gets a clear message
-// instead of silence), keeps listening through short pauses, and stops after a few quiet seconds or a second tap.
+// One helper for every mic. It says "Listening" once sound is really coming in, gives each failure a clear message,
+// keeps listening through short pauses, and stops after a few quiet seconds or a second tap.
 const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
 const VOICE_ERRORS = {
   "not-allowed": "The microphone is blocked for this site. Allow it from the icon at the left of the address bar, then try again.",
@@ -1553,7 +1553,7 @@ const VOICE_ERRORS = {
     ? "Edge couldn't reach its speech service. In Windows, turn on Settings › Privacy & security › Speech › Online speech recognition, or use Chrome, or type instead."
     : "This browser couldn't reach its speech service (Brave blocks it). Try Chrome or Safari, or type instead.",
   "audio-capture": "No microphone was found. Plug one in or pick one in your system's sound settings.",
-  "no-speech": "Didn't hear anything. Check the right microphone is selected, then tap the mic and speak.",
+  "no-speech": "Didn't catch any words. Tap the mic, wait for “Listening”, then speak. If it happens again, check which microphone the browser uses (the mic icon in the address bar), or use your keyboard's mic.",
   "language-not-supported": "Voice typing in English isn't available in this browser. You can type instead.",
 };
 const QUIET_MS = 3500, FIRST_WORDS_MS = 9000, MAX_LISTEN_MS = 60000;  // stop after a pause, if nothing is said, or after a minute
@@ -1570,16 +1570,11 @@ function spoken(results) {
   }
   return parts.join(" ");
 }
-async function micReady() {
-  // Opening the mic once surfaces the permission prompt and real device errors; the stream is closed at once.
-  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return null;
-  try {
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    stream.getTracks().forEach(t => t.stop());
-    return null;
-  } catch (err) {
-    return err && (err.name === "NotFoundError" || err.name === "OverconstrainedError") ? "audio-capture" : "not-allowed";
-  }
+async function micBlocked() {
+  // Only asks the browser whether the mic was blocked earlier. The mic itself isn't opened first: opening and closing
+  // it just before the recognizer starts left the recognizer hearing silence ("didn't hear anything") on some runs,
+  // and the recognizer asks for permission and reports a missing or blocked mic by itself.
+  try { return (await navigator.permissions.query({ name: "microphone" })).state === "denied"; } catch { return false; }
 }
 function listen({ btn, input, note, say, joiner = ", ", onDone }) {
   btn.hidden = false;
@@ -1594,10 +1589,9 @@ function listen({ btn, input, note, say, joiner = ", ", onDone }) {
       return;
     }
     if (navigator.brave) { tell(VOICE_ERRORS.network); return; }
+    if (await micBlocked()) { tell(voiceProblem("not-allowed")); return; }
     btn.setAttribute("aria-pressed", "true");
-    tell("Getting the microphone…");
-    const blocked = await micReady();
-    if (blocked) { btn.setAttribute("aria-pressed", "false"); tell(voiceProblem(blocked)); return; }
+    tell("Starting the microphone… wait for “Listening”, then speak.");
     rec = new SpeechRec();
     rec.lang = "en-US"; rec.interimResults = true; rec.continuous = true;
     const before = input.value.trim(), until = Date.now() + MAX_LISTEN_MS;
@@ -1613,6 +1607,9 @@ function listen({ btn, input, note, say, joiner = ", ", onDone }) {
       input.dispatchEvent(new Event("input"));
       quiet();
     };
+    // "Listening" only once the browser is really taking in sound, so words said while it starts aren't lost.
+    let shown = false;
+    rec.onaudiostart = () => { if (!shown) { shown = true; tell(say); } };
     rec.onerror = (e) => { if (e.error !== "aborted" && e.error !== "no-speech") failed = e.error; };
     rec.onend = () => {
       const more = Boolean(now);   // only a session that heard words starts another, so silence ends it
@@ -1623,7 +1620,7 @@ function listen({ btn, input, note, say, joiner = ", ", onDone }) {
       if (heard) { tell(onDone ? "" : "Got it. Check the words, then press the arrow."); if (onDone) onDone(); else input.focus(); }
       else tell(voiceProblem(failed || "no-speech"));
     };
-    try { rec.start(); tell(say); quiet(FIRST_WORDS_MS); }
+    try { rec.start(); quiet(FIRST_WORDS_MS); }
     catch { rec = null; btn.setAttribute("aria-pressed", "false"); tell(voiceProblem("service-not-allowed")); }
   });
 }
