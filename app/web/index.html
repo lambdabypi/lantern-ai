@@ -1556,7 +1556,9 @@ const VOICE_ERRORS = {
   "no-speech": "Didn't catch any words. Tap the mic, wait for “Listening”, then speak. If it happens again, check which microphone the browser uses (the mic icon in the address bar), or use your keyboard's mic.",
   "language-not-supported": "Voice typing in English isn't available in this browser. You can type instead.",
 };
-const QUIET_MS = 3500, FIRST_WORDS_MS = 9000, MAX_LISTEN_MS = 60000;  // stop after a pause, if nothing is said, or after a minute
+// Stop after a pause, if nothing is said, or after a minute. 3.5 s cut people off mid-list ("a 2018 Honda Civic...
+// and a Graco stroller"), so a list waits 7 s; a tap on the mic finishes sooner.
+const QUIET_MS = 7000, FIRST_WORDS_MS = 9000, MAX_LISTEN_MS = 60000;
 function voiceProblem(e) { return VOICE_ERRORS[e] || `Voice didn't work (${e}). You can type instead.`; }
 // The words in one recognition session. Phones send each phrase's result again with the earlier words in front
 // ("2018", "2018 Honda Civic"), so a result that repeats the one before it replaces it.
@@ -1576,7 +1578,7 @@ async function micBlocked() {
   // and the recognizer asks for permission and reports a missing or blocked mic by itself.
   try { return (await navigator.permissions.query({ name: "microphone" })).state === "denied"; } catch { return false; }
 }
-function listen({ btn, input, note, say, joiner = ", ", onDone }) {
+function listen({ btn, input, note, say, joiner = ", ", onDone, quietMs = QUIET_MS }) {
   btn.hidden = false;
   let rec = null, timer = null, done = false;
   const tell = (text) => { note.hidden = !text; note.textContent = text || ""; };
@@ -1600,7 +1602,7 @@ function listen({ btn, input, note, say, joiner = ", ", onDone }) {
     // until there's a few seconds of quiet, the mic is tapped, or a minute has passed.
     let heard = "", now = "", failed = "";
     done = false;
-    const quiet = (ms = QUIET_MS) => { clearTimeout(timer); timer = setTimeout(stop, ms); };
+    const quiet = (ms = quietMs) => { clearTimeout(timer); timer = setTimeout(stop, ms); };
     rec.onresult = (e) => {
       now = spoken(e.results);
       input.value = [before, [heard, now].filter(Boolean).join(" ")].filter(Boolean).join(joiner);
@@ -1624,11 +1626,11 @@ function listen({ btn, input, note, say, joiner = ", ", onDone }) {
     catch { rec = null; btn.setAttribute("aria-pressed", "false"); tell(voiceProblem("service-not-allowed")); }
   });
 }
-const OWN_SAY = "Listening… say everything you own, then pause or tap the mic again. (Voice uses your browser's own speech service; in Chrome, that's Google's.)";
+const OWN_SAY = "Listening… say everything you own, then tap the mic when you're done. (Voice uses your browser's own speech service; in Chrome, that's Google's.)";
 listen({ btn: $("ownMic"), input: $("ownInput"), note: $("ownNote"), say: OWN_SAY });
 listen({ btn: $("quickMic"), input: $("quickInput"), note: $("quickNote"), say: OWN_SAY });
 listen({ btn: $("buyMic"), input: $("buyInput"), note: $("buyNote"), joiner: " ",
-         say: "Listening… say what you're thinking of buying, then pause. (Voice uses your browser's own speech service; in Chrome, that's Google's.)" });
+         say: "Listening… say what you're thinking of buying, then tap the mic when you're done. (Voice uses your browser's own speech service; in Chrome, that's Google's.)" });
 
 // A photo of the product, its label or box, a receipt or a VIN plate: Nemotron Super VL writes what it shows into
 // the box (POST /api/things/photo), and the person checks the words before pressing the arrow, as with voice.
@@ -2748,8 +2750,8 @@ $("msg").addEventListener("blur", () => { if (me) $("tabbar").hidden = false; })
 
 // Voice: the browser's own speech recognition (the shared listen() helper) and speech synthesis.
 listen({ btn: $("micBtn"), input: $("msg"), note: $("voiceNote"), joiner: " ",
-         say: "Listening… ask your question, then pause. (Voice uses your browser's own speech service; in Chrome, that's Google's.)",
-         onDone: () => $("chatForm").requestSubmit() });
+         say: "Listening… ask your question, then pause or tap the mic. (Voice uses your browser's own speech service; in Chrome, that's Google's.)",
+         onDone: () => $("chatForm").requestSubmit(), quietMs: 5000 });
 if ("speechSynthesis" in window) {
   $("speakToggle").hidden = false;
   $("speakAnswers").checked = stored("speak") === "1";
