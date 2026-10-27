@@ -1550,8 +1550,20 @@ const VOICE_ERRORS = {
   "no-speech": "Didn't hear anything. Check the right microphone is selected, then tap the mic and speak.",
   "language-not-supported": "Voice typing in English isn't available in this browser. You can type instead.",
 };
-const QUIET_MS = 3500, FIRST_WORDS_MS = 9000;  // stop after a pause, or if nothing is said at all
+const QUIET_MS = 3500, FIRST_WORDS_MS = 9000, MAX_LISTEN_MS = 60000;  // stop after a pause, if nothing is said, or after a minute
 function voiceProblem(e) { return VOICE_ERRORS[e] || `Voice didn't work (${e}). You can type instead.`; }
+// The words in one recognition session. Phones send each phrase's result again with the earlier words in front
+// ("2018", "2018 Honda Civic"), so a result that repeats the one before it replaces it.
+function spoken(results) {
+  const parts = [];
+  for (const r of results) {
+    const t = r[0].transcript.trim();
+    if (!t) continue;
+    const last = parts[parts.length - 1];
+    if (last && t.toLowerCase().startsWith(last.toLowerCase())) parts[parts.length - 1] = t; else parts.push(t);
+  }
+  return parts.join(" ");
+}
 async function micReady() {
   // Opening the mic once surfaces the permission prompt and real device errors; the stream is closed at once.
   if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return null;
@@ -1565,9 +1577,9 @@ async function micReady() {
 }
 function listen({ btn, input, note, say, joiner = ", ", onDone }) {
   btn.hidden = false;
-  let rec = null, timer = null;
+  let rec = null, timer = null, done = false;
   const tell = (text) => { note.hidden = !text; note.textContent = text || ""; };
-  const stop = () => { clearTimeout(timer); if (rec) { try { rec.stop(); } catch {} } };
+  const stop = () => { done = true; clearTimeout(timer); if (rec) { try { rec.stop(); } catch {} } };
   btn.addEventListener("click", async () => {
     if (rec) { stop(); return; }
     if (!SpeechRec) {
@@ -1582,23 +1594,27 @@ function listen({ btn, input, note, say, joiner = ", ", onDone }) {
     if (blocked) { btn.setAttribute("aria-pressed", "false"); tell(voiceProblem(blocked)); return; }
     rec = new SpeechRec();
     rec.lang = "en-US"; rec.interimResults = true; rec.continuous = true;
-    const before = input.value.trim();
-    let heard = "", failed = "";
+    const before = input.value.trim(), until = Date.now() + MAX_LISTEN_MS;
+    // Phones (and Edge) end a session at the first short pause even when asked to keep listening, which kept only
+    // "2018" of "2018 ... Honda Civic". So a session that ends on its own starts again, keeping the words so far,
+    // until there's a few seconds of quiet, the mic is tapped, or a minute has passed.
+    let heard = "", now = "", failed = "";
+    done = false;
     const quiet = (ms = QUIET_MS) => { clearTimeout(timer); timer = setTimeout(stop, ms); };
     rec.onresult = (e) => {
-      let interim = "";
-      for (let i = e.resultIndex; i < e.results.length; i++) {
-        if (e.results[i].isFinal) heard += " " + e.results[i][0].transcript; else interim += " " + e.results[i][0].transcript;
-      }
-      input.value = [before, (heard + interim).trim()].filter(Boolean).join(joiner);
+      now = spoken(e.results);
+      input.value = [before, [heard, now].filter(Boolean).join(" ")].filter(Boolean).join(joiner);
       input.dispatchEvent(new Event("input"));
       quiet();
     };
-    rec.onerror = (e) => { if (e.error !== "aborted") failed = e.error; };
+    rec.onerror = (e) => { if (e.error !== "aborted" && e.error !== "no-speech") failed = e.error; };
     rec.onend = () => {
+      const more = Boolean(now);   // only a session that heard words starts another, so silence ends it
+      heard = [heard, now].filter(Boolean).join(" "); now = "";
+      if (!done && !failed && more && Date.now() < until) { try { rec.start(); return; } catch {} }
       clearTimeout(timer);
       btn.setAttribute("aria-pressed", "false"); rec = null;
-      if (heard.trim()) { tell(onDone ? "" : "Got it. Check the words, then press the arrow."); if (onDone) onDone(); else input.focus(); }
+      if (heard) { tell(onDone ? "" : "Got it. Check the words, then press the arrow."); if (onDone) onDone(); else input.focus(); }
       else tell(voiceProblem(failed || "no-speech"));
     };
     try { rec.start(); tell(say); quiet(FIRST_WORDS_MS); }
