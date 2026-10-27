@@ -4,15 +4,18 @@ from __future__ import annotations
 
 import json
 import os
+import uuid
 from pathlib import Path
 from typing import Any
 
 
 def write_atomic(path: Path, text: str) -> None:
     """Write a file so readers never see it half-written (write a temp file, then rename it over).
-    On failure the temp file is removed and the error is re-raised for the caller to handle."""
+    On failure the temp file is removed and the error is re-raised for the caller to handle. Each write gets its own
+    temp name: two threads writing the same file at once (one precheck fetches a car's model list twice in parallel)
+    shared one '.tmp', and the Cloud Storage mount rejected the second write ('stale file handle', 27 Oct)."""
     path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(".tmp")
+    tmp = path.with_name(f"{path.name}.{uuid.uuid4().hex[:12]}.tmp")
     try:
         tmp.write_text(text, encoding="utf-8")
         os.replace(tmp, path)

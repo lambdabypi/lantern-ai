@@ -151,7 +151,10 @@ class RecallWatch:
         except (OSError, ValueError):
             pass
         value = fetch()
-        write_json(path, value)
+        try:
+            write_json(path, value)
+        except OSError as exc:  # it's only a cache: the person still gets the answer
+            log.warning("Couldn't save shared cache %s: %s", path.name, exc)
         return value
 
     def vehicle_recalls(self, make: str, model: str, year: int) -> list[dict[str, Any]]:

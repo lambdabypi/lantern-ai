@@ -327,3 +327,26 @@ def test_things_for_someone_they_look_after_keep_their_own_files(settings):
     items = {i["name"]: i for i in w.check("alice")["items"]}
     assert items["Mom's 2018 Honda Civic"]["label"] == "Mom's 2018 Honda Civic" and "label" not in items["2018 Honda Civic"]
     assert "Mom's, not theirs" in store.context_for_prompt("alice")
+
+
+def test_shared_cache_write_failure_still_answers(settings, monkeypatch):
+    # 27 Oct: two threads of one precheck wrote the same '.tmp' at once and the bucket mount refused the second
+    # write, which failed the whole request. Each write now has its own temp name, and a failed cache write is logged.
+    import app.recall_watch as rw
+    from app.fileio import write_atomic
+
+    def broken(path, value):
+        raise OSError(116, "Stale file handle")
+    monkeypatch.setattr(rw, "write_json", broken)
+    watch, _, _, _ = make(settings)
+    assert watch.vehicle_models("Jeep", 2014) == ["CIVIC", "CIVIC SI", "ACCORD"]
+
+    target = settings.data_dir / "x.json"
+    seen = []
+    import os
+    real_replace = os.replace
+    monkeypatch.setattr("app.fileio.os.replace", lambda a, b: (seen.append(str(a)), real_replace(a, b)))
+    write_atomic(target, "1")
+    write_atomic(target, "2")
+    assert target.read_text() == "2" and len(set(seen)) == 2
+    assert not list(settings.data_dir.glob("*.tmp"))
