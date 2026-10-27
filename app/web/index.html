@@ -2073,6 +2073,13 @@ function ownerReportCard(d) {
   c.append(el("p", "eyebrow2", "What other owners report"), el("h2", "", d.name));
   const since = d.since ? ` since ${d.since.slice(0, 4)}` : "";
   c.appendChild(el("p", "hint", `${d.total.toLocaleString()} safety complaint${d.total === 1 ? "" : "s"} to NHTSA from owners of this model${since}. These are owners' reports, not verified findings.`));
+  // Say how fresh NHTSA's data is: for the 2018 Civic its newest report was 14 months old, which "latest" hid.
+  const newest = d.themes.map(t => t.example && t.example.filed).filter(Boolean).sort().pop();
+  if (newest) {
+    const months = Math.floor((Date.now() - new Date(newest + "T12:00:00")) / (30.44 * 864e5));
+    c.appendChild(el("p", "hint", `Newest report in NHTSA's database for this model: ${longDate(newest)}` +
+      (months >= 6 ? `. None filed since then (${months} months).` : ".")));
+  }
   const ul = el("ul", "themes");
   // problems no recall covers first: they're the early warning ("unknown or other" stays last)
   const order = (t) => [t.component === "UNKNOWN OR OTHER" ? 1 : 0, t.covered_by_recall ? 1 : 0];
@@ -2097,8 +2104,8 @@ function ownerReportCard(d) {
     li.appendChild(stats);
     if (t.example && t.example.text) {
       const ex = el("details");
-      ex.appendChild(el("summary", "", "Read the latest report"));
-      ex.appendChild(el("p", "", `${t.example.filed ? t.example.filed + ": " : ""}${t.example.text}`));
+      ex.appendChild(el("summary", "", t.example.filed ? `Read the newest report (filed ${longDate(t.example.filed)})` : "Read the newest report"));
+      ex.appendChild(el("p", "", t.example.text));
       li.appendChild(ex);
     }
     ul.appendChild(li);
@@ -2371,6 +2378,7 @@ async function loadRemedy(item, rc, box) {
   box.replaceChildren(out);
 }
 // ---- how far the fix has got: contacted, booked (then fixed). The daily watch checks in (app/followups.py) ----
+function longDate(iso) { try { return new Date(iso + "T12:00:00").toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" }); } catch { return iso; } }
 function dayLabel(iso) { try { return new Date(iso + "T12:00:00").toLocaleDateString(undefined, { month: "short", day: "numeric" }); } catch { return iso; } }
 function progressRow(item, rc) {
   const row = el("div", "progress");
