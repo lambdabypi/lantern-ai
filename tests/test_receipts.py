@@ -97,3 +97,29 @@ def test_photo_endpoint_returns_the_text_to_check_first(settings):
     out = c.post("/api/things/receipts/photo", json={"photo": photo})
     assert out.json() == {"text": "TARGET\nLASKO 754200 HEATER"} and store.list(uid, "product") == []   # nothing saved yet
     assert c.post("/api/things/receipts/photo", json={"photo": "data:text/plain;base64,aGk="}).status_code == 422
+
+
+def test_a_photo_of_the_thing_fills_the_box_as_one_line(settings):
+    watch, store, _ = watch_and_store(settings)
+    lines = json.dumps({"lines": [{"n": 1, "keep": False},
+                                  {"n": 2, "keep": True, "type": "product", "brand": "Kids2", "product": "baby swing",
+                                   "model": "12345"},
+                                  {"n": 3, "keep": True, "type": "product", "brand": "Graco", "product": "car seat",
+                                   "model": "99999"}]})                                    # 99999 isn't on its line
+    skip_all = json.dumps({"lines": [{"n": 1, "keep": False}, {"n": 2, "keep": False}, {"n": 3, "keep": False}]})
+    r, llm = reader(settings, ["HOMEGOODS MART\nKIDS2 BABY SWING 12345\nGRACO SLIMFIT3 CAR SEAT", lines,
+                               "voomf\nProduct Model: BYL001\nShown: crib mattress", skip_all])
+    loop, _ = make_loop(settings, [])
+    c = TestClient(create_app(loop=loop, settings=settings, watch=watch, receipts=r))
+    uid = c.post("/api/auth/guest").json()["user_id"]
+    photo = "data:image/jpeg;base64," + base64.b64encode(b"jpeg").decode()
+    out = c.post("/api/things/photo", json={"photo": photo})
+    assert out.json() == {"text": "Kids2 baby swing, model 12345, Graco car seat"}    # a made-up number is dropped
+    assert store.list(uid, "product") == [] and llm.calls[0]["model"] == "vl-test"   # nothing saved until they send it
+    assert "Skip prices, totals, payment and card details" in llm.calls[0]["messages"][0]["content"][0]["text"]
+    # a label names no product on any one line, so its own words go in the box
+    label = c.post("/api/things/photo", json={"photo": photo}).json()
+    assert label == {"text": "voomf, Product Model: BYL001, crib mattress"}
+    assert c.post("/api/things/photo", json={"photo": ""}).status_code == 422
+    c.post("/api/skills", json={"id": "receipts", "on": False})
+    assert c.post("/api/things/photo", json={"photo": photo}).status_code == 403

@@ -224,6 +224,7 @@
                  color: var(--text); cursor: pointer; display: inline-flex; align-items: center; justify-content: center; transition: background .2s, color .2s; }
   .prompt .mic:hover { background: var(--bg); }
   .prompt .mic[aria-pressed="true"] { background: var(--danger-fill); color: #fff; border-color: transparent; animation: listen 1.2s infinite; }
+  .prompt .cam[aria-busy="true"] { opacity: .6; cursor: progress; }
   .voice-note { margin: 10px 6px 0; font-size: .88rem; color: var(--muted); }
   .quick-add { margin: 16px 0 4px; }
   .quick-add .error { min-height: 0; margin-top: 6px; }
@@ -758,10 +759,12 @@
 
     <form id="startForm" class="glass composer-card reveal" style="--i:4" novalidate>
       <label class="own-label" for="ownInput">What do you own?
-        <span>Cars, cribs, strollers, high chairs, heaters, appliances, toys… Type it or say it, as many as you like.</span></label>
+        <span>Cars, cribs, strollers, high chairs, heaters, appliances, toys… Type it, say it or take a photo of the label, as many as you like.</span></label>
       <div class="prompt">
         <input id="ownInput" name="owned" placeholder="Our 2018 Honda Civic, a crib and a space heater" autocomplete="off" maxlength="2000" spellcheck="false">
         <button type="button" class="mic" id="ownMic" aria-label="Say what you own" aria-pressed="false" hidden><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v4"/></svg></button>
+        <button type="button" class="mic cam" id="ownCam" aria-label="Add from a photo of the label, box or receipt"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg></button>
+        <input type="file" id="ownPhoto" accept="image/*" capture="environment" hidden>
         <button class="go" type="submit" aria-label="Check for recalls"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M5 12h13M13 6l6 6-6 6"/></svg></button>
       </div>
       <p class="voice-note" id="ownNote" role="status" hidden></p>
@@ -888,10 +891,12 @@
     <p class="hint">Everything Lantern watches. Each thing is a small file you can see, change or download.</p>
     <form class="quick-add card" id="quickAdd" novalidate>
       <label class="own-label" for="quickInput">Add more things
-        <span>Type or say them, like "a stroller, a baby monitor and a dehumidifier".</span></label>
+        <span>Type them, say them or take a photo of the label, like "a stroller, a baby monitor and a dehumidifier".</span></label>
       <div class="prompt">
         <input id="quickInput" name="owned" placeholder="A stroller and a baby monitor" autocomplete="off" maxlength="2000" spellcheck="false">
         <button type="button" class="mic" id="quickMic" aria-label="Say what you own" aria-pressed="false" hidden><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v4"/></svg></button>
+        <button type="button" class="mic cam" id="quickCam" aria-label="Add from a photo of the label, box or receipt"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg></button>
+        <input type="file" id="quickPhoto" accept="image/*" capture="environment" hidden>
         <button class="go" type="submit" aria-label="Add and check"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M5 12h13M13 6l6 6-6 6"/></svg></button>
       </div>
       <p class="voice-note" id="quickNote" role="status" hidden></p>
@@ -1393,6 +1398,7 @@ function applySkills(list) {
   skillsOff = new Set(list.filter(s => !s.on).map(s => s.id));
   $("buyForm").hidden = !skillOn("check-before-buying");
   $("receiptsBtn").closest(".receipts-row").hidden = !skillOn("receipts");
+  $("ownCam").hidden = $("quickCam").hidden = !skillOn("receipts");
   if (report) renderRecalls(report);
 }
 $("mSkills").addEventListener("click", async () => { closeMenu(); await renderSkillList(); $("skillsDialog").showModal(); });
@@ -1626,6 +1632,33 @@ listen({ btn: $("ownMic"), input: $("ownInput"), note: $("ownNote"), say: OWN_SA
 listen({ btn: $("quickMic"), input: $("quickInput"), note: $("quickNote"), say: OWN_SAY });
 listen({ btn: $("buyMic"), input: $("buyInput"), note: $("buyNote"), joiner: " ",
          say: "Listening… say what you're thinking of buying, then pause. (Voice uses your browser's own speech service; in Chrome, that's Google's.)" });
+
+// A photo of the product, its label or box, a receipt or a VIN plate: Nemotron Super VL writes what it shows into
+// the box (POST /api/things/photo), and the person checks the words before pressing the arrow, as with voice.
+function photoInto({ btn, file, input, note, error, before = async () => {} }) {
+  btn.addEventListener("click", () => file.click());
+  file.addEventListener("change", async () => {
+    const f = file.files[0];
+    file.value = "";
+    if (!f) return;
+    error.textContent = "";
+    let photo;
+    try { photo = await shrinkPhoto(f); } catch { error.textContent = "Couldn't open that photo. Try another one."; return; }
+    btn.setAttribute("aria-busy", "true"); btn.disabled = true;
+    note.hidden = false; note.textContent = "Reading your photo with NVIDIA Nemotron…";
+    let res, data;
+    try { await before(); ({ res, data } = await api("/api/things/photo", { method: "POST", body: { photo } })); }
+    catch (err) { res = { ok: false }; data = { detail: err.message }; }
+    btn.removeAttribute("aria-busy"); btn.disabled = false;
+    if (!res.ok) { note.hidden = true; error.textContent = detail(data, "Couldn't read that photo."); return; }
+    input.value = [input.value.trim(), data.text].filter(Boolean).join(", ");
+    note.textContent = "Here's what the photo shows (it was read, then thrown away). Check the words, then press the arrow.";
+    input.focus();
+  });
+}
+photoInto({ btn: $("ownCam"), file: $("ownPhoto"), input: $("ownInput"), note: $("ownNote"), error: $("startError"),
+            before: () => ensureSession() });
+photoInto({ btn: $("quickCam"), file: $("quickPhoto"), input: $("quickInput"), note: $("quickNote"), error: $("quickError") });
 
 // Anything someone owns, in their own words. A pasted VIN is checked straight away; everything else is read by
 // Nemotron Nano on the server (/api/things), which picks out each car and product.

@@ -681,6 +681,18 @@ def create_app(loop: AgentLoop | None = None, settings: Settings | None = None, 
             raise HTTPException(status_code=422, detail=" ".join(problems) or "Nothing could be saved.")
         return {"saved": saved, "problems": problems, "recalls": w.check(account.user_id)}
 
+    @app.post("/api/things/photo")
+    def read_thing_photo(req: ReceiptsIn, account: Account = Depends(current_account)) -> dict:
+        """What a photo of a product, its label, a receipt or a VIN plate shows, as words for the "What do you own?"
+        box. Nothing is added: the person checks the words, then sends them like typed text."""
+        if receipts is None:
+            raise HTTPException(status_code=503, detail="Reading photos isn't available on this server.")
+        skills.require(account.user_id, "receipts")
+        if not req.photo:
+            raise HTTPException(status_code=422, detail="Take or choose a photo first.")
+        spend_message(account, "Type what it says instead, or")
+        return {"text": receipts.thing_text(req.photo)}
+
     @app.post("/api/things/receipts/photo")
     def read_receipt_photo(req: ReceiptsIn, account: Account = Depends(current_account)) -> dict:
         """The item lines of a photographed receipt, as text the person checks (and fixes) before adding anything."""
