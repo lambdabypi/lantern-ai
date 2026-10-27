@@ -448,6 +448,9 @@
   .status .body { color: var(--text); opacity: .92; }
   .status .lantern { position: absolute; right: 14px; top: 12px; width: 46px; opacity: .95; filter: drop-shadow(0 0 14px rgba(255,190,90,.55)); }
   .status.ok h1, .status.ok .body { padding-right: 56px; }
+  .clear-list { margin-top: 14px; display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; }
+  .clear-list .clear-head { margin: 0; flex-basis: 100%; color: var(--muted); font-size: .92rem; }
+  .clear-list .chips { display: flex; flex-wrap: wrap; gap: 8px; }
   .watching { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: .88rem; margin: 10px 2px 0; }
   .watching .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--ok); position: relative; flex: none; }
   .watching .dot::after { content: ""; position: absolute; inset: -4px; border-radius: 50%; border: 2px solid var(--ok); animation: ping 2.4s ease-out infinite; }
@@ -654,7 +657,15 @@
     #toast { bottom: 110px; }
   }
   /* Home is denser: the cards sit side by side when there's room */
-  @media (min-width: 900px) { #attention { grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); align-items: start; } }
+  @media (min-width: 900px) {
+    /* auto-fit, so one or two cards share the width instead of leaving empty columns beside them */
+    #attention { grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); align-items: start; }
+    /* One card alone: the summary and its button on the left, the recalls on the right */
+    #attention > .thing-card:only-child { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 6fr);
+      grid-template-rows: repeat(5, auto) 1fr; column-gap: 36px; align-content: start; }
+    #attention > .thing-card:only-child > * { grid-column: 1; }
+    #attention > .thing-card:only-child > .rlist { grid-column: 2; grid-row: 1 / span 6; margin-top: 0; }
+  }
   dialog { border: 1px solid var(--border); border-radius: 20px; background: var(--bg); color: var(--text);
            width: min(640px, calc(100vw - 24px)); max-height: calc(100dvh - 24px); padding: 0; box-shadow: 0 30px 80px rgba(0,0,0,.35); }
   dialog[open] { animation: pop .22s ease-out; }
@@ -867,6 +878,7 @@
     <div id="statusBox"></div>
     <p class="watching" id="watching" hidden><span class="dot" aria-hidden="true"></span><span id="watchingText"></span></p>
     <div class="stack" id="attention" style="margin-top:14px"></div>
+    <div class="card clear-list" id="clearBox" hidden></div>
     <div class="stack" id="ownerReports" style="margin-top:18px"></div>
     <form class="quick-add card buycheck" id="buyForm" novalidate>
       <label class="own-label" for="buyInput">Buying something secondhand?
@@ -2014,6 +2026,15 @@ function renderRecalls(r) {
   $("watchingText").textContent = `Watching ${r.items.length} thing${r.items.length === 1 ? "" : "s"} · last checked ` +
     (when ? when.toLocaleString(undefined, { weekday: "short", hour: "numeric", minute: "2-digit" }) : "today");
   $("attention").replaceChildren(...groups.map((g, i) => itemCard(g.item, g.recalls, firstRender ? i : -1)));
+  // Things with no open recall are watched too; without this, "a Graco stroller" seemed to have gone missing.
+  const flagged = new Set(groups.map(g => g.item.kind + "/" + g.item.slug));
+  const clear = open.length ? r.items.filter(i => !flagged.has(i.kind + "/" + i.slug)) : [];
+  $("clearBox").hidden = !clear.length;
+  const chips = el("div", "chips");
+  chips.append(...clear.map(i => el("span", "badge ok", i.label || i.name)));
+  $("clearBox").replaceChildren(...(clear.length ? [
+    el("p", "clear-head", `No open recalls right now. Lantern keeps checking ${clear.length === 1 ? "it" : "these"} every day:`),
+    chips, button("See everything in My stuff", "textbtn", () => showTab("stuff"))] : []));
   $("doneBox").hidden = !done.length;
   $("doneSummary").textContent = `Fixed or doesn't apply (${done.length})`;
   $("doneList").replaceChildren(...done.map(x => doneCard(x.item, x.rc)));
