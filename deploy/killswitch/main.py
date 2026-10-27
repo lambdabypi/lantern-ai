@@ -13,7 +13,6 @@ from __future__ import annotations
 
 import base64
 import json
-import logging
 import os
 import urllib.request
 
@@ -23,7 +22,6 @@ SERVICE = os.environ["SERVICE"]            # projects/<project>/locations/us-cen
 KILL_AT_USD = float(os.environ.get("KILL_AT_USD", "5"))
 TOKEN_URL = "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token"
 RUN_API = "https://run.googleapis.com/v2/"
-log = logging.getLogger(__name__)
 
 
 def _call(method: str, url: str, token: str | None = None, body: dict | None = None) -> dict:
@@ -42,7 +40,7 @@ def stop(event) -> None:
     update = json.loads(base64.b64decode(event.data["message"]["data"]))
     cost = float(update.get("costAmount", 0))
     if cost < KILL_AT_USD:
-        log.info("budget update: $%.2f of $%.2f, nothing to do", cost, KILL_AT_USD)
+        print(f"budget update: ${cost:.2f} of ${KILL_AT_USD:.2f}, nothing to do", flush=True)   # stdout reaches Cloud Logging
         return
     token = _call("GET", TOKEN_URL)["access_token"]
     policy = _call("GET", f"{RUN_API}{SERVICE}:getIamPolicy", token)
@@ -53,7 +51,7 @@ def stop(event) -> None:
         if b.get("members"):
             bindings.append(b)
     if bindings == policy.get("bindings", []):
-        log.warning("budget $%.2f reached; the app is already off the public internet", cost)
+        print(f"budget ${cost:.2f} reached; the app is already off the public internet", flush=True)
         return
     _call("POST", f"{RUN_API}{SERVICE}:setIamPolicy", token, {"policy": {**policy, "bindings": bindings}})
-    log.warning("budget $%.2f reached (limit $%.2f): removed public access to %s", cost, KILL_AT_USD, SERVICE)
+    print(f"budget ${cost:.2f} reached (limit ${KILL_AT_USD:.2f}): removed public access to {SERVICE}", flush=True)

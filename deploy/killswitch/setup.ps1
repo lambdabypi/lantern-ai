@@ -16,10 +16,21 @@ $Region = "us-central1"
 $KillAt = 5
 $SA = "lantern-killswitch@$Project.iam.gserviceaccount.com"
 
-gcloud services enable cloudfunctions.googleapis.com eventarc.googleapis.com
-gcloud pubsub topics create lantern-budget
-gcloud iam service-accounts create lantern-killswitch --display-name "Lantern budget kill switch"
-gcloud run services add-iam-policy-binding lantern --region $Region --member "serviceAccount:$SA" --role roles/run.admin
+# Windows PowerShell 5.1 doesn't stop when gcloud fails, so check each step (the first run skipped the run.admin grant
+# silently: the new service account wasn't visible yet). Re-running is safe: "already exists" steps are allowed.
+function Step([string]$what, [scriptblock]$run, [switch]$MayExist) {
+    $out = & $run 2>&1 | Out-String
+    if ($LASTEXITCODE -ne 0 -and -not ($MayExist -and $out -match "already exists")) {
+        throw "Failed: $what`n$out"
+    }
+    Write-Host "ok: $what"
+}
+
+Step "enable APIs" { gcloud services enable cloudfunctions.googleapis.com eventarc.googleapis.com }
+Step "topic" -MayExist { gcloud pubsub topics create lantern-budget }
+Step "service account" -MayExist { gcloud iam service-accounts create lantern-killswitch --display-name "Lantern budget kill switch" }
+Start-Sleep -Seconds 15   # a new service account takes a few seconds before IAM accepts it
+Step "run.admin on lantern" { gcloud run services add-iam-policy-binding lantern --region $Region --member "serviceAccount:$SA" --role roles/run.admin }
 
 gcloud functions deploy lantern-killswitch --gen2 --runtime python312 --region $Region --source $PSScriptRoot `
     --entry-point stop --trigger-topic lantern-budget --service-account $SA --trigger-service-account $SA `
