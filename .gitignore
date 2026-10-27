@@ -31,3 +31,6 @@ Mascot_test.jpg
 
 # Claude Code worktrees and local settings
 .claude/
+
+# Security review findings (open issues; kept local, fed to LeanGate by the owner)
+security/
