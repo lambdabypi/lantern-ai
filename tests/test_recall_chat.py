@@ -146,7 +146,7 @@ def test_daily_recall_job_needs_the_secret(settings):
     store.upsert(uid, "vehicle", "civic", {"make": "Honda", "model": "Civic", "year": 2018})
     assert c.post("/internal/recalls/run").status_code == 404
     r = c.post("/internal/recalls/run", headers={"X-Lantern-Cron": "s3cret-value-for-tests"})
-    assert r.json() == {"users": 1, "open_recalls": 2, "alerts_sent": 0}
+    assert r.json() == {"users": 1, "open_recalls": 2, "alerts_sent": 0, "expired_guests_removed": 0}
 
 
 def test_users_cannot_see_each_others_things(settings):

@@ -14,6 +14,7 @@ what they're looking at ("a used 2014 Jeep Cherokee", "a Graco high chair from a
 
 from __future__ import annotations
 
+import logging
 import re
 from concurrent.futures import Future, ThreadPoolExecutor
 from typing import Any
@@ -25,6 +26,8 @@ from app.llm.router import ModelRouter, Tier
 from app.memory.store import MemoryStoreError
 from app.tools.recalls import NHTSA_VIN_CHECK, RecallError
 from app.tools.web_search import SearchError, WebSearch
+
+log = logging.getLogger(__name__)
 
 MAX_THINGS = 3
 LISTING_CHARS = 3000
@@ -109,7 +112,8 @@ class PreCheck:
             pages = self.search.extract([url], query="what is for sale: brand, product, model number, year, make, model, VIN",
                                         chunks_per_source=3)
         except SearchError as e:
-            return {"url": url, "text": "", "note": f"Couldn't read that page ({e}). Type what's for sale instead."}
+            log.warning("listing read failed: %s", e)
+            return {"url": url, "text": "", "note": "Couldn't read that page. Type what's for sale instead."}
         text = " ".join((pages[0]["content"] if pages else "").split())[:LISTING_CHARS]
         return {"url": url, "text": text, "note": None if text else "That page couldn't be read. Type what's for sale instead."}
 

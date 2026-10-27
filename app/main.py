@@ -59,6 +59,17 @@ def _setup_logging() -> None:
 
 
 WEB_DIR = Path(__file__).parent / "web"
+MAX_BODY_BYTES = 9 * 1024 * 1024
+# The page's script and styles are inline, so they need 'unsafe-inline'; everything else is limited to this site.
+SECURITY_HEADERS = {
+    "Content-Security-Policy": "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; "
+                               "img-src 'self' data: blob:; connect-src 'self'; font-src 'self'; object-src 'none'; "
+                               "base-uri 'none'; form-action 'self'; frame-ancestors 'none'",
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY",
+    "Referrer-Policy": "strict-origin-when-cross-origin",
+    "Permissions-Policy": "camera=(self), microphone=(self), geolocation=()",
+}
 ICONS = {"icon-192.png", "icon-512.png", "maskable-512.png", "apple-touch-icon.png"}
 FONTS = {"geist-latin-wght-normal.woff2", "instrument-serif-latin-400-normal.woff2",
          "instrument-serif-latin-400-italic.woff2", "OFL-geist.txt", "OFL-instrument-serif.txt"}  # all SIL OFL 1.1
@@ -123,12 +134,12 @@ class UnitGuideRequest(BaseModel):
 
 class UnitCheckRequest(UnitGuideRequest):
     answer: str = Field(default="", max_length=500)          # what the label says, or a VIN-check answer id
-    photo: str = Field(default="", max_length=9_000_000)     # data:image/...;base64 (shrunk in the browser first)
+    photo: str = Field(default="", max_length=8_400_000)     # data:image/...;base64 (shrunk in the browser first)
 
 
 class ReceiptsIn(BaseModel):
     text: str = Field(default="", max_length=30_000)        # order emails, receipts, an order-history file's names
-    photo: str = Field(default="", max_length=9_000_000)    # a photo of a paper receipt (data URL, shrunk first)
+    photo: str = Field(default="", max_length=8_400_000)    # a photo of a paper receipt (data URL, shrunk first)
 
 
 class BuyingText(BaseModel):
@@ -204,7 +215,7 @@ def create_app(loop: AgentLoop | None = None, settings: Settings | None = None, 
     search = search or WebSearch(settings, credit_guard=lambda credits: site_quota.try_consume(
         "tavily", settings.site_tavily_credits_per_day or None, credits))
     if loop is None:
-        router = ModelRouter(settings)
+        router = ModelRouter(settings, spend=site_quota)   # site-wide daily dollar cap on every model call
         watch = watch or RecallWatch(memory, RecallClient(), router, settings.data_dir)
         makers = makers or MakerPages(search, router, settings.data_dir)
         units = units or UnitCheck(router, settings.data_dir, vision=bool(settings.model_vision))
@@ -242,6 +253,21 @@ def create_app(loop: AgentLoop | None = None, settings: Settings | None = None, 
 
     app = FastAPI(title="Lantern")
     app.add_middleware(GZipMiddleware, minimum_size=1024)  # the page is ~120 KB of HTML; ~30 KB compressed
+
+    @app.middleware("http")
+    async def guard(request: Request, call_next):
+        # Bodies are read whole before validation, so a few 30 MB posts could run the 512 MB instance out of
+        # memory. The biggest real body is a shrunk photo (a 6 MB image is ~8.4 MB as base64).
+        try:
+            size = int(request.headers.get("content-length") or 0)
+        except ValueError:
+            size = MAX_BODY_BYTES + 1
+        if size > MAX_BODY_BYTES or (request.method in ("POST", "PUT") and "content-length" not in request.headers
+                                     and request.headers.get("transfer-encoding")):
+            return JSONResponse({"detail": "That's too large to send."}, status_code=413)
+        response = await call_next(request)
+        response.headers.update(SECURITY_HEADERS)
+        return response
 
     @app.exception_handler(AuthError)
     def auth_error(_: Request, e: AuthError) -> JSONResponse:
@@ -344,31 +370,53 @@ def create_app(loop: AgentLoop | None = None, settings: Settings | None = None, 
         return FileResponse(WEB_DIR / "fonts" / name, media_type=kind, headers={"Cache-Control": "public, max-age=2592000"})
 
     # ---- auth -------------------------------------------------------------------------------
+    def network_of(request: Request) -> str:
+        # Only a keyed hash of the address is stored, never the address itself.
+        return hmac.new(settings.app_secret_key.encode(), client_ip(request, settings.trusted_proxy_hops).encode(),
+                        "sha256").hexdigest()[:16]
+
     @app.post("/api/auth/guest", response_model=MeResponse)
     def guest(request: Request, response: Response) -> MeResponse:
         # Per-network limit, so per-guest message caps can't be dodged by making endless guests (#6).
-        # Only a keyed hash of the address is stored, never the address itself.
-        network = hmac.new(settings.app_secret_key.encode(), client_ip(request, settings.trusted_proxy_hops).encode(),
-                           "sha256").hexdigest()[:16]
+        network = network_of(request)
         # Entry count only (no addresses): shows how many proxies append to the header, i.e. TRUSTED_PROXY_HOPS.
         log.info("guest sign-up; X-Forwarded-For entries: %d",
                  len([e for e in request.headers.get("x-forwarded-for", "").split(",") if e.strip()]))
         if not site_quota.try_consume(f"guests:{network}", settings.guests_per_ip_per_day or None):
             raise AuthError("Too many guest sessions from your network today. Create an account, or try again "
                             "tomorrow.", status=429)
+        if not site_quota.try_consume("guests", settings.site_guests_per_day or None):
+            raise AuthError("Lantern's demo has had all the guest visits it can take today. Try again tomorrow "
+                            "(it resets at midnight UTC).", status=429)
         return start_session(response, accounts.create_guest())
 
+    def signup_allowed(request: Request) -> None:
+        """New accounts are capped per network and for the whole site, so nobody can make endless accounts to
+        multiply the per-user caps."""
+        if not site_quota.try_consume(f"signups:{network_of(request)}", settings.signups_per_ip_per_day or None):
+            raise AuthError("Too many new accounts from your network today. Try again tomorrow.", status=429)
+        if not site_quota.try_consume("signups", settings.site_signups_per_day or None):
+            raise AuthError("Lantern's demo has taken all the new accounts it can today. Try again tomorrow, or "
+                            "continue as a guest.", status=429)
+
     @app.post("/api/auth/register", response_model=MeResponse)
-    def register(creds: Credentials, response: Response) -> MeResponse:
+    def register(creds: Credentials, request: Request, response: Response) -> MeResponse:
+        signup_allowed(request)
         return start_session(response, accounts.register(creds.username, creds.password))
 
     @app.post("/api/auth/keep", response_model=MeResponse)
-    def keep_data(creds: Credentials, response: Response, account: Account = Depends(current_account)) -> MeResponse:
+    def keep_data(creds: Credentials, request: Request, response: Response,
+                  account: Account = Depends(current_account)) -> MeResponse:
         """A guest saves their list: becomes a registered account with the same data."""
+        signup_allowed(request)
         return start_session(response, accounts.keep_guest_data(account, creds.username, creds.password))
 
     @app.post("/api/auth/login", response_model=MeResponse)
-    def login(creds: Credentials, response: Response) -> MeResponse:
+    def login(creds: Credentials, request: Request, response: Response) -> MeResponse:
+        # Per-username throttling is in accounts.authenticate; this caps attempts per network across usernames
+        # (password spraying), and each attempt runs scrypt, so it also bounds the CPU a flood can take.
+        if not site_quota.try_consume(f"logins:{network_of(request)}", settings.logins_per_ip_per_day or None):
+            raise AuthError("Too many sign-in attempts from your network today. Try again tomorrow.", status=429)
         return start_session(response, accounts.authenticate(creds.username, creds.password))
 
     @app.post("/api/auth/logout")
@@ -408,10 +456,16 @@ def create_app(loop: AgentLoop | None = None, settings: Settings | None = None, 
         def blocked(text: str, tier: str = "fast") -> ChatResponse:
             return ChatResponse(answer=text, stop_reason="quota", tool_calls=[], tokens=0, model="", tier=tier)
 
-        if req.escalate and account.is_guest and not quota.try_consume(
-                account.user_id, "ultra", settings.guest_ultra_per_day):
-            return blocked(f"You've used today's {settings.guest_ultra_per_day} \"Think harder\" turns for guests. "
-                           "Untick it to keep chatting with the fast model, or create an account.", "reasoning")
+        if req.escalate:
+            # Ultra costs ~5x a normal answer, so it has its own caps: per guest, per signed-in user, and site-wide.
+            mine = settings.guest_ultra_per_day if account.is_guest else (settings.user_ultra_per_day or None)
+            if not quota.try_consume(account.user_id, "ultra", mine):
+                more = " or create an account" if account.is_guest else ""
+                return blocked(f"You've used today's {mine} \"Take more time to think\" turns. Untick it to keep "
+                               f"chatting with the fast model{more}.", "reasoning")
+            if not site_quota.try_consume("ultra", settings.site_ultra_per_day or None):
+                return blocked("\"Take more time to think\" has reached its daily limit across all users. Untick it "
+                               "to keep chatting; it resets at midnight UTC.", "reasoning")
         cap = message_cap(account)
         if not quota.try_consume(account.user_id, "messages", cap):
             more = " Create an account for more, or" if account.is_guest else ""
@@ -603,6 +657,7 @@ def create_app(loop: AgentLoop | None = None, settings: Settings | None = None, 
         skills.require(account.user_id, "makers-pages")
         rc = find_recall(account, req.kind, req.slug, req.recall_id)
         file = memory.get(account.user_id, req.kind, req.slug)
+        spend_message(account, "Read the official notice instead, or")    # Tavily + Super when not cached
         try:
             return makers.remedy(req.kind, file.meta if file else {}, rc)
         except MakerError as e:
@@ -640,7 +695,9 @@ def create_app(loop: AgentLoop | None = None, settings: Settings | None = None, 
         u = need_units()
         skills.require(account.user_id, "unit-check")
         rc = find_recall(account, req.kind, req.slug, req.recall_id)
-        if req.kind == "product":
+        if req.photo and req.kind != "product":
+            raise HTTPException(status_code=422, detail="For a car, use NHTSA's VIN check instead of a photo.")
+        if req.kind == "product":    # every product check calls the model, a photo calls the vision model too
             spend_message(account, "Compare your label with the official notice yourself, or")
         label = u.read_label(req.photo) if req.photo else ""
         out = u.decide(req.kind, rc, full_notice(req.kind, rc), req.answer, label)
@@ -765,6 +822,7 @@ def create_app(loop: AgentLoop | None = None, settings: Settings | None = None, 
         recalls = [r for r in (entry["recalls"] if entry else []) if r["status"] == "open"]
         if not recalls:
             raise HTTPException(status_code=422, detail="This item has no open recalls to fix.")
+        spend_message(account, "Call any authorized dealer of the brand yourself, or")   # a dealer search on Tavily
         out: dict = {"draft": draft_message(req.kind, item.meta, recalls), "dealers": [], "maps_url": None,
                      "contact": None, "note": None}
         if req.kind == "product":
@@ -801,7 +859,9 @@ def create_app(loop: AgentLoop | None = None, settings: Settings | None = None, 
     @app.post("/internal/recalls/run", include_in_schema=False)
     def run_recall_watch(request: Request) -> dict:
         alerts = daily_alerts(push, FollowUps(settings.data_dir, push), skills) if push else None
-        result = need_watch().run_all(active_users_for_cron(request), alerts)
+        users = active_users_for_cron(request)    # checks the cron secret first
+        result = need_watch().run_all(users, alerts)
+        result["expired_guests_removed"] = accounts.cleanup_expired_guests()
         log.info("recall watch run: %s", result)
         return result
 

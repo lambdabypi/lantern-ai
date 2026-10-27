@@ -21,6 +21,7 @@ daily Tavily cap. Web pages are untrusted: the prompts say so, and nothing here 
 from __future__ import annotations
 
 import json
+import logging
 import re
 from datetime import date, timedelta
 from pathlib import Path
@@ -33,6 +34,8 @@ from app.llm.parsing import extract_json
 from app.llm.router import ModelRouter, Tier
 from app.memory.store import MemoryItem, MemoryStore, MemoryStoreError, slugify
 from app.tools.web_search import SearchError, WebSearch
+
+log = logging.getLogger(__name__)
 
 # Carmakers' own U.S. sites (subdomains such as owners.honda.com are included). Users can override per car by
 # editing `sources` in the car's file.
@@ -151,7 +154,8 @@ class MakerPages:
                                         "register or contact the maker, repair, refund or replacement, what to do meanwhile",
                                         chunks_per_source=3) if urls else []
         except SearchError as e:
-            raise MakerError(f"Couldn't read the maker's page just now ({e}).") from e
+            log.warning("maker page read failed: %s", e)
+            raise MakerError("Couldn't read the maker's page just now. Try again later.") from e
         sources = [{"n": i + 1, "url": p["url"], "site": domain_of(p["url"])} for i, p in enumerate(pages)]
         result: dict[str, Any] = {"recall_id": rid, "checked": date.today().isoformat(), "searched": searched,
                                   "steps": [], "meanwhile": "", "contact": "", "sources": []}
@@ -172,14 +176,16 @@ class MakerPages:
                 urls.append(str(recall["url"]))
             return urls, sorted({domain_of(u) for u in urls})
         make = str(meta.get("make") or "")
-        domains = [domain_of(str(d)) for d in (meta.get("sources") or [])] or MAKE_DOMAINS.get(make.lower(), [])
-        domains = [*domains, GOV["vehicle"]]
+        # Only the carmaker's known sites and nhtsa.gov, never the car file's own `sources`: these steps are shared
+        # with every owner of the recall, so one person's edited sources must not decide what everyone is told.
+        domains = [*MAKE_DOMAINS.get(make.lower(), []), GOV["vehicle"]]
         rid = str(recall.get("id") or "")
         query = f"{meta.get('year', '')} {make} {meta.get('model', '')} recall {rid} what owners should do".strip()
         try:
             results = self.search.search(query, include_domains=domains, max_results=5)
         except SearchError as e:
-            raise MakerError(f"Couldn't search the maker's site just now ({e}).") from e
+            log.warning("maker search failed: %s", e)
+            raise MakerError("Couldn't search the maker's site just now. Try again later.") from e
         ranked = sorted(results, key=lambda r: (rid[:6].lower() not in (r["url"] + r["title"]).lower(),
                                                 "recall" not in r["url"].lower()))
         return [r["url"] for r in ranked], domains

@@ -88,6 +88,7 @@ class AccountStore:
         self.clock = clock
         self._lock = threading.Lock()
         self._failures: dict[str, list[float]] = {}
+        self._last_cleanup = float("-inf")
 
     # ---- storage -------------------------------------------------------------------------
     def _path(self, user_id: str) -> Path:
@@ -151,6 +152,8 @@ class AccountStore:
             raise AuthError("Too many failed sign-ins. Try again in a few minutes.", status=429)
         account = self.get(user_id)
         if account is None or account.is_guest or not verify_password(password or "", account.pw_hash):
+            if len(self._failures) > 10_000:   # forget old failures so the dict can't grow without end
+                self._failures = {k: v for k, v in self._failures.items() if v and now - v[-1] < _LOGIN_WINDOW_S}
             self._failures[user_id] = recent + [now]
             raise AuthError("Wrong username or password.", status=401)
         self._failures.pop(user_id, None)
@@ -158,8 +161,10 @@ class AccountStore:
 
     # ---- guests --------------------------------------------------------------------------
     def create_guest(self) -> Account:
-        self.cleanup_expired_guests()
         now = self.clock()
+        if now - self._last_cleanup > 3600:   # it walks every user folder in the bucket, so at most hourly
+            self._last_cleanup = now
+            self.cleanup_expired_guests()
         account = Account(user_id=GUEST_PREFIX + secrets.token_hex(6), kind="guest",
                           created_ts=now, expires_ts=now + self.guest_ttl_s)
         self._save(account)

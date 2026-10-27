@@ -22,6 +22,20 @@ class Tier(str, Enum):
 _TIER_ENV = {Tier.FAST: "MODEL_FAST", Tier.BALANCED: "MODEL_BALANCED", Tier.REASONING: "MODEL_REASONING",
              Tier.VISION: "MODEL_VISION"}
 
+# Token Factory list prices in US dollars per million tokens (input, output), 27 Oct 2026. Used only to keep the
+# site's daily spend under SITE_MODEL_DOLLARS_PER_DAY; Super VL's price wasn't listed, so it is counted at Ultra's.
+PRICES = {Tier.FAST: (0.06, 0.24), Tier.BALANCED: (0.30, 0.90), Tier.REASONING: (1.00, 3.00), Tier.VISION: (1.00, 3.00)}
+MICRO = 1_000_000
+
+
+class SpendCapReached(LLMError):
+    """The site's daily model budget is used up. The message is safe to show to the user."""
+
+
+def call_cost(tier: Tier, prompt_tokens: int, completion_tokens: int) -> float:
+    price_in, price_out = PRICES[tier]
+    return (prompt_tokens * price_in + completion_tokens * price_out) / MICRO
+
 
 class ModelRouter:
     def __init__(
@@ -29,12 +43,17 @@ class ModelRouter:
         settings: Settings,
         client: TokenFactoryClient | None = None,
         usage_log: Path | None = None,
+        spend: Any = None,
     ):
         self.models = {Tier.FAST: settings.model_fast, Tier.REASONING: settings.model_reasoning,
                        Tier.BALANCED: settings.model_balanced or settings.model_fast, Tier.VISION: settings.model_vision}
         self.client = client or TokenFactoryClient(settings)
         self.usage_log = usage_log or settings.data_dir / "logs" / "llm_usage.jsonl"
         self._totals: dict[str, dict[str, int]] = {}
+        # A SiteQuota: every call's estimated cost is counted in millionths of a dollar, and calls stop for the day
+        # once the site has spent site_model_dollars_per_day (0 = no cap). Covers chat, photos and the daily job.
+        self.spend = spend
+        self.spend_cap = int(getattr(settings, "site_model_dollars_per_day", 0) * MICRO)
 
     def complete(
         self,
@@ -59,8 +78,14 @@ class ModelRouter:
             extra = dict(params.pop("extra_body", None) or {})
             extra["chat_template_kwargs"] = {**extra.get("chat_template_kwargs", {}), "enable_thinking": thinking}
             params["extra_body"] = extra
+        if self.spend is not None and self.spend_cap and self.spend.used("model_spend") >= self.spend_cap:
+            raise SpendCapReached("Lantern's demo has used today's budget for AI answers. It resets at midnight "
+                                  "UTC. The recall lists still work.")
         result = self.client.chat(model, messages, **params)
         self._record(tier, purpose, result, thinking)
+        if self.spend is not None and not result.cached:
+            cost = call_cost(tier, result.prompt_tokens, result.completion_tokens)
+            self.spend.try_consume("model_spend", None, max(1, round(cost * MICRO)))
         return result
 
     def usage_summary(self) -> dict[str, dict[str, int]]:

@@ -143,3 +143,80 @@ def test_guest_keeps_their_data_by_creating_an_account(settings):
     other.post("/api/auth/guest")
     taken = other.post("/api/auth/keep", json={"username": "maria", "password": "password123"})
     assert taken.status_code == 409 and other.get("/api/me").json()["kind"] == "guest"   # nothing moved
+
+
+def test_daily_dollar_cap_stops_model_calls(settings):
+    from app.llm.client import TokenFactoryClient
+    from app.llm.router import ModelRouter, SpendCapReached, Tier, call_cost
+    from tests.conftest import ScriptedLLM
+    site = SiteQuota(settings.data_dir)
+    capped = replace(settings, site_model_dollars_per_day=0.00005, cache_enabled=False)  # 50 millionths of a dollar
+    router = ModelRouter(capped, client=TokenFactoryClient(capped, openai_client=ScriptedLLM(["a"] * 5)), spend=site)
+    assert round(call_cost(Tier.FAST, 200, 40) * 1_000_000) == 22   # 200 in x $0.06 + 40 out x $0.24, per million
+    for i in range(5):
+        router.complete([{"role": "user", "content": f"hi {i}"}])
+    assert site.used("model_spend") == 55                # 5 calls of the scripted model's 100 in / 20 out = 11 each
+    with pytest.raises(SpendCapReached, match="today's budget"):
+        router.complete([{"role": "user", "content": "one more"}])
+
+
+def test_ultra_is_capped_for_signed_in_users_and_site_wide(settings):
+    app, _ = app_with(settings, user_ultra_per_day=1, site_ultra_per_day=2)
+    a, b = TestClient(app), TestClient(app)
+    a.post("/api/auth/register", json={"username": "alice", "password": "password123"})
+    b.post("/api/auth/register", json={"username": "bobby", "password": "password123"})
+    think = {"message": "plan it", "escalate": True}
+    assert a.post("/api/chat", json=think).json()["stop_reason"] == "done"
+    assert "1 \"Take more time to think\" turns" in a.post("/api/chat", json=think).json()["answer"]
+    assert b.post("/api/chat", json=think).json()["stop_reason"] == "done"
+    c = TestClient(app)
+    c.post("/api/auth/register", json={"username": "carol", "password": "password123"})
+    assert "across all users" in c.post("/api/chat", json=think).json()["answer"]
+
+
+def test_new_accounts_are_capped_per_network_and_site_wide(settings):
+    app, _ = app_with(settings, signups_per_ip_per_day=2, site_signups_per_day=3, site_guests_per_day=1)
+    c = TestClient(app)
+    codes = [c.post("/api/auth/register", json={"username": f"user{i}", "password": "password123"}).status_code
+             for i in range(3)]
+    assert codes == [200, 200, 429]
+    other = TestClient(app, headers={"x-forwarded-for": "203.0.113.9"})
+    assert other.post("/api/auth/register", json={"username": "user9", "password": "password123"}).status_code == 200
+    assert "all the new accounts" in other.post(
+        "/api/auth/register", json={"username": "user10", "password": "password123"}).json()["detail"]
+    assert TestClient(app).post("/api/auth/guest").status_code == 200
+    assert "guest visits" in TestClient(app, headers={"x-forwarded-for": "198.51.100.7"}).post(
+        "/api/auth/guest").json()["detail"]
+
+
+def test_things_per_user_are_capped(settings, monkeypatch):
+    from app.memory import store as store_mod
+    from app.memory.store import MemoryStore, MemoryStoreError
+    monkeypatch.setattr(store_mod, "MAX_ITEMS", 2)
+    s = MemoryStore(settings.data_dir)
+    s.upsert("alice", "product", "crib", {"product": "crib"})
+    s.upsert("alice", "product", "stroller", {"product": "stroller"})
+    s.upsert("alice", "product", "crib", {"brand": "Voomf"})                 # updating one is fine
+    with pytest.raises(MemoryStoreError, match="watching 2 products"):
+        s.upsert("alice", "product", "heater", {"product": "heater"})
+    with pytest.raises(MemoryStoreError, match="watching 2 products"):
+        s.save_raw("alice", "product", "heater", "---\nname: heater\nproduct: heater\n---\n")
+
+
+def test_big_bodies_are_refused_and_pages_get_security_headers(settings):
+    app, _ = app_with(settings)
+    c = guest(app)
+    r = c.post("/api/things/photo", content=b"x" * 16, headers={"content-length": str(20 * 1024 * 1024),
+                                                                 "content-type": "application/json"})
+    assert r.status_code == 413
+    page = c.get("/")
+    assert "frame-ancestors 'none'" in page.headers["content-security-policy"]
+    assert page.headers["x-content-type-options"] == "nosniff"
+
+
+def test_sign_in_attempts_are_capped_per_network(settings):
+    app, _ = app_with(settings, logins_per_ip_per_day=3)
+    c = TestClient(app)
+    codes = [c.post("/api/auth/login", json={"username": f"nobody{i}", "password": "password123"}).status_code
+             for i in range(4)]
+    assert codes == [401, 401, 401, 429]

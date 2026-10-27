@@ -45,6 +45,7 @@ NAME_FIELD = {"vehicle": "name", "product": "name"}
 _SLUG = re.compile(r"^[a-z0-9][a-z0-9-]{0,63}$")
 _FRONT = re.compile(r"\A---\r?\n(.*?)\r?\n---\r?\n?(.*)\Z", re.DOTALL)
 MAX_NOTE_CHARS = 2000
+MAX_ITEMS = 50          # cars, and separately products, per user
 MAX_FILE_CHARS = 20_000
 
 
@@ -217,7 +218,12 @@ class MemoryStore:
         slug = None if kind == "profile" else slugify(name or "")
         today = date.today().isoformat()
         with self._lock:
-            item = self.get(user_id, kind, slug) or MemoryItem(kind, slug or "profile", {"created": today})
+            item = self.get(user_id, kind, slug)
+            if item is None and kind in KINDS and len(self.list(user_id, kind)) >= MAX_ITEMS:
+                # Each new thing is matched by a model call, every day; a household doesn't need more than this.
+                raise MemoryStoreError(f"You're watching {MAX_ITEMS} {KINDS[kind]} already, the most Lantern keeps. "
+                                       "Remove one in My stuff to add another.")
+            item = item or MemoryItem(kind, slug or "profile", {"created": today})
             if kind in NAME_FIELD and NAME_FIELD[kind] not in item.meta:
                 item.meta[NAME_FIELD[kind]] = (name or "").strip()[:200]
             item.meta.update(_clean(kind, fields, strict=False))
@@ -236,7 +242,10 @@ class MemoryStore:
         item.meta["updated"] = date.today().isoformat()
         item.meta.setdefault("source", "user")
         with self._lock:
-            self._write(self._path(user_id, kind, slug), item.to_text())
+            path = self._path(user_id, kind, slug)
+            if kind in KINDS and not path.exists() and len(self.list(user_id, kind)) >= MAX_ITEMS:
+                raise MemoryStoreError(f"You're watching {MAX_ITEMS} {KINDS[kind]} already, the most Lantern keeps.")
+            self._write(path, item.to_text())
         return item
 
     def delete(self, user_id: str, kind: str, slug: str | None = None) -> bool:

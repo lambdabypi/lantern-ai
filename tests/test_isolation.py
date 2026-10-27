@@ -10,6 +10,7 @@ from fastapi.testclient import TestClient
 
 from app.auth.sessions import COOKIE_NAME, SessionSigner
 from app.config import ConfigError
+from app.auth.accounts import AccountStore
 from app.main import create_app
 from tests.conftest import tool_call
 from tests.test_agent_loop import make_loop
@@ -136,7 +137,8 @@ def test_expired_guest_loses_access_and_data(app_and_llm, settings):
     account_file.write_text(json.dumps(data))
 
     assert guest.get("/api/me").status_code == 401
-    TestClient(app).post("/api/auth/guest")  # creating a guest also sweeps expired ones
+    # The folder goes in the next sweep (at most hourly when guests are created, and in the daily job)
+    AccountStore(settings.data_dir).create_guest()
     assert not (settings.data_dir / "users" / user_id).exists()
 
 
@@ -148,7 +150,7 @@ def test_guest_ultra_quota(settings):
     for _ in range(2):
         assert guest.post("/api/chat", json={"message": "plan", "escalate": True}).json()["stop_reason"] == "done"
     blocked = guest.post("/api/chat", json={"message": "plan", "escalate": True}).json()
-    assert blocked["stop_reason"] == "quota" and "Think harder" in blocked["answer"]
+    assert blocked["stop_reason"] == "quota" and "Take more time to think" in blocked["answer"]
     assert len(llm.calls) == 2                                   # the blocked turn never reached the model
     assert guest.post("/api/chat", json={"message": "fast is fine"}).json()["stop_reason"] == "done"
     assert guest.get("/api/me").json()["ultra_left_today"] == 0
