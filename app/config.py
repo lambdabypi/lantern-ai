@@ -34,6 +34,7 @@ class Settings:
     guest_messages_per_day: int = 30     # chat messages per guest per day (0 = unlimited)
     user_messages_per_day: int = 100     # chat messages per signed-in player per day (0 = unlimited)
     site_messages_per_day: int = 300     # all players together, per day (0 = unlimited)
+    messages_per_ip_per_day: int = 100   # messages from one network per day, all its users together (0 = unlimited)
     site_tavily_credits_per_day: int = 60  # Tavily credits the whole site may spend per day (0 = unlimited)
     guests_per_ip_per_day: int = 5   # new guest accounts per network per day (0 = unlimited)
     site_model_dollars_per_day: float = 1.0  # estimated Token Factory spend the whole site may use per day (0 = no cap)
@@ -101,6 +102,7 @@ def load_settings(env_file: str | Path | None = ".env") -> Settings:
         guest_messages_per_day=_as_int("GUEST_MESSAGES_PER_DAY", get("GUEST_MESSAGES_PER_DAY", "30")),
         user_messages_per_day=_as_int("USER_MESSAGES_PER_DAY", get("USER_MESSAGES_PER_DAY", "100")),
         site_messages_per_day=_as_int("SITE_MESSAGES_PER_DAY", get("SITE_MESSAGES_PER_DAY", "300")),
+        messages_per_ip_per_day=_as_int("MESSAGES_PER_IP_PER_DAY", get("MESSAGES_PER_IP_PER_DAY", "100")),
         site_tavily_credits_per_day=_as_int("SITE_TAVILY_CREDITS_PER_DAY", get("SITE_TAVILY_CREDITS_PER_DAY", "150")),
         guests_per_ip_per_day=_as_int("GUESTS_PER_IP_PER_DAY", get("GUESTS_PER_IP_PER_DAY", "5")),
         site_model_dollars_per_day=_as_float("SITE_MODEL_DOLLARS_PER_DAY", get("SITE_MODEL_DOLLARS_PER_DAY", "1.0")),

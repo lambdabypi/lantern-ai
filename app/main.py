@@ -9,6 +9,7 @@ import hmac
 import json
 import logging
 import threading
+from contextvars import ContextVar
 from pathlib import Path
 from queue import Queue
 
@@ -200,6 +201,11 @@ class MeResponse(BaseModel):
     display_name: str | None = None
 
 
+# The keyed hash of the caller's network, set once per request by the guard middleware, so message caps can count
+# per network without every endpoint taking the request.
+_NETWORK: ContextVar[str] = ContextVar("network", default="")
+
+
 def create_app(loop: AgentLoop | None = None, settings: Settings | None = None, watch: RecallWatch | None = None,
                push: Push | None = None, search: WebSearch | None = None,
                makers: MakerPages | None = None, units: UnitCheck | None = None,
@@ -265,6 +271,7 @@ def create_app(loop: AgentLoop | None = None, settings: Settings | None = None, 
         if size > MAX_BODY_BYTES or (request.method in ("POST", "PUT") and "content-length" not in request.headers
                                      and request.headers.get("transfer-encoding")):
             return JSONResponse({"detail": "That's too large to send."}, status_code=413)
+        _NETWORK.set(network_of(request))
         response = await call_next(request)
         response.headers.update(SECURITY_HEADERS)
         return response
@@ -339,6 +346,12 @@ def create_app(loop: AgentLoop | None = None, settings: Settings | None = None, 
     def message_cap(account: Account) -> int | None:
         cap = settings.guest_messages_per_day if account.is_guest else settings.user_messages_per_day
         return cap or None
+
+    def network_message_ok() -> bool:
+        # One network can make 30 guests with 30 messages each, enough to use up the whole site's day and lock out
+        # everyone else (judges included), so messages are also counted per network.
+        return site_quota.try_consume(f"messages:{_NETWORK.get() or 'unknown'}",
+                                      settings.messages_per_ip_per_day or None)
 
     # ---- pages ------------------------------------------------------------------------------
     @app.get("/", include_in_schema=False)
@@ -471,6 +484,9 @@ def create_app(loop: AgentLoop | None = None, settings: Settings | None = None, 
             more = " Create an account for more, or" if account.is_guest else ""
             return blocked(f"You've reached today's limit of {cap} messages.{more} Come back tomorrow (it resets "
                            "at midnight UTC).")
+        if not network_message_ok():
+            return blocked("Lantern's demo has had all the messages it can take from your network today. It resets "
+                           "at midnight UTC.")
         if not site_quota.try_consume("messages", settings.site_messages_per_day or None):
             return blocked("Lantern's demo has reached its daily limit across all users. It resets at "
                            "midnight UTC. Sorry!")
@@ -643,7 +659,7 @@ def create_app(loop: AgentLoop | None = None, settings: Settings | None = None, 
 
     def spend_message(account: Account, why: str) -> None:
         """Model calls the user asks for outside chat count toward the same daily caps."""
-        if not quota.try_consume(account.user_id, "messages", message_cap(account)) or \
+        if not quota.try_consume(account.user_id, "messages", message_cap(account)) or not network_message_ok() or \
                 not site_quota.try_consume("messages", settings.site_messages_per_day or None):
             raise HTTPException(status_code=429, detail=f"Today's message limit is used up. {why} come back "
                                                         "tomorrow (it resets at midnight UTC).")

@@ -161,8 +161,8 @@ at midnight UTC and are set in `.env` (`0` = no cap):
 
 | What | Cap |
 |---|---|
-| **Model spending, all of it** (chat, photos, the daily job) | Each call is priced from Token Factory's list prices in the model router; the site stops calling models for the day at `SITE_MODEL_DOLLARS_PER_DAY` ($1). The recall lists keep working |
-| Messages (anything that calls a model) | 30 per guest, 100 per signed-in user, 300 site-wide |
+| **Model spending, all of it** (chat, photos, the daily job) | Each call is priced from Token Factory's list prices in the model router; the site stops calling models for the day at `SITE_MODEL_DOLLARS_PER_DAY` ($2 on the hosted demo). The recall lists keep working |
+| Messages (anything that calls a model) | 30 per guest, 100 per signed-in user, 100 per network (so one person making many guests can't use up everyone's day), 600 site-wide on the hosted demo |
 | "Take more time to think" (Ultra) | 10 per guest, 20 per signed-in user, 40 site-wide |
 | Tavily credits | 150 site-wide (cached answers are free) |
 | New guests and accounts | 30 guests and 5 accounts per network, 300 guests and 100 accounts site-wide |

@@ -240,3 +240,20 @@ def test_a_slow_nano_call_is_retried_on_super(settings):
     assert out.text == "routed"
     assert SlowNano.calls == [("nano-test", FAST_TIMEOUT_S, 0), ("super-test", None, None)]   # fail fast, then Super
     assert "super-test" in router.usage_summary()
+
+
+def test_one_network_cannot_use_up_the_site_cap(settings):
+    # 28 Oct: 30 guests per network x 30 messages each was enough to use up the whole site's day, locking out judges.
+    app, llm = app_with(settings, messages_per_ip_per_day=3)
+    here, there = {"X-Forwarded-For": "203.0.113.7"}, {"X-Forwarded-For": "198.51.100.9"}
+    a, b = TestClient(app), TestClient(app)
+    a.post("/api/auth/guest", headers=here)
+    b.post("/api/auth/guest", headers=here)   # a second guest on the same network shares its count
+    outcomes = [x.post("/api/chat", json={"message": f"hello {i}"}, headers=here).json()["stop_reason"]
+                for i, x in enumerate((a, b, a, b))]
+    assert outcomes == ["done", "done", "done", "quota"] and len(llm.calls) == 3
+    blocked = a.post("/api/chat", json={"message": "again"}, headers=here).json()["answer"]
+    assert "from your network today" in blocked
+    other = TestClient(app)
+    other.post("/api/auth/guest", headers=there)
+    assert other.post("/api/chat", json={"message": "hi"}, headers=there).json()["stop_reason"] == "done"
